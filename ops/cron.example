@@ -1,0 +1,31 @@
+# Ежедневный продовый бэкап в 03:30.
+# Важно: backup теперь кратко останавливает прикладные сервисы ради консистентности,
+# поэтому ставьте его только в окно низкой нагрузки.
+30 3 * * * cd /opt/espo && /bin/bash ./scripts/backup.sh prod >> /opt/espo/backups/prod/backup.log 2>&1
+
+# Ежедневный аудит свежести и целостности продовых бэкапов в 03:50.
+50 3 * * * cd /opt/espo && /bin/bash ./scripts/backup-audit.sh prod >> /opt/espo/backups/prod/backup-audit.log 2>&1
+
+# Ежедневная doctor-проверка продового контура в 04:10.
+10 4 * * * cd /opt/espo && /bin/bash ./scripts/doctor.sh prod >> /opt/espo/backups/prod/doctor.log 2>&1
+
+# Ежедневный девовый бэкап в 04:00.
+# Для dev это обычно не критично, но окно краткой остановки приложения тоже будет.
+0 4 * * * cd /opt/espo && /bin/bash ./scripts/backup.sh dev >> /opt/espo/backups/dev/backup.log 2>&1
+
+# Ежедневный аудит свежести и целостности dev-бэкапов в 04:20.
+20 4 * * * cd /opt/espo && /bin/bash ./scripts/backup-audit.sh dev >> /opt/espo/backups/dev/backup-audit.log 2>&1
+
+# Ежедневная doctor-проверка dev-контура в 04:40.
+40 4 * * * cd /opt/espo && /bin/bash ./scripts/doctor.sh dev >> /opt/espo/backups/dev/doctor.log 2>&1
+
+# Недельный безопасный cleanup Docker-хоста по воскресеньям в 05:00.
+# Скрипт не делает volume prune и перед удалением проверяет maintenance-lock.
+0 5 * * 0 cd /opt/espo && /bin/bash ./scripts/docker-cleanup.sh --apply >> /opt/espo/backups/host/docker-cleanup.log 2>&1
+
+# Пример продового бэкапа два раза в день: в 03:00 и 15:00.
+# 0 3,15 * * * cd /opt/espo && /bin/bash ./scripts/backup.sh prod >> /opt/espo/backups/prod/backup.log 2>&1
+
+# Пример еженедельного restore-drill для прода по воскресеньям в 05:30.
+# Используйте только если серверу хватает ресурсов на временный изолированный контур.
+# 30 5 * * 0 cd /opt/espo && /bin/bash ./scripts/restore-drill.sh prod >> /opt/espo/backups/prod/restore-drill.log 2>&1

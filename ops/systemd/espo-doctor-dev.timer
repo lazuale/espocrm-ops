@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily EspoCRM dev doctor check
+
+[Timer]
+Unit=espo-doctor@dev.service
+OnCalendar=*-*-* 02:50:00
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

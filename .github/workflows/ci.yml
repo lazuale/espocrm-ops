@@ -1,0 +1,81 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout репозитория
+        uses: actions/checkout@v4
+
+      - name: Установка ShellCheck
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y shellcheck systemd
+
+      - name: Проверка синтаксиса shell-скриптов
+        run: |
+          for f in \
+            scripts/backup.sh \
+            scripts/backup-audit.sh \
+            scripts/backup-catalog.sh \
+            scripts/bootstrap.sh \
+            scripts/doctor.sh \
+            scripts/docker-cleanup.sh \
+            scripts/migrate-backup.sh \
+            scripts/rollback.sh \
+            scripts/restore-db.sh \
+            scripts/restore-drill.sh \
+            scripts/restore-files.sh \
+            scripts/smoke-test.sh \
+            scripts/stack.sh \
+            scripts/status-report.sh \
+            scripts/support-bundle.sh \
+            scripts/update.sh \
+            scripts/verify-backup.sh \
+            scripts/lib/common.sh; do
+            bash -n "$f"
+          done
+
+      - name: Проверка shell-скриптов через ShellCheck
+        run: |
+          shellcheck \
+            scripts/backup.sh \
+            scripts/backup-audit.sh \
+            scripts/backup-catalog.sh \
+            scripts/bootstrap.sh \
+            scripts/doctor.sh \
+            scripts/docker-cleanup.sh \
+            scripts/migrate-backup.sh \
+            scripts/rollback.sh \
+            scripts/restore-db.sh \
+            scripts/restore-drill.sh \
+            scripts/restore-files.sh \
+            scripts/smoke-test.sh \
+            scripts/stack.sh \
+            scripts/status-report.sh \
+            scripts/support-bundle.sh \
+            scripts/update.sh \
+            scripts/verify-backup.sh \
+            scripts/lib/common.sh
+
+      - name: Валидация compose-конфигурации для prod
+        run: docker compose --env-file .env.prod.example config >/dev/null
+
+      - name: Валидация compose-конфигурации для dev
+        run: docker compose --env-file .env.dev.example config >/dev/null
+
+      - name: Проверка systemd unit-файлов
+        run: systemd-analyze verify ops/systemd/*.service ops/systemd/*.timer
+
+      - name: Smoke-test для dev-контура
+        run: bash ./scripts/smoke-test.sh dev --from-example --timeout 900

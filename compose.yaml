@@ -1,0 +1,188 @@
+# Имя проекта Compose берется из env-файла.
+# Благодаря этому один и тот же репозиторий может одновременно поднимать
+# независимые контуры `dev` и `prod` без конфликтов по именам ресурсов.
+name: ${COMPOSE_PROJECT_NAME}
+
+services:
+  # Сервис базы данных MariaDB.
+  # Хранит все данные EspoCRM и использует отдельный каталог на хосте.
+  db:
+    image: mariadb:${MARIADB_TAG}
+    restart: unless-stopped
+    # Базовые ограничения по ресурсам и защитный потолок процессов.
+    mem_limit: ${DB_MEM_LIMIT}
+    cpus: ${DB_CPUS}
+    pids_limit: ${DB_PIDS_LIMIT}
+    # Даем БД больше времени на корректную остановку, чтобы снизить риск порчи данных.
+    stop_grace_period: 1m30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE}"
+        max-file: "${DOCKER_LOG_MAX_FILE}"
+    environment:
+      # Пароль root нужен для операций инициализации и полного восстановления БД.
+      MARIADB_ROOT_PASSWORD: ${DB_ROOT_PASSWORD}
+      # Имя прикладной базы данных для выбранного контура.
+      MARIADB_DATABASE: ${DB_NAME}
+      # Прикладной пользователь, под которым работает EspoCRM.
+      MARIADB_USER: ${DB_USER}
+      # Пароль прикладного пользователя.
+      MARIADB_PASSWORD: ${DB_PASSWORD}
+    command:
+      # Включаем полноценную поддержку Unicode.
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+      # Храним таблицы в отдельных файлах.
+      - --innodb-file-per-table=1
+      # Поднимаем лимит пакета для импортов и больших записей.
+      - --max-allowed-packet=64MB
+    volumes:
+      # Отдельный каталог хранения данных БД для каждого контура.
+      - "${DB_STORAGE_DIR}:/var/lib/mysql"
+      # Дополнительный MariaDB-конфиг с тюнингом.
+      - "./deploy/mariadb/z-custom.cnf:/etc/mysql/conf.d/z-custom.cnf:ro"
+    healthcheck:
+      # Ожидаем не только доступности сервера, но и полной инициализации InnoDB.
+      test: ["CMD", "healthcheck.sh", "--connect", "--innodb_initialized"]
+      interval: 20s
+      timeout: 10s
+      retries: 5
+      start_period: 30s
+
+  # Основной веб-контейнер EspoCRM.
+  espocrm:
+    # Используем официальный образ напрямую:
+    # в этом репозитории больше нет кастомных модулей и собственной сборки.
+    image: ${ESPOCRM_IMAGE}
+    restart: unless-stopped
+    mem_limit: ${ESPO_MEM_LIMIT}
+    cpus: ${ESPO_CPUS}
+    pids_limit: ${ESPO_PIDS_LIMIT}
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE}"
+        max-file: "${DOCKER_LOG_MAX_FILE}"
+    depends_on:
+      # Веб запускаем только после готовности базы.
+      db:
+        condition: service_healthy
+    environment:
+      # Параметры подключения приложения к БД.
+      ESPOCRM_DATABASE_PLATFORM: Mysql
+      ESPOCRM_DATABASE_HOST: db
+      ESPOCRM_DATABASE_NAME: ${DB_NAME}
+      ESPOCRM_DATABASE_USER: ${DB_USER}
+      ESPOCRM_DATABASE_PASSWORD: ${DB_PASSWORD}
+      # Данные первого администратора при автоустановке.
+      ESPOCRM_ADMIN_USERNAME: ${ADMIN_USERNAME}
+      ESPOCRM_ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+      # Публичный URL контура.
+      ESPOCRM_SITE_URL: ${SITE_URL}
+      # Базовые настройки интерфейса и логирования.
+      ESPOCRM_CONFIG_DEFAULT_LANGUAGE: ${ESPO_DEFAULT_LANGUAGE}
+      ESPOCRM_CONFIG_TIME_ZONE: ${ESPO_TIME_ZONE}
+      ESPOCRM_CONFIG_LOGGER_LEVEL: ${ESPO_LOGGER_LEVEL}
+    volumes:
+      # Каталог с кодом и пользовательскими данными EspoCRM на хосте.
+      - "${ESPO_STORAGE_DIR}:/var/www/html"
+      # Локальные PHP-настройки.
+      - "./deploy/php/espocrm.ini:/usr/local/etc/php/conf.d/99-espocrm-local.ini:ro"
+      # Локальные Apache-настройки.
+      - "./deploy/apache/zzz-espo-tuning.conf:/etc/apache2/conf-enabled/zzz-espo-tuning.conf:ro"
+    ports:
+      # Публикуем приложение на внешний порт, заданный для контура.
+      - "${APP_PORT}:80"
+    healthcheck:
+      # Проверяем, что Apache слушает localhost:80 внутри контейнера.
+      # Символы `$` экранированы через `$$`, чтобы Compose не пытался подставлять
+      # свои переменные окружения в PHP-выражение.
+      test: ["CMD-SHELL", "php -r '$$s=@fsockopen(\"127.0.0.1\",80,$$e,$$es,2); if(!$$s){exit(1);} fclose($$s);' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Фоновый daemon EspoCRM для заданий и очередей.
+  espocrm-daemon:
+    # Используем тот же образ приложения, что и для веб-контейнера.
+    image: ${ESPOCRM_IMAGE}
+    restart: unless-stopped
+    mem_limit: ${DAEMON_MEM_LIMIT}
+    cpus: ${DAEMON_CPUS}
+    pids_limit: ${DAEMON_PIDS_LIMIT}
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE}"
+        max-file: "${DOCKER_LOG_MAX_FILE}"
+    depends_on:
+      # Daemon должен видеть готовую БД.
+      db:
+        condition: service_healthy
+      # Стартуем daemon после запуска веба, чтобы он работал с инициализированным приложением.
+      espocrm:
+        condition: service_started
+    # Переопределяем entrypoint на штатный daemon-скрипт EspoCRM.
+    entrypoint: docker-daemon.sh
+    volumes:
+      # Используем тот же каталог приложения, что и веб-контейнер.
+      - "${ESPO_STORAGE_DIR}:/var/www/html"
+      - "./deploy/php/espocrm.ini:/usr/local/etc/php/conf.d/99-espocrm-local.ini:ro"
+    healthcheck:
+      # Проверяем наличие процесса daemon внутри контейнера.
+      test: ["CMD-SHELL", "ps -eo args | grep -q '[d]ocker-daemon.sh'"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s
+
+  # Контейнер websocket-подсистемы EspoCRM.
+  espocrm-websocket:
+    # Используем тот же образ приложения, что и для веб-контейнера.
+    image: ${ESPOCRM_IMAGE}
+    restart: unless-stopped
+    mem_limit: ${WS_MEM_LIMIT}
+    cpus: ${WS_CPUS}
+    pids_limit: ${WS_PIDS_LIMIT}
+    stop_grace_period: 45s
+    logging:
+      driver: json-file
+      options:
+        max-size: "${DOCKER_LOG_MAX_SIZE}"
+        max-file: "${DOCKER_LOG_MAX_FILE}"
+    depends_on:
+      # WebSocket также ждет доступную БД.
+      db:
+        condition: service_healthy
+      # И стартует после веб-контейнера.
+      espocrm:
+        condition: service_started
+    # Используем штатный websocket-entrypoint из образа EspoCRM.
+    entrypoint: docker-websocket.sh
+    environment:
+      # Включаем websocket-функциональность в конфиге приложения.
+      ESPOCRM_CONFIG_USE_WEB_SOCKET: "true"
+      # Публичный websocket-URL для браузера.
+      ESPOCRM_CONFIG_WEB_SOCKET_URL: ${WS_PUBLIC_URL}
+      # DSN для подписки внутри контейнера websocket.
+      ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBSCRIBER_DSN: "tcp://*:7777"
+      # DSN, по которому приложение отправляет события в websocket-контейнер.
+      ESPOCRM_CONFIG_WEB_SOCKET_ZERO_M_Q_SUBMISSION_DSN: "tcp://espocrm-websocket:7777"
+    volumes:
+      # Делим тот же каталог приложения с вебом и daemon.
+      - "${ESPO_STORAGE_DIR}:/var/www/html"
+      - "./deploy/php/espocrm.ini:/usr/local/etc/php/conf.d/99-espocrm-local.ini:ro"
+    ports:
+      # Публикуем websocket на отдельный внешний порт контура.
+      - "${WS_PORT}:8080"
+    healthcheck:
+      # Проверяем, что websocket-процесс слушает внутренний порт 8080.
+      test: ["CMD-SHELL", "php -r '$$s=@fsockopen(\"127.0.0.1\",8080,$$e,$$es,2); if(!$$s){exit(1);} fclose($$s);' || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 60s

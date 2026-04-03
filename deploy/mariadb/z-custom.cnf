@@ -1,0 +1,32 @@
+[mariadb]
+# Базовая кодировка сервера.
+character-set-server=utf8mb4
+
+# Сопоставление символов по умолчанию.
+collation-server=utf8mb4_unicode_ci
+
+# Размер InnoDB buffer pool.
+# Для сервера 1 vCPU / 4 GB RAM это умеренный рабочий компромисс.
+innodb_buffer_pool_size=1G
+
+# Размер redo log-файла.
+innodb_log_file_size=256M
+
+# O_DIRECT обычно снижает двойное кэширование на Linux-хостах.
+innodb_flush_method=O_DIRECT
+
+# Ограничиваем число одновременных соединений.
+max_connections=40
+
+# Размер временных таблиц в памяти.
+tmp_table_size=32M
+max_heap_table_size=32M
+
+# Кэш открытых таблиц.
+table_open_cache=256
+
+# Кэш потоков.
+thread_cache_size=32
+
+# Дополнительный запас под большие запросы и импорты.
+max_allowed_packet=64M

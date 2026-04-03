@@ -1,0 +1,15 @@
+[Unit]
+Description=EspoCRM backup audit for %i contour
+Wants=docker.service network-online.target
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/opt/espo
+ExecStart=/bin/bash /opt/espo/scripts/backup-audit.sh %i
+Nice=10
+IOSchedulingClass=best-effort
+IOSchedulingPriority=7
+
+[Install]
+WantedBy=multi-user.target
