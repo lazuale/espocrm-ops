@@ -347,7 +347,13 @@ docker_remove_tree() {
     -v "$parent:/cleanup-parent" \
     -e CLEANUP_BASENAME="$base" \
     "$cleanup_image" \
-    sh -euc 'rm -rf -- "/cleanup-parent/$CLEANUP_BASENAME"' \
+    -euc '
+      target="/cleanup-parent/$CLEANUP_BASENAME"
+      if [ -d "$target" ]; then
+        find "$target" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+        rmdir "$target" 2>/dev/null || true
+      fi
+    ' \
     >/dev/null
 }
 
@@ -364,7 +370,7 @@ docker_empty_dir() {
     --entrypoint sh \
     -v "$target:/cleanup-target" \
     "$cleanup_image" \
-    sh -euc 'find /cleanup-target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' \
+    -euc 'find /cleanup-target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' \
     >/dev/null
 }
 
@@ -385,6 +391,17 @@ safe_remove_tree() {
 
   warn "Обычное удаление не удалось, пробую Docker fallback: $resolved"
   docker_remove_tree "$resolved" || die "Не удалось удалить каталог даже через Docker fallback: $resolved"
+
+  if [[ -d "$resolved" ]]; then
+    rmdir "$resolved" 2>/dev/null || rm -rf -- "$resolved" 2>/dev/null || true
+  fi
+
+  if [[ -d "$resolved" ]]; then
+    if find "$resolved" -mindepth 1 -print -quit | grep -q .; then
+      die "Не удалось удалить каталог после Docker fallback: $resolved"
+    fi
+    warn "Каталог остался пустым после Docker fallback, оставляю его как есть: $resolved"
+  fi
 }
 
 # Создаем все рабочие каталоги для текущего контура.
