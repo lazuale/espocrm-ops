@@ -185,7 +185,7 @@ create_failure_bundle() {
   local bundle_path="$1"
 
   set +e
-  ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/support-bundle.sh" "$ESPO_ENV" --output "$bundle_path"
+  ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/support-bundle.sh" "$ESPO_ENV" --output "$bundle_path"
   local bundle_exit=$?
   set -e
 
@@ -327,8 +327,8 @@ if [[ -n "${SELECTED_MANIFEST_JSON:-}" ]]; then
 fi
 
 echo "[1/7] Фиксация текущего статуса контура"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$PRE_REPORT_TXT"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$PRE_REPORT_JSON"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$PRE_REPORT_TXT"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$PRE_REPORT_JSON"
 
 echo "[2/7] Подъем контейнера базы данных при необходимости"
 if ! service_is_running db; then
@@ -342,16 +342,16 @@ stop_app_services
 
 echo "[4/7] Аварийный snapshot текущего состояния перед rollback"
 if [[ $SNAPSHOT_BEFORE_ROLLBACK -eq 1 ]]; then
-  ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
+  ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
 else
   echo "Snapshot пропущен по флагу --no-snapshot"
 fi
 
 echo "[5/7] Восстановление базы данных"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/restore-db.sh" "$ESPO_ENV" "$SELECTED_DB_BACKUP" --no-stop --no-start
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/restore-db.sh" "$ESPO_ENV" "$SELECTED_DB_BACKUP" --no-stop --no-start
 
 echo "[6/7] Восстановление файлов"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/restore-files.sh" "$ESPO_ENV" "$SELECTED_FILES_BACKUP" --no-stop --no-start
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/restore-files.sh" "$ESPO_ENV" "$SELECTED_FILES_BACKUP" --no-stop --no-start
 
 echo "[7/7] Возврат контура в рабочее состояние"
 if [[ $NO_START -eq 0 ]]; then
@@ -367,8 +367,8 @@ else
   echo "Контур оставлен остановленным по флагу --no-start"
 fi
 
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$POST_REPORT_TXT"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$POST_REPORT_JSON"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$POST_REPORT_TXT"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$POST_REPORT_JSON"
 cleanup_old_files "$REPORTS_DIR" "$REPORT_RETENTION" '*.txt' '*.json'
 
 trap - ERR

@@ -108,7 +108,7 @@ if [[ $SNAPSHOT_BEFORE_RESTORE -eq 1 ]]; then
   if [[ $NO_STOP -eq 1 ]]; then
     SNAPSHOT_ARGS+=("--no-stop")
   fi
-  ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/backup.sh" "${SNAPSHOT_ARGS[@]}"
+  run_repo_script "$SCRIPT_DIR/backup.sh" "${SNAPSHOT_ARGS[@]}"
 fi
 
 echo "Проверка целостности backup-файла базы данных"

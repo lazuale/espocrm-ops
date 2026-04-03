@@ -37,7 +37,7 @@ create_failure_bundle() {
   local bundle_path="$1"
 
   set +e
-  ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/support-bundle.sh" "$ESPO_ENV" --output "$bundle_path"
+  ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/support-bundle.sh" "$ESPO_ENV" --output "$bundle_path"
   local bundle_exit=$?
   set -e
 
@@ -134,12 +134,12 @@ trap 'on_error' ERR
 print_context
 
 echo "[1/6] Фиксация текущего статуса контура"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$PRE_REPORT_TXT"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$PRE_REPORT_JSON"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$PRE_REPORT_TXT"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$PRE_REPORT_JSON"
 
 echo "[2/6] Предварительная проверка окружения"
 if [[ $SKIP_DOCTOR -eq 0 ]]; then
-  ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/doctor.sh" "$ESPO_ENV"
+  ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/doctor.sh" "$ESPO_ENV"
 else
   echo "Doctor-проверка пропущена по флагу --skip-doctor"
 fi
@@ -152,7 +152,7 @@ if [[ $SKIP_BACKUP -eq 0 ]]; then
     wait_for_service_ready db "$TIMEOUT_SECONDS"
   fi
 
-  ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
+  ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
 else
   echo "Backup пропущен по флагу --skip-backup"
 fi
@@ -176,8 +176,8 @@ else
   echo "HTTP-проверка пропущена по флагу --skip-http-probe"
 fi
 
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$POST_REPORT_TXT"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$POST_REPORT_JSON"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$POST_REPORT_TXT"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$POST_REPORT_JSON"
 cleanup_old_files "$REPORTS_DIR" "$REPORT_RETENTION" '*.txt' '*.json'
 
 trap - ERR

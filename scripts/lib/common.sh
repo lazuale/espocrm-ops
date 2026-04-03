@@ -56,6 +56,17 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+# Запускаем дочерний shell-скрипт явно через bash.
+# Это избавляет от зависимости на execute-bit в git checkout,
+# что особенно важно для Linux CI после коммита с Windows-машины.
+run_repo_script() {
+  local script_path="$1"
+  shift
+
+  [[ -f "$script_path" ]] || die "Не найден дочерний скрипт: $script_path"
+  bash "$script_path" "$@"
+}
+
 # Проверяем, жив ли процесс-владелец lock-файла.
 lock_owner_is_alive() {
   local pid="$1"
@@ -317,6 +328,46 @@ set_env_value() {
   fi
 }
 
+# Пытаемся удалить дерево каталога через временный Docker-контейнер.
+# Это нужно для bind-mount каталогов, внутри которых контейнер оставил root-owned файлы,
+# а обычный пользователь хоста не может их убрать через rm -rf.
+docker_remove_tree() {
+  local target="$1"
+  local parent base
+  local cleanup_image="${ESPOCRM_IMAGE:-alpine:3.20}"
+
+  parent="$(dirname "$target")"
+  base="$(basename "$target")"
+
+  command_exists docker || return 1
+  [[ -d "$parent" ]] || return 1
+
+  docker run --rm \
+    --entrypoint sh \
+    -v "$parent:/cleanup-parent" \
+    -e CLEANUP_BASENAME="$base" \
+    "$cleanup_image" \
+    sh -euc 'rm -rf -- "/cleanup-parent/$CLEANUP_BASENAME"' \
+    >/dev/null
+}
+
+# Пытаемся очистить содержимое каталога через временный Docker-контейнер.
+# Сам каталог сохраняется, удаляется только его содержимое.
+docker_empty_dir() {
+  local target="$1"
+  local cleanup_image="${ESPOCRM_IMAGE:-alpine:3.20}"
+
+  command_exists docker || return 1
+  [[ -d "$target" ]] || return 1
+
+  docker run --rm \
+    --entrypoint sh \
+    -v "$target:/cleanup-target" \
+    "$cleanup_image" \
+    sh -euc 'find /cleanup-target -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +' \
+    >/dev/null
+}
+
 # Полностью удаляем каталог внутри проекта.
 # Используем это только для временных тестовых контуров и drill-артефактов.
 safe_remove_tree() {
@@ -328,7 +379,12 @@ safe_remove_tree() {
   resolved="$(cd "$target" && pwd)"
   [[ "$resolved" == "$ROOT_DIR"/* ]] || die "Отказ в удалении пути вне проекта: $resolved"
 
-  rm -rf -- "$resolved"
+  if rm -rf -- "$resolved" 2>/dev/null; then
+    return 0
+  fi
+
+  warn "Обычное удаление не удалось, пробую Docker fallback: $resolved"
+  docker_remove_tree "$resolved" || die "Не удалось удалить каталог даже через Docker fallback: $resolved"
 }
 
 # Создаем все рабочие каталоги для текущего контура.
@@ -404,7 +460,12 @@ safe_empty_dir() {
   [[ "$resolved" == "$ROOT_DIR"/* ]] || die "Отказ в очистке пути вне проекта: $resolved"
   [[ "$resolved" != "$ROOT_DIR" ]] || die "Отказ в очистке корня проекта"
 
-  find "$resolved" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} +
+  if find "$resolved" -mindepth 1 -maxdepth 1 -exec rm -rf -- {} + 2>/dev/null; then
+    return 0
+  fi
+
+  warn "Обычная очистка не удалась, пробую Docker fallback: $resolved"
+  docker_empty_dir "$resolved" || die "Не удалось очистить каталог даже через Docker fallback: $resolved"
 }
 
 # Проверяем, что конкретный сервис действительно запущен.

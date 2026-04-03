@@ -58,7 +58,7 @@ create_failure_bundle() {
   [[ -n "${DRILL_ENV_FILE:-}" && -f "${DRILL_ENV_FILE:-}" ]] || return 0
 
   set +e
-  ENV_FILE="$DRILL_ENV_FILE" "$SCRIPT_DIR/support-bundle.sh" "$ESPO_ENV" --output "$bundle_path"
+  ENV_FILE="$DRILL_ENV_FILE" run_repo_script "$SCRIPT_DIR/support-bundle.sh" "$ESPO_ENV" --output "$bundle_path"
   local bundle_exit=$?
   set -e
 
@@ -290,10 +290,10 @@ compose up -d db
 wait_for_service_ready db "$TIMEOUT_SECONDS"
 
 echo "[3/6] Восстановление базы данных во временный контур"
-ENV_FILE="$DRILL_ENV_FILE" "$SCRIPT_DIR/restore-db.sh" "$ESPO_ENV" "$DB_BACKUP_FILE" --no-stop --no-start
+ENV_FILE="$DRILL_ENV_FILE" run_repo_script "$SCRIPT_DIR/restore-db.sh" "$ESPO_ENV" "$DB_BACKUP_FILE" --no-stop --no-start
 
 echo "[4/6] Восстановление файлов во временный контур"
-ENV_FILE="$DRILL_ENV_FILE" "$SCRIPT_DIR/restore-files.sh" "$ESPO_ENV" "$FILES_BACKUP_FILE" --no-stop --no-start
+ENV_FILE="$DRILL_ENV_FILE" run_repo_script "$SCRIPT_DIR/restore-files.sh" "$ESPO_ENV" "$FILES_BACKUP_FILE" --no-stop --no-start
 
 echo "[5/6] Запуск полного временного стека"
 compose up -d
@@ -309,8 +309,8 @@ else
   echo "HTTP-проверка пропущена по флагу --skip-http-probe"
 fi
 
-ENV_FILE="$DRILL_ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$DRILL_REPORT_TXT"
-ENV_FILE="$DRILL_ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$DRILL_REPORT_JSON"
+ENV_FILE="$DRILL_ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$DRILL_REPORT_TXT"
+ENV_FILE="$DRILL_ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$DRILL_REPORT_JSON"
 
 trap - ERR
 

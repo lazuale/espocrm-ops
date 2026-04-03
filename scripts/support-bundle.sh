@@ -113,12 +113,12 @@ compose ps > "$TMP_DIR/compose.ps.txt"
 compose logs --no-color --tail "$TAIL_LINES" > "$TMP_DIR/compose.logs.txt" 2>&1 || true
 docker version > "$TMP_DIR/docker.version.txt" 2>&1 || true
 docker compose version > "$TMP_DIR/docker.compose.version.txt" 2>&1 || true
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/doctor.sh" "$ESPO_ENV" > "$TMP_DIR/doctor.txt" 2>&1 || true
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/doctor.sh" "$ESPO_ENV" --json > "$TMP_DIR/doctor.json" 2>&1 || true
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" > "$TMP_DIR/status-report.txt"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json > "$TMP_DIR/status-report.json"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/backup-catalog.sh" "$ESPO_ENV" > "$TMP_DIR/backup-catalog.txt" 2>&1 || true
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/backup-catalog.sh" "$ESPO_ENV" --json > "$TMP_DIR/backup-catalog.json" 2>&1 || true
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/doctor.sh" "$ESPO_ENV" > "$TMP_DIR/doctor.txt" 2>&1 || true
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/doctor.sh" "$ESPO_ENV" --json > "$TMP_DIR/doctor.json" 2>&1 || true
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" > "$TMP_DIR/status-report.txt"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json > "$TMP_DIR/status-report.json"
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/backup-catalog.sh" "$ESPO_ENV" > "$TMP_DIR/backup-catalog.txt" 2>&1 || true
+ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/backup-catalog.sh" "$ESPO_ENV" --json > "$TMP_DIR/backup-catalog.json" 2>&1 || true
 
 copy_if_exists "$LATEST_MANIFEST_JSON" "$TMP_DIR/latest.manifest.json"
 copy_if_exists "$LATEST_MANIFEST_TXT" "$TMP_DIR/latest.manifest.txt"

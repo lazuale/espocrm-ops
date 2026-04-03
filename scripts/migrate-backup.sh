@@ -150,28 +150,28 @@ if [[ $SKIP_FILES -eq 0 ]]; then
 fi
 
 echo "[1/4] Убеждаемся, что контейнер БД целевого контура запущен"
-"$SCRIPT_DIR/stack.sh" "$TARGET_CONTOUR" up -d db
+run_repo_script "$SCRIPT_DIR/stack.sh" "$TARGET_CONTOUR" up -d db
 
 echo "[2/4] Останавливаем прикладные сервисы целевого контура"
 # Если какой-то сервис еще не создан, команда stop может завершиться ошибкой —
 # это не критично для миграции, поэтому допускаем такой сценарий.
-"$SCRIPT_DIR/stack.sh" "$TARGET_CONTOUR" stop espocrm espocrm-daemon espocrm-websocket || true
+run_repo_script "$SCRIPT_DIR/stack.sh" "$TARGET_CONTOUR" stop espocrm espocrm-daemon espocrm-websocket || true
 
 STEP=3
 if [[ $SKIP_DB -eq 0 ]]; then
   echo "[$STEP/4] Восстанавливаем базу данных в контур $TARGET_CONTOUR"
-  "$SCRIPT_DIR/restore-db.sh" "$TARGET_CONTOUR" "$DB_BACKUP" --no-stop --no-start
+  run_repo_script "$SCRIPT_DIR/restore-db.sh" "$TARGET_CONTOUR" "$DB_BACKUP" --no-stop --no-start
   STEP=$((STEP + 1))
 fi
 
 if [[ $SKIP_FILES -eq 0 ]]; then
   echo "[$STEP/4] Восстанавливаем файлы в контур $TARGET_CONTOUR"
-  "$SCRIPT_DIR/restore-files.sh" "$TARGET_CONTOUR" "$FILES_BACKUP" --no-stop --no-start
+  run_repo_script "$SCRIPT_DIR/restore-files.sh" "$TARGET_CONTOUR" "$FILES_BACKUP" --no-stop --no-start
 fi
 
 if [[ $NO_START -eq 0 ]]; then
   echo "[4/4] Запускаем целевой контур после миграции"
-  "$SCRIPT_DIR/stack.sh" "$TARGET_CONTOUR" up -d
+  run_repo_script "$SCRIPT_DIR/stack.sh" "$TARGET_CONTOUR" up -d
 else
   echo "[4/4] Целевой контур оставлен остановленным по флагу --no-start"
 fi

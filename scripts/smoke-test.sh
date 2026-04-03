@@ -148,9 +148,9 @@ echo "[3/5] Проверка HTTP-доступности приложения: $
 http_probe "$SITE_URL"
 
 echo "[4/5] Создание резервной копии"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
+run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
 
 echo "[5/5] Проверка резервной копии"
-ENV_FILE="$ENV_FILE" "$SCRIPT_DIR/verify-backup.sh" "$ESPO_ENV"
+run_repo_script "$SCRIPT_DIR/verify-backup.sh" "$ESPO_ENV"
 
 echo "Smoke-test завершен успешно"
