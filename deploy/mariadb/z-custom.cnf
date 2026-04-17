@@ -1,0 +1,32 @@
+[mariadb]
+# Baseline server encoding.
+character-set-server=utf8mb4
+
+# Default character collation.
+collation-server=utf8mb4_unicode_ci
+
+# InnoDB buffer pool size.
+# For a 1 vCPU / 4 GB RAM server this is a moderate working compromise.
+innodb_buffer_pool_size=1G
+
+# Redo log file size.
+innodb_log_file_size=256M
+
+# O_DIRECT usually reduces double caching on Linux hosts.
+innodb_flush_method=O_DIRECT
+
+# Limit the number of concurrent connections.
+max_connections=40
+
+# In-memory temporary table size.
+tmp_table_size=32M
+max_heap_table_size=32M
+
+# Open table cache.
+table_open_cache=256
+
+# Thread cache.
+thread_cache_size=32
+
+# Extra headroom for large queries and imports.
+max_allowed_packet=64M

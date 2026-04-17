@@ -1,0 +1,31 @@
+{
+  "name": "adr_required",
+  "version": 1,
+  "path_triggers": [
+    "AI/spec/ARCH.spec",
+    "AI/spec/CONTRACT.spec",
+    "AI/spec/CONTRACT_SURFACE.spec",
+    "AI/spec/PACKAGE_POLICY.spec",
+    "AGENTS.md",
+    ".github/workflows/ai-governance.yml",
+    "cmd/espops/",
+    "internal/cli/",
+    "internal/contract/",
+    "internal/domain/",
+    "internal/architecture/",
+    "internal/platform/",
+    "internal/usecase/",
+    "scripts/backup-audit.sh",
+    "scripts/backup-catalog.sh",
+    "scripts/doctor.sh",
+    "scripts/status-report.sh",
+    "scripts/contour-overview.sh",
+    "scripts/verify-backup.sh",
+    "scripts/restore-db.sh",
+    "scripts/restore-files.sh",
+    "scripts/rollback.sh",
+    "scripts/update.sh",
+    "scripts/migrate-backup.sh"
+  ],
+  "adr_directory": "ops/adr"
+}

@@ -1,0 +1,35 @@
+{
+  "command": "history",
+  "ok": true,
+  "message": "found 2 operations",
+  "warnings": [
+    "skipped 1 corrupt journal entrie(s)"
+  ],
+  "details": {
+    "total_files_seen": 3,
+    "loaded_entries": 2,
+    "skipped_corrupt": 1,
+    "limit": 10,
+    "command": "",
+    "ok_only": false,
+    "failed_only": false
+  },
+  "items": [
+    {
+      "operation_id": "op-2",
+      "command": "restore-db",
+      "started_at": "2026-04-15T11:00:00Z",
+      "finished_at": "2026-04-15T11:00:01Z",
+      "ok": false,
+      "error_code": "restore_db_failed",
+      "error_message": "boom"
+    },
+    {
+      "operation_id": "op-1",
+      "command": "verify-backup",
+      "started_at": "2026-04-15T10:00:00Z",
+      "finished_at": "2026-04-15T10:00:01Z",
+      "ok": true
+    }
+  ]
+}

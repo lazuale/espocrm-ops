@@ -1,0 +1,11 @@
+[Unit]
+Description=Daily EspoCRM prod backup
+
+[Timer]
+Unit=espo-backup@prod.service
+OnCalendar=*-*-* 03:30:00
+Persistent=true
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

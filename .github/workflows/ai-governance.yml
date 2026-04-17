@@ -1,0 +1,52 @@
+name: Merge Gate
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  merge-gate:
+    runs-on: ubuntu-latest
+    env:
+      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Install shellcheck
+        run: |
+          set -Eeuo pipefail
+          sudo apt update
+          sudo apt install --yes shellcheck
+
+      - name: Validate PR body
+        if: github.event_name == 'pull_request'
+        run: |
+          set -Eeuo pipefail
+          printf '%s\n' "${{ github.event.pull_request.body }}" > "${RUNNER_TEMP:-/tmp}/pr-body.md"
+          PR_BODY_PATH="${RUNNER_TEMP:-/tmp}/pr-body.md" python3 AI/generators/pr_body_check.py
+
+      - name: Run merge gate
+        run: |
+          set -Eeuo pipefail
+          make ci
