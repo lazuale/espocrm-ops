@@ -1,6 +1,7 @@
 package update
 
 import (
+	"errors"
 	"fmt"
 	"net/http"
 	"time"
@@ -104,7 +105,7 @@ func waitForServiceReady(cfg platformdocker.ComposeConfig, service string, deadl
 	}
 }
 
-func httpProbe(siteURL string) error {
+func httpProbe(siteURL string) (err error) {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}
@@ -113,7 +114,16 @@ func httpProbe(siteURL string) error {
 	if err != nil {
 		return fmt.Errorf("http probe failed: %w", err)
 	}
-	defer resp.Body.Close()
+	defer func() {
+		if closeErr := resp.Body.Close(); closeErr != nil {
+			wrapped := fmt.Errorf("close http probe response body: %w", closeErr)
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusBadRequest {
 		return fmt.Errorf("http probe failed: unexpected status %s", resp.Status)

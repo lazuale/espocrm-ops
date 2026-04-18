@@ -173,13 +173,13 @@ func writeTarGzArchive(t *testing.T, path string, entries ...any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeTestArchiveWriter(t, "archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeTestArchiveWriter(t, "archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeTestArchiveWriter(t, "archive tar writer", tw)
 
 	for i := 0; i < len(entries); i += 2 {
 		hdr, ok := entries[i].(tar.Header)
@@ -194,5 +194,13 @@ func writeTarGzArchive(t *testing.T, path string, entries ...any) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func closeTestArchiveWriter(t *testing.T, label string, closer interface{ Close() error }) {
+	t.Helper()
+
+	if err := closer.Close(); err != nil {
+		t.Fatalf("close %s: %v", label, err)
 	}
 }

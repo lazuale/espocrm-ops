@@ -102,7 +102,7 @@ func writeGzipFile(t *testing.T, path string, body []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeCLIArchiveResource(t, "golden gzip file", f)
 
 	gz := gzip.NewWriter(f)
 	if _, err := gz.Write(body); err != nil {
@@ -120,13 +120,13 @@ func writeTarGzFile(t *testing.T, path string, files map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeCLIArchiveResource(t, "golden tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeCLIArchiveResource(t, "golden tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeCLIArchiveResource(t, "golden tar archive writer", tw)
 
 	for name, body := range files {
 		hdr := &tar.Header{

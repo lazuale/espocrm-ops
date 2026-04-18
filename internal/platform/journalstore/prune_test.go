@@ -113,7 +113,11 @@ func TestPrune_RejectsConcurrentHolder(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire prune lock failed: %v", err)
 	}
-	defer lock.Release()
+	defer func() {
+		if releaseErr := lock.Release(); releaseErr != nil {
+			t.Fatalf("release prune lock failed: %v", releaseErr)
+		}
+	}()
 
 	if _, err := Prune(tmp, PruneRequest{Keep: 1}); err == nil {
 		t.Fatal("expected concurrent prune to fail")

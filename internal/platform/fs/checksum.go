@@ -8,17 +8,18 @@ import (
 	"os"
 )
 
-func SHA256File(path string) (string, error) {
+func SHA256File(path string) (checksum string, err error) {
 	f, err := os.Open(path)
 	if err != nil {
 		return "", fmt.Errorf("open file: %w", err)
 	}
-	defer f.Close()
+	defer closeArchiveResource(f, fmt.Sprintf("checksum input file %s", path), &err)
 
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", fmt.Errorf("hash file: %w", err)
 	}
 
-	return hex.EncodeToString(h.Sum(nil)), nil
+	checksum = hex.EncodeToString(h.Sum(nil))
+	return checksum, nil
 }

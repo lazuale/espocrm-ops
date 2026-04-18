@@ -2,6 +2,7 @@ package config
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -241,14 +242,23 @@ func validateEnvFileForLoading(path string) error {
 	return nil
 }
 
-func loadEnvAssignments(path string) (map[string]string, error) {
+func loadEnvAssignments(path string) (values map[string]string, err error) {
 	file, err := os.Open(path)
 	if err != nil {
 		return nil, fmt.Errorf("open env file %s: %w", path, err)
 	}
-	defer file.Close()
+	defer func() {
+		if closeErr := file.Close(); closeErr != nil {
+			wrapped := fmt.Errorf("close env file %s: %w", path, closeErr)
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
-	values := map[string]string{}
+	values = map[string]string{}
 	scanner := bufio.NewScanner(file)
 	lineNo := 0
 	for scanner.Scan() {
@@ -290,17 +300,25 @@ func parseEnvAssignment(line string) (string, string, bool) {
 	key := trimmed[:sep]
 	for i, ch := range key {
 		if i == 0 {
-			if !(ch == '_' || ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z')) {
+			if !isEnvAssignmentKeyStart(ch) {
 				return "", "", false
 			}
 			continue
 		}
-		if !(ch == '_' || ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z') || ('0' <= ch && ch <= '9')) {
+		if !isEnvAssignmentKeyPart(ch) {
 			return "", "", false
 		}
 	}
 
 	return key, trimmed[sep+1:], true
+}
+
+func isEnvAssignmentKeyStart(ch rune) bool {
+	return ch == '_' || ('A' <= ch && ch <= 'Z') || ('a' <= ch && ch <= 'z')
+}
+
+func isEnvAssignmentKeyPart(ch rune) bool {
+	return isEnvAssignmentKeyStart(ch) || ('0' <= ch && ch <= '9')
 }
 
 func parseEnvValue(rawValue, path string, lineNo int) (string, error) {

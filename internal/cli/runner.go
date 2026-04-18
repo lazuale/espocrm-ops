@@ -70,7 +70,9 @@ func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, mode command
 			if app.JSONEnabled() {
 				warnings = append(warnings, message)
 			} else {
-				fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: %s\n", message)
+				if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: %s\n", message); writeErr != nil {
+					warnings = append(warnings, fmt.Sprintf("failed to render warning %q: %v", message, writeErr))
+				}
 			}
 		}
 	}

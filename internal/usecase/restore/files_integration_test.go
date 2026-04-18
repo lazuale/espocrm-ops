@@ -271,7 +271,7 @@ func writeGzipFile(t *testing.T, path string, body []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeRestoreArchiveWriter(t, "gzip file", f)
 
 	gz := gzip.NewWriter(f)
 	if _, err := gz.Write(body); err != nil {
@@ -289,13 +289,13 @@ func writeTarGz(t *testing.T, path string, files map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeRestoreArchiveWriter(t, "tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeRestoreArchiveWriter(t, "tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeRestoreArchiveWriter(t, "tar archive writer", tw)
 
 	for name, body := range files {
 		hdr := &tar.Header{
@@ -319,13 +319,13 @@ func writeSymlinkTarGz(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeRestoreArchiveWriter(t, "symlink tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeRestoreArchiveWriter(t, "symlink tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeRestoreArchiveWriter(t, "symlink tar archive writer", tw)
 
 	hdr := &tar.Header{
 		Name:     "link.txt",
@@ -355,5 +355,13 @@ func writeSHA256Sidecar(t *testing.T, path string) {
 	body := sha256OfFile(t, path) + "  " + filepath.Base(path) + "\n"
 	if err := os.WriteFile(path+".sha256", []byte(body), 0o644); err != nil {
 		t.Fatal(err)
+	}
+}
+
+func closeRestoreArchiveWriter(t *testing.T, label string, closer interface{ Close() error }) {
+	t.Helper()
+
+	if err := closer.Close(); err != nil {
+		t.Fatalf("close %s: %v", label, err)
 	}
 }

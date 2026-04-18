@@ -1,6 +1,7 @@
 package restore
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 
@@ -15,32 +16,53 @@ type preparedFilesRestore struct {
 	lock      *platformlocks.FileLock
 }
 
-func PlanFilesRestore(req RestoreFilesRequest) (FilesRestorePlan, error) {
+func PlanFilesRestore(req RestoreFilesRequest) (plan FilesRestorePlan, err error) {
 	prepared, err := prepareFilesRestore(req)
 	if err != nil {
 		return FilesRestorePlan{}, err
 	}
-	defer prepared.lock.Release()
+	defer func() {
+		if releaseErr := prepared.lock.Release(); releaseErr != nil {
+			wrapped := fmt.Errorf("release files restore lock: %w", releaseErr)
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
-	return prepared.plan, nil
+	plan = prepared.plan
+	return plan, nil
 }
 
-func RestoreFiles(req RestoreFilesRequest) (FilesRestorePlan, error) {
+func RestoreFiles(req RestoreFilesRequest) (plan FilesRestorePlan, err error) {
 	prepared, err := prepareFilesRestore(req)
 	if err != nil {
 		return FilesRestorePlan{}, err
 	}
-	defer prepared.lock.Release()
+	defer func() {
+		if releaseErr := prepared.lock.Release(); releaseErr != nil {
+			wrapped := fmt.Errorf("release files restore lock: %w", releaseErr)
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
 	if req.DryRun {
-		return prepared.plan, nil
+		plan = prepared.plan
+		return plan, nil
 	}
 
 	if err := executeFilesRestore(req, prepared.filesPath); err != nil {
 		return FilesRestorePlan{}, err
 	}
 
-	return prepared.plan, nil
+	plan = prepared.plan
+	return plan, nil
 }
 
 func prepareFilesRestore(req RestoreFilesRequest) (preparedFilesRestore, error) {
@@ -69,12 +91,21 @@ func prepareFilesRestore(req RestoreFilesRequest) (preparedFilesRestore, error) 
 	}, nil
 }
 
-func executeFilesRestore(req RestoreFilesRequest, filesPath string) error {
+func executeFilesRestore(req RestoreFilesRequest, filesPath string) (err error) {
 	stage, err := platformfs.NewSiblingStage(req.TargetDir, "espops-restore-files")
 	if err != nil {
 		return OperationError{Err: err, FallbackCode: "restore_files_failed"}
 	}
-	defer stage.Cleanup()
+	defer func() {
+		if cleanupErr := stage.Cleanup(); cleanupErr != nil {
+			wrapped := OperationError{Err: cleanupErr, FallbackCode: "restore_files_failed"}
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
 	if err := platformfs.UnpackTarGz(filesPath, stage.PreparedDir, domainbackup.ValidateFilesArchiveHeader); err != nil {
 		return OperationError{Err: err, FallbackCode: "restore_files_failed"}

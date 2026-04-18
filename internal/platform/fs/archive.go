@@ -3,6 +3,7 @@ package fs
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -13,35 +14,35 @@ import (
 
 const legacyTarRegularType = byte(0)
 
-func VerifyGzipReadable(filePath string) error {
+func VerifyGzipReadable(filePath string) (err error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer closeArchiveResource(f, fmt.Sprintf("archive file %s", filePath), &err)
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer closeArchiveResource(gz, fmt.Sprintf("gzip reader for %s", filePath), &err)
 
 	_, err = io.Copy(io.Discard, gz)
 	return err
 }
 
-func VerifyTarGzReadable(filePath string, validateHeader func(*tar.Header) error) error {
+func VerifyTarGzReadable(filePath string, validateHeader func(*tar.Header) error) (err error) {
 	f, err := os.Open(filePath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer closeArchiveResource(f, fmt.Sprintf("archive file %s", filePath), &err)
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer closeArchiveResource(gz, fmt.Sprintf("gzip reader for %s", filePath), &err)
 
 	tr := tar.NewReader(gz)
 	var found bool
@@ -78,18 +79,18 @@ func VerifyTarGzReadable(filePath string, validateHeader func(*tar.Header) error
 	return nil
 }
 
-func UnpackTarGz(archivePath, destDir string, validateHeader func(*tar.Header) error) error {
+func UnpackTarGz(archivePath, destDir string, validateHeader func(*tar.Header) error) (err error) {
 	f, err := os.Open(archivePath)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer closeArchiveResource(f, fmt.Sprintf("archive file %s", archivePath), &err)
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return ArchiveReadError{Path: archivePath, Err: err}
 	}
-	defer gz.Close()
+	defer closeArchiveResource(gz, fmt.Sprintf("gzip reader for %s", archivePath), &err)
 
 	tr := tar.NewReader(gz)
 	found := false
@@ -161,6 +162,21 @@ func UnpackTarGz(archivePath, destDir string, validateHeader func(*tar.Header) e
 	}
 
 	return nil
+}
+
+func closeArchiveResource(closer interface{ Close() error }, label string, errp *error) {
+	if closer == nil {
+		return
+	}
+
+	if closeErr := closer.Close(); closeErr != nil {
+		wrapped := fmt.Errorf("close %s: %w", label, closeErr)
+		if *errp == nil {
+			*errp = wrapped
+		} else {
+			*errp = errors.Join(*errp, wrapped)
+		}
+	}
 }
 
 func hasFilesystemDotDotPrefix(p string) bool {

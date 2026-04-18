@@ -61,7 +61,9 @@ func renderExecutionError(root *cobra.Command, err error) int {
 		return exitCode
 	}
 
-	fmt.Fprintf(root.ErrOrStderr(), "ERROR: %v\n", err)
+	if _, writeErr := fmt.Fprintf(root.ErrOrStderr(), "ERROR: %v\n", err); writeErr != nil {
+		return exitcode.InternalError
+	}
 	return exitCode
 }
 

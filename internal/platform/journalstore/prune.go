@@ -1,6 +1,7 @@
 package journalstore
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -42,7 +43,7 @@ func (e PruneRemovalError) Unwrap() error {
 var removeJournalFile = os.Remove
 var removeJournalDir = os.Remove
 
-func Prune(dir string, req PruneRequest) (PruneResult, error) {
+func Prune(dir string, req PruneRequest) (result PruneResult, err error) {
 	if dir == "" {
 		return PruneResult{}, fmt.Errorf("journal dir is required")
 	}
@@ -60,14 +61,23 @@ func Prune(dir string, req PruneRequest) (PruneResult, error) {
 	if err != nil {
 		return PruneResult{}, err
 	}
-	defer lock.Release()
+	defer func() {
+		if releaseErr := lock.Release(); releaseErr != nil {
+			wrapped := fmt.Errorf("release journal prune lock: %w", releaseErr)
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
 	items, stats, err := (Reader{Dir: dir}).ReadAllWithPaths()
 	if err != nil {
 		return PruneResult{}, err
 	}
 
-	result := PruneResult{
+	result = PruneResult{
 		ReadStats: stats,
 		Checked:   len(items),
 		Paths:     []string{},

@@ -1,6 +1,7 @@
 package restore
 
 import (
+	"errors"
 	"fmt"
 
 	"github.com/lazuale/espocrm-ops/internal/platform/config"
@@ -15,32 +16,53 @@ type preparedDBRestore struct {
 	lock         *platformlocks.FileLock
 }
 
-func PlanDBRestore(req RestoreDBRequest) (DBRestorePlan, error) {
+func PlanDBRestore(req RestoreDBRequest) (plan DBRestorePlan, err error) {
 	prepared, err := prepareDBRestore(req)
 	if err != nil {
 		return DBRestorePlan{}, err
 	}
-	defer prepared.lock.Release()
+	defer func() {
+		if releaseErr := prepared.lock.Release(); releaseErr != nil {
+			wrapped := fmt.Errorf("release db restore lock: %w", releaseErr)
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
-	return prepared.plan, nil
+	plan = prepared.plan
+	return plan, nil
 }
 
-func RestoreDB(req RestoreDBRequest) (DBRestorePlan, error) {
+func RestoreDB(req RestoreDBRequest) (plan DBRestorePlan, err error) {
 	prepared, err := prepareDBRestore(req)
 	if err != nil {
 		return DBRestorePlan{}, err
 	}
-	defer prepared.lock.Release()
+	defer func() {
+		if releaseErr := prepared.lock.Release(); releaseErr != nil {
+			wrapped := fmt.Errorf("release db restore lock: %w", releaseErr)
+			if err == nil {
+				err = wrapped
+			} else {
+				err = errors.Join(err, wrapped)
+			}
+		}
+	}()
 
 	if req.DryRun {
-		return prepared.plan, nil
+		plan = prepared.plan
+		return plan, nil
 	}
 
 	if err := platformdocker.ResetAndRestoreMySQLDumpGz(prepared.dbPath, req.DBContainer, prepared.rootPassword, req.DBName, req.DBUser); err != nil {
 		return DBRestorePlan{}, OperationError{Err: err}
 	}
 
-	return prepared.plan, nil
+	plan = prepared.plan
+	return plan, nil
 }
 
 func prepareDBRestore(req RestoreDBRequest) (preparedDBRestore, error) {

@@ -1,6 +1,7 @@
 package locks
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -21,7 +22,7 @@ type LockReadiness struct {
 	StalePaths   []string
 }
 
-func CheckSharedOperationReadiness(rootDir string) (LockReadiness, error) {
+func CheckSharedOperationReadiness(rootDir string) (readiness LockReadiness, err error) {
 	metadataPath, handlePath := predictedSharedOperationLockPaths(rootDir)
 
 	legacy, pid, err := legacyMetadataOnlyLock(metadataPath, handlePath)
@@ -46,22 +47,17 @@ func CheckSharedOperationReadiness(rootDir string) (LockReadiness, error) {
 		}
 		return LockReadiness{}, fmt.Errorf("open lock handle %s: %w", handlePath, err)
 	}
-	defer handle.Close()
+	defer closeLockHandle(handle, handlePath, &err)
 
 	if err := syscall.Flock(int(handle.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
 		_ = syscall.Flock(int(handle.Fd()), syscall.LOCK_UN)
-		state := LockStale
 		if _, statErr := os.Stat(metadataPath); statErr != nil {
-			if os.IsNotExist(statErr) {
-				state = LockStale
-			} else {
+			if !os.IsNotExist(statErr) {
 				return LockReadiness{}, fmt.Errorf("stat lock metadata %s: %w", metadataPath, statErr)
 			}
-		} else {
-			state = LockStale
 		}
 		return LockReadiness{
-			State:        state,
+			State:        LockStale,
 			MetadataPath: metadataPath,
 		}, nil
 	} else if err == syscall.EWOULDBLOCK {
@@ -123,7 +119,7 @@ func CheckRestoreFilesReadiness() (LockReadiness, error) {
 	return checkFileLockReadiness(restoreLockPath("espops-restore-files.lock"))
 }
 
-func checkFileLockReadiness(path string) (LockReadiness, error) {
+func checkFileLockReadiness(path string) (readiness LockReadiness, err error) {
 	handle, err := os.Open(path)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -134,7 +130,7 @@ func checkFileLockReadiness(path string) (LockReadiness, error) {
 		}
 		return LockReadiness{}, fmt.Errorf("open lock file %s: %w", path, err)
 	}
-	defer handle.Close()
+	defer closeLockHandle(handle, path, &err)
 
 	if err := syscall.Flock(int(handle.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
 		_ = syscall.Flock(int(handle.Fd()), syscall.LOCK_UN)
@@ -149,5 +145,20 @@ func checkFileLockReadiness(path string) (LockReadiness, error) {
 		}, nil
 	} else {
 		return LockReadiness{}, fmt.Errorf("probe lock %s: %w", path, err)
+	}
+}
+
+func closeLockHandle(handle *os.File, handlePath string, errp *error) {
+	if handle == nil {
+		return
+	}
+
+	if closeErr := handle.Close(); closeErr != nil {
+		wrapped := fmt.Errorf("close lock handle %s: %w", handlePath, closeErr)
+		if *errp == nil {
+			*errp = wrapped
+		} else {
+			*errp = errors.Join(*errp, wrapped)
+		}
 	}
 }

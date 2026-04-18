@@ -2,6 +2,7 @@ package docker
 
 import (
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -9,7 +10,7 @@ import (
 	"strings"
 )
 
-func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPath string) error {
+func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPath string) (err error) {
 	container, err := composeServiceContainerID(cfg, service)
 	if err != nil {
 		return fmt.Errorf("resolve db container for service %s: %w", service, err)
@@ -27,7 +28,7 @@ func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPat
 	if err != nil {
 		return fmt.Errorf("create db backup: %w", err)
 	}
-	defer f.Close()
+	defer closeMySQLResource(f, fmt.Sprintf("db backup file %s", destPath), &err)
 
 	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
 	if err != nil {
@@ -36,7 +37,7 @@ func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPat
 	closed := false
 	defer func() {
 		if !closed {
-			_ = gz.Close()
+			closeMySQLResource(gz, fmt.Sprintf("db backup gzip writer for %s", destPath), &err)
 		}
 	}()
 
@@ -70,18 +71,18 @@ func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPat
 	return nil
 }
 
-func RestoreMySQLDumpGz(dbPath, container, user, password, dbName string) error {
+func RestoreMySQLDumpGz(dbPath, container, user, password, dbName string) (err error) {
 	f, err := os.Open(dbPath)
 	if err != nil {
 		return fmt.Errorf("open db backup: %w", err)
 	}
-	defer f.Close()
+	defer closeMySQLResource(f, fmt.Sprintf("db backup file %s", dbPath), &err)
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return fmt.Errorf("open gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer closeMySQLResource(gz, fmt.Sprintf("db backup gzip reader for %s", dbPath), &err)
 
 	client, err := DetectDBClient(container)
 	if err != nil {
@@ -109,7 +110,7 @@ func RestoreMySQLDumpGz(dbPath, container, user, password, dbName string) error 
 	return nil
 }
 
-func ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser string) error {
+func ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser string) (err error) {
 	client, err := DetectDBClient(container)
 	if err != nil {
 		return err
@@ -134,13 +135,13 @@ func ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser
 	if err != nil {
 		return fmt.Errorf("open db backup: %w", err)
 	}
-	defer f.Close()
+	defer closeMySQLResource(f, fmt.Sprintf("db backup file %s", dbPath), &err)
 
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return fmt.Errorf("open gzip reader: %w", err)
 	}
-	defer gz.Close()
+	defer closeMySQLResource(gz, fmt.Sprintf("db backup gzip reader for %s", dbPath), &err)
 
 	if err := pipeMySQL(container, client, rootPassword, dbName, gz); err != nil {
 		return DBExecutionError{
@@ -177,6 +178,21 @@ func detectDBDumpClient(container string) (string, error) {
 	}
 
 	return "", fmt.Errorf("detect db dump client in container %s: %w", container, lastErr)
+}
+
+func closeMySQLResource(closer interface{ Close() error }, label string, errp *error) {
+	if closer == nil {
+		return
+	}
+
+	if closeErr := closer.Close(); closeErr != nil {
+		wrapped := fmt.Errorf("close %s: %w", label, closeErr)
+		if *errp == nil {
+			*errp = wrapped
+		} else {
+			*errp = errors.Join(*errp, wrapped)
+		}
+	}
 }
 
 func runMySQLSQL(container, client, password, dbName, sql string) error {

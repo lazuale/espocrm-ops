@@ -109,7 +109,11 @@ func TestSchema_RestoreFiles_JSON_Error_LockHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire restore-files lock failed: %v", err)
 	}
-	defer lock.Release()
+	defer func() {
+		if releaseErr := lock.Release(); releaseErr != nil {
+			t.Fatalf("release restore-files lock failed: %v", releaseErr)
+		}
+	}()
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
@@ -432,7 +436,11 @@ func TestSchema_RestoreDB_JSON_Error_LockHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire restore-db lock failed: %v", err)
 	}
-	defer lock.Release()
+	defer func() {
+		if releaseErr := lock.Release(); releaseErr != nil {
+			t.Fatalf("release restore-db lock failed: %v", releaseErr)
+		}
+	}()
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
@@ -595,13 +603,13 @@ func writeOrderedTarGzFile(t *testing.T, path string, entries ...any) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeCLIArchiveResource(t, "ordered tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeCLIArchiveResource(t, "ordered tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeCLIArchiveResource(t, "ordered tar archive writer", tw)
 
 	for i := 0; i < len(entries); i += 2 {
 		hdr, ok := entries[i].(tar.Header)
@@ -616,5 +624,13 @@ func writeOrderedTarGzFile(t *testing.T, path string, entries ...any) {
 				t.Fatal(err)
 			}
 		}
+	}
+}
+
+func closeCLIArchiveResource(t *testing.T, label string, closer interface{ Close() error }) {
+	t.Helper()
+
+	if err := closer.Close(); err != nil {
+		t.Fatalf("close %s: %v", label, err)
 	}
 }

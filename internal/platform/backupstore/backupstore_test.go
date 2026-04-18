@@ -167,7 +167,7 @@ func writeTestGzip(t *testing.T, path string, body []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeTestResource(t, "gzip file", f)
 
 	gz := gzip.NewWriter(f)
 	if _, err := gz.Write(body); err != nil {
@@ -197,13 +197,13 @@ func writeTestTarGz(t *testing.T, path string, entries tarEntries) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeTestResource(t, "tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeTestResource(t, "tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeTestResource(t, "tar archive writer", tw)
 
 	for name, value := range entries {
 		switch entry := value.(type) {
@@ -244,6 +244,14 @@ func sha256OfFile(t *testing.T, path string) string {
 	sum := sha256.Sum256(raw)
 
 	return hex.EncodeToString(sum[:])
+}
+
+func closeTestResource(t *testing.T, label string, closer interface{ Close() error }) {
+	t.Helper()
+
+	if err := closer.Close(); err != nil {
+		t.Fatalf("close %s: %v", label, err)
+	}
 }
 
 func mustWriteEmptyFile(t *testing.T, path string) {

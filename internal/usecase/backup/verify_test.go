@@ -244,7 +244,7 @@ func writeGzipFile(t *testing.T, path string, body []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeTestArchiveResource(t, "gzip file", f)
 
 	gz := gzip.NewWriter(f)
 	if _, err := gz.Write(body); err != nil {
@@ -262,13 +262,13 @@ func writeTarGz(t *testing.T, path string, files map[string]string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeTestArchiveResource(t, "tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeTestArchiveResource(t, "tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeTestArchiveResource(t, "tar archive writer", tw)
 
 	for name, body := range files {
 		hdr := &tar.Header{
@@ -292,13 +292,13 @@ func writeUnsafeTarGz(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeTestArchiveResource(t, "unsafe tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeTestArchiveResource(t, "unsafe tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeTestArchiveResource(t, "unsafe tar archive writer", tw)
 
 	hdr := &tar.Header{
 		Name: "../escape.txt",
@@ -320,13 +320,13 @@ func writeSymlinkTarGz(t *testing.T, path string) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer closeTestArchiveResource(t, "symlink tar archive file", f)
 
 	gz := gzip.NewWriter(f)
-	defer gz.Close()
+	defer closeTestArchiveResource(t, "symlink tar archive gzip writer", gz)
 
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
+	defer closeTestArchiveResource(t, "symlink tar archive writer", tw)
 
 	hdr := &tar.Header{
 		Name:     "link.txt",
@@ -352,4 +352,12 @@ func sha256OfFile(t *testing.T, path string) string {
 
 func stringsOf(chunk string, count int) string {
 	return strings.Repeat(chunk, count)
+}
+
+func closeTestArchiveResource(t *testing.T, label string, closer interface{ Close() error }) {
+	t.Helper()
+
+	if err := closer.Close(); err != nil {
+		t.Fatalf("close %s: %v", label, err)
+	}
 }

@@ -235,7 +235,7 @@ func legacyMetadataOnlyLock(metadataPath, handlePath string) (bool, string, erro
 	return true, lockFileOwnerPID(metadataPath), nil
 }
 
-func metadataLockState(metadataPath string) (string, string, error) {
+func metadataLockState(metadataPath string) (state, pid string, err error) {
 	handlePath := metadataLockHandlePath(metadataPath)
 	legacy, pid, err := legacyMetadataOnlyLock(metadataPath, handlePath)
 	if err != nil {
@@ -252,7 +252,7 @@ func metadataLockState(metadataPath string) (string, string, error) {
 		}
 		return "", "", fmt.Errorf("open lock handle %s: %w", handlePath, err)
 	}
-	defer handle.Close()
+	defer closeLockHandle(handle, handlePath, &err)
 
 	if err := syscall.Flock(int(handle.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
 		_ = syscall.Flock(int(handle.Fd()), syscall.LOCK_UN)

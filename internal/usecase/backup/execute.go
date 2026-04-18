@@ -2,6 +2,7 @@ package backup
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -151,9 +152,13 @@ func ExecuteBackup(req ExecuteRequest) (info ExecuteInfo, err error) {
 			return
 		}
 
-		warnBackup(req.ErrWriter, "Backup failed unexpectedly, restoring application services")
+		if warnErr := warnBackup(req.ErrWriter, "Backup failed unexpectedly, restoring application services"); warnErr != nil {
+			err = errors.Join(err, wrapBackupIO(warnErr))
+		}
 		if startErr := platformdocker.ComposeUp(cfg, backupAppServices...); startErr != nil {
-			warnBackup(req.ErrWriter, "Could not automatically restart application services after backup failure")
+			if warnErr := warnBackup(req.ErrWriter, "Could not automatically restart application services after backup failure"); warnErr != nil {
+				err = errors.Join(err, wrapBackupIO(warnErr))
+			}
 			err = fmt.Errorf("%w; automatic application service restart failed: %v", err, startErr)
 			return
 		}

@@ -81,7 +81,11 @@ func TestSchema_JournalPrune_JSON_Error_LockHeld(t *testing.T) {
 	if err != nil {
 		t.Fatalf("acquire prune lock failed: %v", err)
 	}
-	defer lock.Release()
+	defer func() {
+		if releaseErr := lock.Release(); releaseErr != nil {
+			t.Fatalf("release prune lock failed: %v", releaseErr)
+		}
+	}()
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,

@@ -444,7 +444,11 @@ func writeTestGzipFile(t *testing.T, path string, body []byte) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() {
+		if closeErr := f.Close(); closeErr != nil {
+			t.Fatalf("close test gzip file: %v", closeErr)
+		}
+	}()
 
 	gz := gzip.NewWriter(f)
 	if _, err := gz.Write(body); err != nil {
