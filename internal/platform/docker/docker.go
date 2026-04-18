@@ -97,8 +97,8 @@ func setEnvEntry(env []string, entry string) []string {
 }
 
 func envKey(entry string) string {
-	if idx := strings.IndexByte(entry, '='); idx >= 0 {
-		return entry[:idx]
+	if before, _, ok := strings.Cut(entry, "="); ok {
+		return before
 	}
 
 	return entry

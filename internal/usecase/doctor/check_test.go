@@ -1,6 +1,7 @@
 package doctor
 
 import (
+	"maps"
 	"os"
 	"path/filepath"
 	"sort"
@@ -154,9 +155,7 @@ func writeDoctorEnv(t *testing.T, projectDir, scope string, overrides map[string
 		"ESPO_TIME_ZONE":             "Europe/Moscow",
 		"ESPO_LOGGER_LEVEL":          "INFO",
 	}
-	for key, value := range overrides {
-		values[key] = value
-	}
+	maps.Copy(values, overrides)
 
 	keys := make([]string, 0, len(values))
 	for key := range values {

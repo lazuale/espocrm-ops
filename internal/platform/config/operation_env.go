@@ -473,8 +473,8 @@ func supportedContour(value string) bool {
 }
 
 func envEntryKey(entry string) string {
-	if idx := strings.IndexByte(entry, '='); idx >= 0 {
-		return entry[:idx]
+	if before, _, ok := strings.Cut(entry, "="); ok {
+		return before
 	}
 	return entry
 }

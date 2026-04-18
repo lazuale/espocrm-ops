@@ -2,6 +2,7 @@ package docker
 
 import (
 	"fmt"
+	"slices"
 	"strings"
 )
 
@@ -61,13 +62,7 @@ func ComposeRunningServices(cfg ComposeConfig) ([]string, error) {
 }
 
 func composeServiceListContains(services []string, target string) bool {
-	for _, service := range services {
-		if service == target {
-			return true
-		}
-	}
-
-	return false
+	return slices.Contains(services, target)
 }
 
 func ComposeServiceStateFor(cfg ComposeConfig, service string) (ComposeServiceState, error) {

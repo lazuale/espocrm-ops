@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"time"
 
@@ -318,10 +319,8 @@ func backupSetCollides(set domainbackup.BackupSet) bool {
 
 func backupAppServicesRunning(runningServices []string) bool {
 	for _, service := range runningServices {
-		for _, appService := range backupAppServices {
-			if service == appService {
-				return true
-			}
+		if slices.Contains(backupAppServices, service) {
+			return true
 		}
 	}
 

@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -335,10 +336,8 @@ func inLayer(importPath, layer string) bool {
 func assertImports(t *testing.T, pkg listedPackage, want string) {
 	t.Helper()
 
-	for _, imp := range pkg.Imports {
-		if imp == want {
-			return
-		}
+	if slices.Contains(pkg.Imports, want) {
+		return
 	}
 
 	t.Fatalf("%s does not import required package %s", pkg.ImportPath, want)

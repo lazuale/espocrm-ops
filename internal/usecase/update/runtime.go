@@ -99,10 +99,7 @@ func waitForServiceReady(cfg platformdocker.ComposeConfig, service string, deadl
 			return fmt.Errorf("timed out while waiting for service readiness '%s' (%d sec.)", service, timeoutSeconds)
 		}
 
-		sleepFor := readinessPollInterval
-		if remaining < sleepFor {
-			sleepFor = remaining
-		}
+		sleepFor := min(remaining, readinessPollInterval)
 		time.Sleep(sleepFor)
 	}
 }

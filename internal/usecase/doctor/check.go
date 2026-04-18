@@ -593,10 +593,7 @@ func lockOwnerDetails(path, pid string) string {
 func versionAtLeast(current, minimum string) bool {
 	currentParts := parseVersion(current)
 	minimumParts := parseVersion(minimum)
-	maxLen := len(currentParts)
-	if len(minimumParts) > maxLen {
-		maxLen = len(minimumParts)
-	}
+	maxLen := max(len(minimumParts), len(currentParts))
 
 	for i := 0; i < maxLen; i++ {
 		currentPart := 0

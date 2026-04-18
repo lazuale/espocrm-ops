@@ -1,0 +1,14 @@
+root = "."
+
+[build]
+  cmd = "mkdir -p ./bin && go build -o ./bin/espops ./cmd/espops"
+  entrypoint = ["./bin/espops"]
+  include_ext = ["go"]
+  exclude_dir = ["bin", "tmp", ".git", ".idea", ".vscode", "AI", "backups", "storage"]
+  exclude_regex = ["_test\\.go"]
+  exclude_unchanged = true
+  follow_symlink = true
+  log = "air.log"
+
+[misc]
+  clean_on_exit = true
