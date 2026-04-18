@@ -66,6 +66,7 @@ func (a *App) NewRootCmd() *cobra.Command {
 		bindApp(newHistoryCmd(), a),
 		bindApp(newLastOperationCmd(), a),
 		bindApp(newShowOperationCmd(), a),
+		bindApp(newExportOperationCmd(), a),
 		bindApp(newJournalPruneCmd(), a),
 	)
 

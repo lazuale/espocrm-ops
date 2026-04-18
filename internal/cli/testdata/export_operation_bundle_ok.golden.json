@@ -1,0 +1,127 @@
+{
+  "bundle_kind": "operation_incident_bundle",
+  "bundle_version": 1,
+  "exported_at": "2026-04-19T12:00:00Z",
+  "included_sections": [
+    "identity",
+    "type",
+    "scope",
+    "summary",
+    "timing",
+    "target_summary",
+    "step_outcomes",
+    "warnings",
+    "failure",
+    "recovery",
+    "details",
+    "artifacts",
+    "journal_read"
+  ],
+  "summary": {
+    "operation_id": "op-export-golden-1",
+    "command": "rollback",
+    "status": "failed",
+    "started_at": "2026-04-19T10:00:00Z",
+    "finished_at": "2026-04-19T10:00:03Z",
+    "duration_ms": 3000,
+    "scope": "prod",
+    "recovery_run": false,
+    "summary": "Rollback target selection failed",
+    "counts": {
+      "steps": 2,
+      "blocked": 1,
+      "failed": 1
+    },
+    "warning_count": 1,
+    "error_code": "rollback_failed",
+    "target": {
+      "selection_mode": "auto_latest_valid",
+      "prefix": "espocrm-prod",
+      "stamp": "2026-04-19_09-00-00"
+    },
+    "failure": {
+      "code": "rollback_failed",
+      "message": "rollback target selection failed",
+      "step_code": "target_selection",
+      "step_summary": "Rollback target selection failed",
+      "action": "Resolve the rollback target selection error before rerunning rollback."
+    }
+  },
+  "report": {
+    "operation_id": "op-export-golden-1",
+    "command": "rollback",
+    "started_at": "2026-04-19T10:00:00Z",
+    "finished_at": "2026-04-19T10:00:03Z",
+    "duration_ms": 3000,
+    "ok": false,
+    "message": "rollback failed",
+    "scope": "prod",
+    "counts": {
+      "steps": 2,
+      "blocked": 1,
+      "failed": 1
+    },
+    "target": {
+      "selection_mode": "auto_latest_valid",
+      "prefix": "espocrm-prod",
+      "stamp": "2026-04-19_09-00-00",
+      "manifest_json": "REPLACE_MANIFEST_JSON",
+      "db_backup": "REPLACE_DB_BACKUP",
+      "files_backup": "REPLACE_FILES_BACKUP"
+    },
+    "steps": [
+      {
+        "code": "target_selection",
+        "status": "failed",
+        "summary": "Rollback target selection failed",
+        "details": "could not find a valid backup set",
+        "action": "Resolve the rollback target selection error before rerunning rollback."
+      },
+      {
+        "code": "runtime_prepare",
+        "status": "blocked",
+        "summary": "Runtime preparation did not run because rollback target selection failed"
+      }
+    ],
+    "details": {
+      "scope": "prod",
+      "selection_mode": "auto_latest_valid"
+    },
+    "artifacts": {
+      "compose_file": "REPLACE_COMPOSE_FILE",
+      "db_backup": "REPLACE_DB_BACKUP",
+      "env_file": "REPLACE_ENV_FILE",
+      "files_backup": "REPLACE_FILES_BACKUP",
+      "manifest_json": "REPLACE_MANIFEST_JSON",
+      "project_dir": "REPLACE_PROJECT_DIR",
+      "selected_prefix": "espocrm-prod",
+      "selected_stamp": "2026-04-19_09-00-00"
+    },
+    "warnings": [
+      "Rollback will skip the final HTTP probe because of --skip-http-probe."
+    ],
+    "error_code": "rollback_failed",
+    "error_message": "rollback target selection failed",
+    "failure": {
+      "code": "rollback_failed",
+      "message": "rollback target selection failed",
+      "step_code": "target_selection",
+      "step_summary": "Rollback target selection failed",
+      "action": "Resolve the rollback target selection error before rerunning rollback."
+    },
+    "recovery": {
+      "retryable": true,
+      "resumable": false,
+      "recommended_mode": "retry",
+      "decision": "retry_from_start",
+      "summary": "Rollback can be retried from the start",
+      "details": "The source rollback failed before runtime mutation began, so retry from the start is safe once the original target request is known.",
+      "action": "Resolve the target selection issue, then retry the rollback from the start."
+    }
+  },
+  "journal_read": {
+    "total_files_seen": 1,
+    "loaded_entries": 1,
+    "skipped_corrupt": 0
+  }
+}

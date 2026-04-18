@@ -34,6 +34,18 @@ func OperationLookupDetailsFromReadStats(stats ReadStats) result.OperationLookup
 	}
 }
 
+func OperationExportDetailsFromBundle(id string, bundle OperationBundle) result.OperationExportDetails {
+	return result.OperationExportDetails{
+		JournalReadDetails: ReadDetailsFromStats(bundle.JournalRead),
+		ID:                 id,
+		BundleKind:         bundle.BundleKind,
+		BundleVersion:      bundle.BundleVersion,
+		ExportedAt:         bundle.ExportedAt,
+		IncludedSections:   append([]string(nil), bundle.IncludedSections...),
+		OmittedSections:    append([]string(nil), bundle.OmittedSections...),
+	}
+}
+
 func PruneDetailsFromStats(stats ReadStats, checked, retained, protected, deleted, removedDirs, keepDays, keepLast int, latestOperationID string, dryRun bool) result.PruneDetails {
 	return result.PruneDetails{
 		JournalReadDetails: ReadDetailsFromStats(stats),

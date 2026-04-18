@@ -28,6 +28,20 @@ type OperationLookupDetails struct {
 	Command string `json:"command,omitempty"`
 }
 
+type OperationExportDetails struct {
+	JournalReadDetails
+	ID               string   `json:"id"`
+	BundleKind       string   `json:"bundle_kind"`
+	BundleVersion    int      `json:"bundle_version"`
+	ExportedAt       string   `json:"exported_at"`
+	IncludedSections []string `json:"included_sections"`
+	OmittedSections  []string `json:"omitted_sections,omitempty"`
+}
+
+type OperationExportArtifacts struct {
+	BundlePath string `json:"bundle_path"`
+}
+
 type PruneDetails struct {
 	JournalReadDetails
 	Checked           int    `json:"checked"`
