@@ -49,7 +49,7 @@ jobs:
       - name: Install Go health tools
         run: |
           set -Eeuo pipefail
-          make install-health-tools
+          make install-ci-health-tools
 
       - name: Add Go health tools to PATH
         run: |

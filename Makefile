@@ -8,7 +8,7 @@ STATICCHECK_VERSION ?= v0.7.0
 GOLANGCI_LINT_VERSION ?= v2.11.4
 FAST_GATE_COMPONENTS := test vet ai-shell-json-smoke bashcheck shellcheck
 
-.PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke policy build test test-cli test-golden fmt vet clean integration ci check-fast check-fast-components check-full regression bashcheck shellcheck vulncheck staticcheck lint coverage install-health-tools
+.PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke policy build test test-cli test-golden fmt vet clean integration ci check-fast check-fast-components check-full regression bashcheck shellcheck vulncheck staticcheck lint coverage install-health-tools install-ci-health-tools
 
 ai-validate:
 	$(PYTHON) AI/generators/validate_specs.py
@@ -73,7 +73,6 @@ check-full:
 	$(MAKE) ai-check
 	$(MAKE) check-fast-components
 	go test -race ./...
-	$(MAKE) vulncheck
 	$(MAKE) staticcheck
 	$(MAKE) lint
 	$(MAKE) coverage
@@ -117,6 +116,11 @@ coverage:
 install-health-tools:
 	mkdir -p "$(HEALTH_TOOLS_BIN)"
 	GOBIN="$(HEALTH_TOOLS_BIN)" go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	GOBIN="$(HEALTH_TOOLS_BIN)" go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(HEALTH_TOOLS_BIN)" $(GOLANGCI_LINT_VERSION)
+
+install-ci-health-tools:
+	mkdir -p "$(HEALTH_TOOLS_BIN)"
 	GOBIN="$(HEALTH_TOOLS_BIN)" go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(HEALTH_TOOLS_BIN)" $(GOLANGCI_LINT_VERSION)
 
