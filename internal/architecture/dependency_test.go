@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"runtime"
 	"slices"
 	"strings"
 	"testing"
@@ -281,7 +280,10 @@ func listPackages(t *testing.T, pattern string) []listedPackage {
 	t.Helper()
 
 	root := repoRoot(t)
-	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
+	goBin, err := exec.LookPath("go")
+	if err != nil {
+		t.Fatalf("locate go binary: %v", err)
+	}
 	cmd := exec.Command(goBin, "list", "-json", pattern)
 	cmd.Dir = root
 
