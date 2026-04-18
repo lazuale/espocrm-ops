@@ -192,7 +192,7 @@ EOF
   pass_test "Regression case passed"
 }
 
-test_rollback_dry_run_delegates_to_go_rollback_plan() {
+test_rollback_dry_run_delegates_to_go_rollback() {
   announce_test "Regression case"
 
   local env_file="$TEST_TMP_ROOT/env.rollback-dry-run"
@@ -242,8 +242,8 @@ EOF
 #!/usr/bin/env bash
 set -Eeuo pipefail
 case "${1:-}" in
-  rollback-plan)
-    echo "mock rollback-plan args: $*"
+  rollback)
+    echo "mock rollback args: $*"
     ;;
   *)
     echo "unexpected espops args: $*" >&2
@@ -257,7 +257,7 @@ EOF
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "mock rollback-plan args: rollback-plan --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --timeout 321 --env-file $env_file --db-backup /tmp/db.sql.gz --files-backup /tmp/files.tar.gz --no-snapshot --no-start --skip-http-probe" "runtime output"
+  assert_file_contains "$output_file" "mock rollback args: rollback --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --dry-run --db-backup /tmp/db.sql.gz --files-backup /tmp/files.tar.gz --no-snapshot --no-start --skip-http-probe --timeout 321" "runtime output"
   assert_file_not_contains "$output_file" "mock status-report should not run" "runtime output"
   assert_file_not_contains "$output_file" "mock backup should not run" "runtime output"
   assert_file_not_contains "$output_file" "mock restore-db should not run" "runtime output"

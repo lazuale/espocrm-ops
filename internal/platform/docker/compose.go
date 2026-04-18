@@ -94,6 +94,10 @@ func ComposeServiceStateFor(cfg ComposeConfig, service string) (ComposeServiceSt
 	return state, nil
 }
 
+func ComposeServiceContainerID(cfg ComposeConfig, service string) (string, error) {
+	return composeServiceContainerID(cfg, service)
+}
+
 func composeServiceContainerID(cfg ComposeConfig, service string) (string, error) {
 	res, err := runCompose(cfg, "ps", "-q", service)
 	if err != nil {

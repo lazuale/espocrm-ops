@@ -242,6 +242,53 @@ type UpdateItem struct {
 	Action  string `json:"action,omitempty"`
 }
 
+type RollbackDetails struct {
+	Scope                string   `json:"scope"`
+	Ready                bool     `json:"ready"`
+	SelectionMode        string   `json:"selection_mode,omitempty"`
+	Steps                int      `json:"steps"`
+	Completed            int      `json:"completed"`
+	Skipped              int      `json:"skipped"`
+	Failed               int      `json:"failed"`
+	NotRun               int      `json:"not_run"`
+	Warnings             int      `json:"warnings"`
+	TimeoutSeconds       int      `json:"timeout_seconds"`
+	SnapshotEnabled      bool     `json:"snapshot_enabled"`
+	NoStart              bool     `json:"no_start"`
+	SkipHTTPProbe        bool     `json:"skip_http_probe"`
+	StartedDBTemporarily bool     `json:"started_db_temporarily"`
+	ServicesReady        []string `json:"services_ready,omitempty"`
+}
+
+type RollbackArtifacts struct {
+	ProjectDir            string `json:"project_dir"`
+	ComposeFile           string `json:"compose_file"`
+	EnvFile               string `json:"env_file"`
+	ComposeProject        string `json:"compose_project,omitempty"`
+	BackupRoot            string `json:"backup_root,omitempty"`
+	SiteURL               string `json:"site_url,omitempty"`
+	SelectedPrefix        string `json:"selected_prefix,omitempty"`
+	SelectedStamp         string `json:"selected_stamp,omitempty"`
+	ManifestTXT           string `json:"manifest_txt,omitempty"`
+	ManifestJSON          string `json:"manifest_json,omitempty"`
+	DBBackup              string `json:"db_backup,omitempty"`
+	FilesBackup           string `json:"files_backup,omitempty"`
+	SnapshotManifestTXT   string `json:"snapshot_manifest_txt,omitempty"`
+	SnapshotManifestJSON  string `json:"snapshot_manifest_json,omitempty"`
+	SnapshotDBBackup      string `json:"snapshot_db_backup,omitempty"`
+	SnapshotFilesBackup   string `json:"snapshot_files_backup,omitempty"`
+	SnapshotDBChecksum    string `json:"snapshot_db_checksum,omitempty"`
+	SnapshotFilesChecksum string `json:"snapshot_files_checksum,omitempty"`
+}
+
+type RollbackItem struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Details string `json:"details,omitempty"`
+	Action  string `json:"action,omitempty"`
+}
+
 type RollbackPlanDetails struct {
 	Scope           string `json:"scope"`
 	Ready           bool   `json:"ready"`

@@ -41,7 +41,7 @@ func writeRollbackBackupSet(t *testing.T, backupRoot, prefix, stamp, scope strin
 
 	writeGzipFile(t, dbPath, []byte("select 1;"))
 	writeTarGzFile(t, filesPath, map[string]string{
-		"storage/test.txt": "hello",
+		"espo/test.txt": "hello",
 	})
 	if err := os.WriteFile(dbPath+".sha256", []byte(sha256OfFile(t, dbPath)+"  "+filepath.Base(dbPath)+"\n"), 0o644); err != nil {
 		t.Fatal(err)

@@ -175,7 +175,7 @@ func checkComposeFile(report *Report) {
 
 func checkSharedOperationLock(report *Report, inherited bool) {
 	if inherited {
-		report.ok("", "shared_operation_lock", "The shared operation lock is already held by the parent operation", "Inherited from the active update execution.")
+		report.ok("", "shared_operation_lock", "The shared operation lock is already held by the parent operation", "Inherited from the active parent operation.")
 		return
 	}
 

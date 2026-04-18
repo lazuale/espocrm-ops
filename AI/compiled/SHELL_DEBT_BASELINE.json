@@ -96,14 +96,10 @@
     },
     "scripts/rollback.sh": {
       "function_names": [
-        "on_error",
-        "select_latest_valid_backup_set",
-        "usage",
-        "validate_manual_backup_pair",
-        "write_rollback_plan_reports"
+        "usage"
       ],
-      "line_count": 396,
-      "sha256": "9b35bd980e0456a7542f9e9252b90a3b3da2d769babe9fbfa45841236ac9a625"
+      "line_count": 57,
+      "sha256": "c11987d0e31ead8ce7ff10c15468f1b210c63511742081b614cb04e6a5f98598"
     },
     "scripts/verify-backup.sh": {
       "function_names": [

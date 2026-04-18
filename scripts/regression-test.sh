@@ -87,10 +87,9 @@ main() {
   test_restore_files_requires_force_and_prod_confirmation
   test_restore_drill_selects_complete_set
   test_restore_drill_rejects_equal_ports
-  test_rollback_selects_manifest_valid_set
-  test_rollback_auto_selection_uses_go_verify_contract
-  test_rollback_manual_pair_writes_plan_with_flags
-  test_rollback_requires_force_and_prod_confirmation
+  test_rollback_delegates_auto_selection_to_go_execution
+  test_rollback_delegates_manual_selection_flags_to_go_execution
+  test_rollback_defers_destructive_confirmation_to_go
   test_migrate_backup_selects_complete_pair_and_switches_env
   test_migrate_backup_supports_partial_selection_and_no_start
   test_migrate_backup_requires_force_and_prod_confirmation
@@ -98,7 +97,7 @@ main() {
   test_update_can_skip_optional_steps
   test_update_propagates_go_runtime_timeout_failure
   test_update_dry_run_delegates_to_go_update_plan
-  test_rollback_dry_run_delegates_to_go_rollback_plan
+  test_rollback_dry_run_delegates_to_go_rollback
   test_backup_delegates_to_go_backup_exec
   test_backup_reuses_inherited_shell_context
   test_smoke_test_can_keep_artifacts
