@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"strings"
 	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
@@ -16,6 +17,10 @@ func newHistoryCmd() *cobra.Command {
 	var commandName string
 	var okOnly bool
 	var failedOnly bool
+	var status string
+	var scope string
+	var recoveryOnly bool
+	var targetPrefix string
 	var sinceRaw string
 	var untilRaw string
 
@@ -28,11 +33,27 @@ func newHistoryCmd() *cobra.Command {
 			if err := normalizeOptionalStringFlag(cmd, "command", &commandName); err != nil {
 				return err
 			}
+			if err := normalizeOptionalStringFlag(cmd, "status", &status); err != nil {
+				return err
+			}
+			if err := normalizeOptionalStringFlag(cmd, "scope", &scope); err != nil {
+				return err
+			}
+			if err := normalizeOptionalStringFlag(cmd, "target-prefix", &targetPrefix); err != nil {
+				return err
+			}
 			if limit < 0 {
 				return usageError(fmt.Errorf("--limit must be non-negative"))
 			}
 			if okOnly && failedOnly {
 				return usageError(fmt.Errorf("use either --ok-only or --failed-only, not both"))
+			}
+			status = strings.ToLower(status)
+			if status != "" && !isValidHistoryStatus(status) {
+				return usageError(fmt.Errorf("--status must be one of: completed, failed, blocked, running, unknown"))
+			}
+			if status != "" && (okOnly || failedOnly) {
+				return usageError(fmt.Errorf("use either --status or --ok-only/--failed-only, not both"))
 			}
 
 			since, err := parseRFC3339Flag("--since", sinceRaw)
@@ -56,12 +77,16 @@ func newHistoryCmd() *cobra.Command {
 				history, err := journalusecase.History(journalusecase.HistoryInput{
 					JournalDir: app.options.JournalDir,
 					Filters: journalusecase.Filters{
-						Command:    commandName,
-						OKOnly:     okOnly,
-						FailedOnly: failedOnly,
-						Since:      since,
-						Until:      until,
-						Limit:      limit,
+						Command:      commandName,
+						OKOnly:       okOnly,
+						FailedOnly:   failedOnly,
+						Status:       status,
+						Scope:        scope,
+						RecoveryOnly: recoveryOnly,
+						TargetPrefix: targetPrefix,
+						Since:        since,
+						Until:        until,
+						Limit:        limit,
 					},
 				})
 				if err != nil {
@@ -73,14 +98,20 @@ func newHistoryCmd() *cobra.Command {
 				details.Command = commandName
 				details.OKOnly = okOnly
 				details.FailedOnly = failedOnly
+				details.Status = status
+				details.Scope = scope
+				details.RecoveryOnly = recoveryOnly
+				details.TargetPrefix = targetPrefix
+				details.Returned = len(history.Operations)
+				details.RecentFirst = true
 				details.Since = sinceRaw
 				details.Until = untilRaw
 
 				return result.Result{
 					OK:       true,
-					Message:  fmt.Sprintf("found %d operations", len(history.Entries)),
+					Message:  fmt.Sprintf("found %d operations", len(history.Operations)),
 					Warnings: journalusecase.WarningsFromReadStats(history.Stats),
-					Items:    journalEntriesAsItems(history.Entries),
+					Items:    operationSummariesAsItems(history.Operations),
 					Details:  details,
 				}, nil
 			})
@@ -91,16 +122,20 @@ func newHistoryCmd() *cobra.Command {
 	cmd.Flags().StringVar(&commandName, "command", "", "filter by command name")
 	cmd.Flags().BoolVar(&okOnly, "ok-only", false, "show only successful operations")
 	cmd.Flags().BoolVar(&failedOnly, "failed-only", false, "show only failed operations")
+	cmd.Flags().StringVar(&status, "status", "", "filter by operation status")
+	cmd.Flags().StringVar(&scope, "scope", "", "filter by operation scope")
+	cmd.Flags().BoolVar(&recoveryOnly, "recovery-only", false, "show only recovery runs")
+	cmd.Flags().StringVar(&targetPrefix, "target-prefix", "", "filter by rollback target prefix")
 	cmd.Flags().StringVar(&sinceRaw, "since", "", "show operations since RFC3339 timestamp")
 	cmd.Flags().StringVar(&untilRaw, "until", "", "show operations until RFC3339 timestamp")
 
 	return cmd
 }
 
-func journalEntriesAsItems(entries []journalusecase.Entry) []any {
-	items := make([]any, 0, len(entries))
-	for _, entry := range entries {
-		items = append(items, entry)
+func operationSummariesAsItems(operations []journalusecase.OperationSummary) []any {
+	items := make([]any, 0, len(operations))
+	for _, operation := range operations {
+		items = append(items, operation)
 	}
 	return items
 }
@@ -125,14 +160,27 @@ func renderHistoryText(w io.Writer, res result.Result) error {
 	}
 
 	for _, raw := range res.Items {
-		entry, ok := raw.(journalusecase.Entry)
+		operation, ok := raw.(journalusecase.OperationSummary)
 		if !ok {
 			return fmt.Errorf("unexpected history item type %T", raw)
 		}
-		if _, err := fmt.Fprintln(w, formatEntryLine(entry)); err != nil {
+		if _, err := fmt.Fprintln(w, formatHistoryLine(operation)); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func isValidHistoryStatus(status string) bool {
+	switch status {
+	case journalusecase.OperationStatusCompleted,
+		journalusecase.OperationStatusFailed,
+		journalusecase.OperationStatusBlocked,
+		journalusecase.OperationStatusRunning,
+		journalusecase.OperationStatusUnknown:
+		return true
+	default:
+		return false
+	}
 }

@@ -22,9 +22,29 @@ func TestSchema_History_JSON_Error_InvalidInput(t *testing.T) {
 			messagePart: "use either --ok-only or --failed-only",
 		},
 		{
+			name:        "invalid-status",
+			args:        []string{"--status", "done"},
+			messagePart: "--status must be one of",
+		},
+		{
+			name:        "status-conflicts-with-legacy-filters",
+			args:        []string{"--status", "failed", "--failed-only"},
+			messagePart: "use either --status or --ok-only/--failed-only",
+		},
+		{
 			name:        "blank-command-filter",
 			args:        []string{"--command", "   "},
 			messagePart: "--command must not be blank",
+		},
+		{
+			name:        "blank-scope-filter",
+			args:        []string{"--scope", "   "},
+			messagePart: "--scope must not be blank",
+		},
+		{
+			name:        "blank-target-prefix-filter",
+			args:        []string{"--target-prefix", "   "},
+			messagePart: "--target-prefix must not be blank",
 		},
 		{
 			name:        "invalid-since",

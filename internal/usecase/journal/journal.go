@@ -28,12 +28,16 @@ type Entry struct {
 }
 
 type Filters struct {
-	Command    string
-	OKOnly     bool
-	FailedOnly bool
-	Since      *time.Time
-	Until      *time.Time
-	Limit      int
+	Command      string
+	OKOnly       bool
+	FailedOnly   bool
+	Status       string
+	Scope        string
+	RecoveryOnly bool
+	TargetPrefix string
+	Since        *time.Time
+	Until        *time.Time
+	Limit        int
 }
 
 type ReadStats struct {
@@ -48,8 +52,8 @@ type HistoryInput struct {
 }
 
 type HistoryOutput struct {
-	Entries []Entry
-	Stats   ReadStats
+	Operations []OperationSummary
+	Stats      ReadStats
 }
 
 type LastOperationInput struct {
@@ -131,9 +135,10 @@ func History(in HistoryInput) (HistoryOutput, error) {
 		return HistoryOutput{}, err
 	}
 
+	filteredEntries := entriesFromDomain(domainjournal.ApplyFilters(entries, domainFiltersForHistory(in.Filters)))
 	return HistoryOutput{
-		Entries: entriesFromDomain(domainjournal.ApplyFilters(entries, domainFilters(in.Filters))),
-		Stats:   readStatsFromDomain(stats),
+		Operations: summarizeOperations(filteredEntries, in.Filters),
+		Stats:      readStatsFromDomain(stats),
 	}, nil
 }
 
@@ -218,6 +223,11 @@ func domainFilters(filters Filters) domainjournal.Filters {
 		Until:      filters.Until,
 		Limit:      filters.Limit,
 	}
+}
+
+func domainFiltersForHistory(filters Filters) domainjournal.Filters {
+	filters.Limit = 0
+	return domainFilters(filters)
 }
 
 func entriesFromDomain(entries []domainjournal.Entry) []Entry {

@@ -8,12 +8,18 @@ type JournalReadDetails struct {
 
 type HistoryDetails struct {
 	JournalReadDetails
-	Limit      int    `json:"limit"`
-	Command    string `json:"command"`
-	OKOnly     bool   `json:"ok_only"`
-	FailedOnly bool   `json:"failed_only"`
-	Since      string `json:"since,omitempty"`
-	Until      string `json:"until,omitempty"`
+	Limit        int    `json:"limit"`
+	Command      string `json:"command"`
+	OKOnly       bool   `json:"ok_only"`
+	FailedOnly   bool   `json:"failed_only"`
+	Status       string `json:"status,omitempty"`
+	Scope        string `json:"scope,omitempty"`
+	RecoveryOnly bool   `json:"recovery_only"`
+	TargetPrefix string `json:"target_prefix,omitempty"`
+	Returned     int    `json:"returned"`
+	RecentFirst  bool   `json:"recent_first"`
+	Since        string `json:"since,omitempty"`
+	Until        string `json:"until,omitempty"`
 }
 
 type OperationLookupDetails struct {

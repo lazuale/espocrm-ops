@@ -1,35 +1,74 @@
 {
   "command": "history",
-  "ok": true,
-  "message": "found 2 operations",
-  "warnings": [
-    "skipped 1 corrupt journal entrie(s)"
-  ],
   "details": {
-    "total_files_seen": 3,
-    "loaded_entries": 2,
-    "skipped_corrupt": 1,
-    "limit": 10,
     "command": "",
+    "failed_only": false,
+    "limit": 10,
+    "loaded_entries": 2,
     "ok_only": false,
-    "failed_only": false
+    "recent_first": true,
+    "recovery_only": false,
+    "returned": 2,
+    "skipped_corrupt": 1,
+    "total_files_seen": 3
   },
   "items": [
     {
-      "operation_id": "op-2",
-      "command": "restore-db",
-      "started_at": "2026-04-15T11:00:00Z",
+      "command": "update",
+      "counts": {
+        "blocked": 1,
+        "steps": 1
+      },
+      "dry_run": true,
+      "duration_ms": 1000,
+      "error_code": "update_plan_blocked",
+      "failure": {
+        "action": "Resolve the blocking prerequisites before running update.",
+        "code": "update_plan_blocked",
+        "message": "doctor blocked",
+        "step_code": "doctor",
+        "step_summary": "Doctor is blocked"
+      },
       "finished_at": "2026-04-15T11:00:01Z",
-      "ok": false,
-      "error_code": "restore_db_failed",
-      "error_message": "boom"
+      "operation_id": "op-2",
+      "recovery_run": false,
+      "scope": "stage",
+      "started_at": "2026-04-15T11:00:00Z",
+      "status": "blocked",
+      "summary": "Doctor is blocked"
     },
     {
+      "command": "rollback",
+      "counts": {
+        "completed": 1,
+        "steps": 1
+      },
+      "duration_ms": 4000,
+      "finished_at": "2026-04-15T10:00:04Z",
       "operation_id": "op-1",
-      "command": "verify-backup",
+      "recovery_attempt": {
+        "applied_mode": "resume",
+        "decision": "resume_from_checkpoint",
+        "requested_mode": "auto",
+        "resume_step": "runtime_prepare",
+        "source_operation_id": "op-source"
+      },
+      "recovery_run": true,
+      "scope": "prod",
       "started_at": "2026-04-15T10:00:00Z",
-      "finished_at": "2026-04-15T10:00:01Z",
-      "ok": true
+      "status": "completed",
+      "summary": "rollback recovery completed",
+      "target": {
+        "prefix": "espocrm-prod",
+        "selection_mode": "auto_latest_valid",
+        "stamp": "2026-04-15_09-00-00"
+      },
+      "warning_count": 1
     }
+  ],
+  "message": "found 2 operations",
+  "ok": true,
+  "warnings": [
+    "skipped 1 corrupt journal entrie(s)"
   ]
 }

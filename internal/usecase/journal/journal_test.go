@@ -42,8 +42,99 @@ func TestHistoryAppliesFiltersAndReturnsReadStats(t *testing.T) {
 	if out.Stats.TotalFilesSeen != 3 || out.Stats.LoadedEntries != 2 || out.Stats.SkippedCorrupt != 1 {
 		t.Fatalf("unexpected stats: %#v", out.Stats)
 	}
-	if len(out.Entries) != 1 || out.Entries[0].OperationID != "op-old-fail" {
-		t.Fatalf("unexpected filtered entries: %#v", out.Entries)
+	if len(out.Operations) != 1 || out.Operations[0].OperationID != "op-old-fail" {
+		t.Fatalf("unexpected filtered operations: %#v", out.Operations)
+	}
+	if out.Operations[0].Status != OperationStatusFailed {
+		t.Fatalf("expected failed status, got %#v", out.Operations[0])
+	}
+}
+
+func TestHistoryProjectsCanonicalSummariesAndAppliesDerivedFilters(t *testing.T) {
+	dir := t.TempDir()
+	writeEntry(t, dir, Entry{
+		OperationID: "op-rollback-recovery",
+		Command:     "rollback",
+		StartedAt:   "2026-04-15T12:00:00Z",
+		FinishedAt:  "2026-04-15T12:00:05Z",
+		OK:          true,
+		Message:     "rollback recovery completed",
+		Artifacts: map[string]any{
+			"selected_prefix": "espocrm-prod",
+			"selected_stamp":  "2026-04-15_11-00-00",
+		},
+		Details: map[string]any{
+			"scope":          "prod",
+			"selection_mode": "auto_latest_valid",
+			"recovery": map[string]any{
+				"source_operation_id": "op-source",
+				"requested_mode":      RecoveryModeAuto,
+				"applied_mode":        RecoveryModeResume,
+				"decision":            RecoveryDecisionResumeFromCheckpoint,
+				"resume_step":         "runtime_prepare",
+			},
+		},
+		Items: []any{
+			map[string]any{
+				"code":    "runtime_return",
+				"status":  "completed",
+				"summary": "Contour return completed",
+			},
+		},
+		Warnings: []string{"final probe retried once"},
+	})
+	writeEntry(t, dir, Entry{
+		OperationID: "op-update-plan",
+		Command:     "update",
+		StartedAt:   "2026-04-15T11:00:00Z",
+		FinishedAt:  "2026-04-15T11:00:01Z",
+		OK:          false,
+		DryRun:      true,
+		Message:     "update plan blocked",
+		Details: map[string]any{
+			"scope": "stage",
+		},
+		Items: []any{
+			map[string]any{
+				"code":    "doctor",
+				"status":  "blocked",
+				"summary": "Doctor is blocked",
+			},
+		},
+	})
+
+	out, err := History(HistoryInput{
+		JournalDir: dir,
+		Filters: Filters{
+			Status:       OperationStatusCompleted,
+			Scope:        "prod",
+			RecoveryOnly: true,
+			TargetPrefix: "espocrm-prod",
+			Limit:        1,
+		},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(out.Operations) != 1 {
+		t.Fatalf("expected one filtered operation, got %#v", out.Operations)
+	}
+	operation := out.Operations[0]
+	if operation.OperationID != "op-rollback-recovery" {
+		t.Fatalf("unexpected operation: %#v", operation)
+	}
+	if !operation.RecoveryRun || operation.RecoveryAttempt == nil {
+		t.Fatalf("expected recovery metadata, got %#v", operation)
+	}
+	if operation.RecoveryAttempt.SourceOperationID != "op-source" {
+		t.Fatalf("unexpected recovery source: %#v", operation.RecoveryAttempt)
+	}
+	if operation.Target == nil || operation.Target.Prefix != "espocrm-prod" {
+		t.Fatalf("unexpected target summary: %#v", operation.Target)
+	}
+	if operation.WarningCount != 1 {
+		t.Fatalf("expected warning count, got %#v", operation)
 	}
 }
 
