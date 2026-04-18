@@ -754,6 +754,31 @@ test_docker_cleanup_supports_explicit_report_dir() {
   pass_test "Regression case passed"
 }
 
+prepare_doctor_all_env_pair() {
+  local runtime_root="$TEST_TMP_ROOT/doctor-all-runtime"
+  local backup_root="$TEST_TMP_ROOT/doctor-all-backups"
+
+  prepare_repo_env_pair
+
+  set_env_value "$ROOT_DIR/.env.dev" DB_STORAGE_DIR "$runtime_root/dev/db"
+  set_env_value "$ROOT_DIR/.env.dev" ESPO_STORAGE_DIR "$runtime_root/dev/espo"
+  set_env_value "$ROOT_DIR/.env.dev" BACKUP_ROOT "$backup_root/dev"
+  set_env_value "$ROOT_DIR/.env.dev" SITE_URL "http://127.0.0.1:18088"
+  set_env_value "$ROOT_DIR/.env.dev" WS_PUBLIC_URL "ws://127.0.0.1:18089"
+  set_env_value "$ROOT_DIR/.env.dev" DB_ROOT_PASSWORD "doctor-all-dev-root"
+  set_env_value "$ROOT_DIR/.env.dev" DB_PASSWORD "doctor-all-dev-db"
+  set_env_value "$ROOT_DIR/.env.dev" ADMIN_PASSWORD "doctor-all-dev-admin"
+
+  set_env_value "$ROOT_DIR/.env.prod" DB_STORAGE_DIR "$runtime_root/prod/db"
+  set_env_value "$ROOT_DIR/.env.prod" ESPO_STORAGE_DIR "$runtime_root/prod/espo"
+  set_env_value "$ROOT_DIR/.env.prod" BACKUP_ROOT "$backup_root/prod"
+  set_env_value "$ROOT_DIR/.env.prod" SITE_URL "http://127.0.0.1:18080"
+  set_env_value "$ROOT_DIR/.env.prod" WS_PUBLIC_URL "ws://127.0.0.1:18081"
+  set_env_value "$ROOT_DIR/.env.prod" DB_ROOT_PASSWORD "doctor-all-prod-root"
+  set_env_value "$ROOT_DIR/.env.prod" DB_PASSWORD "doctor-all-prod-db"
+  set_env_value "$ROOT_DIR/.env.prod" ADMIN_PASSWORD "doctor-all-prod-admin"
+}
+
 test_doctor_does_not_require_ripgrep_for_own_published_ports() {
   announce_test "Regression case"
 
@@ -866,17 +891,21 @@ test_doctor_all_switches_between_contours() {
 
   local output_file="$TEST_TMP_ROOT/doctor-all.out"
 
-  prepare_repo_env_pair
+  prepare_doctor_all_env_pair
   set_env_value "$ROOT_DIR/.env.dev" COMPOSE_PROJECT_NAME doctor-dev
   set_env_value "$ROOT_DIR/.env.prod" COMPOSE_PROJECT_NAME doctor-prod
 
   if ! run_command_capture "$output_file" bash "$SCRIPT_DIR/doctor.sh" all --json; then
-    true
+    fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "[prod] Env file loaded successfully" "runtime output"
-  assert_file_contains "$output_file" "[dev] Env file loaded successfully" "runtime output"
-  assert_file_contains "$output_file" "[cross] COMPOSE_PROJECT_NAME differs between prod and dev" "runtime output"
+  assert_file_contains "$output_file" "\"target_scope\": \"all\"" "runtime output"
+  assert_file_contains "$output_file" "\"summary\": \"Loaded prod env file\"" "runtime output"
+  assert_file_contains "$output_file" "\"summary\": \"Loaded dev env file\"" "runtime output"
+  assert_file_contains "$output_file" "\"code\": \"cross_scope_isolation\"" "runtime output"
+  assert_file_contains "$output_file" "\"summary\": \"Dev and prod keep isolated ports and storage\"" "runtime output"
+  assert_file_contains "$output_file" "\"code\": \"cross_scope_compatibility\"" "runtime output"
+  assert_file_contains "$output_file" "\"summary\": \"Dev and prod satisfy the migration compatibility contract\"" "runtime output"
   pass_test "Regression case passed"
 }
 
@@ -884,7 +913,7 @@ test_doctor_all_rejects_migration_contract_drift() {
   announce_test "Regression case"
   local output_file="$TEST_TMP_ROOT/doctor-all-migration-contract.out"
 
-  prepare_repo_env_pair
+  prepare_doctor_all_env_pair
   set_env_value "$ROOT_DIR/.env.dev" ESPOCRM_IMAGE "espocrm/espocrm:9.3.4-apache"
   set_env_value "$ROOT_DIR/.env.prod" ESPOCRM_IMAGE "espocrm/espocrm:9.4.0-apache"
 
@@ -892,7 +921,8 @@ test_doctor_all_rejects_migration_contract_drift() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "[cross] ESPOCRM_IMAGE must match between prod and dev" "runtime output"
+  assert_file_contains "$output_file" "[cross][FAIL] Dev and prod do not satisfy the migration compatibility contract" "runtime output"
+  assert_file_contains "$output_file" "ESPOCRM_IMAGE differs: prod=espocrm/espocrm:9.4.0-apache dev=espocrm/espocrm:9.3.4-apache" "runtime output"
   pass_test "Regression case passed"
 }
 
