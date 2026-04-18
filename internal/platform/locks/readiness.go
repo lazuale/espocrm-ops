@@ -114,3 +114,40 @@ func CheckMaintenanceReadiness(backupRoot string) (LockReadiness, error) {
 
 	return readiness, nil
 }
+
+func CheckRestoreDBReadiness() (LockReadiness, error) {
+	return checkFileLockReadiness(restoreLockPath("espops-restore-db.lock"))
+}
+
+func CheckRestoreFilesReadiness() (LockReadiness, error) {
+	return checkFileLockReadiness(restoreLockPath("espops-restore-files.lock"))
+}
+
+func checkFileLockReadiness(path string) (LockReadiness, error) {
+	handle, err := os.Open(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return LockReadiness{
+				State:        LockReady,
+				MetadataPath: path,
+			}, nil
+		}
+		return LockReadiness{}, fmt.Errorf("open lock file %s: %w", path, err)
+	}
+	defer handle.Close()
+
+	if err := syscall.Flock(int(handle.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
+		_ = syscall.Flock(int(handle.Fd()), syscall.LOCK_UN)
+		return LockReadiness{
+			State:        LockStale,
+			MetadataPath: path,
+		}, nil
+	} else if err == syscall.EWOULDBLOCK {
+		return LockReadiness{
+			State:        LockActive,
+			MetadataPath: path,
+		}, nil
+	} else {
+		return LockReadiness{}, fmt.Errorf("probe lock %s: %w", path, err)
+	}
+}

@@ -1,12 +1,7 @@
 package doctor
 
 import (
-	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"syscall"
-
 	platformfs "github.com/lazuale/espocrm-ops/internal/platform/fs"
 )
 
@@ -16,15 +11,6 @@ const (
 	PathCheckModeMutating PathCheckMode = "mutating"
 	PathCheckModeReadOnly PathCheckMode = "read_only"
 )
-
-type dirReadiness struct {
-	Path        string
-	ProbePath   string
-	Exists      bool
-	Creatable   bool
-	Writable    bool
-	FreeSpaceOK bool
-}
 
 func normalizePathCheckMode(mode PathCheckMode) PathCheckMode {
 	switch mode {
@@ -57,7 +43,7 @@ func checkRuntimePath(report *Report, scope, code, label, path string, minFreeMB
 }
 
 func checkRuntimePathReadOnly(report *Report, scope, code, label, path string, minFreeMB int, hasMinFree bool) {
-	readiness, err := inspectDirReadiness(path, minFreeMB, hasMinFree)
+	readiness, err := platformfs.InspectDirReadiness(path, minFreeMB, hasMinFree)
 	if err != nil {
 		report.fail(scope, code, fmt.Sprintf("%s is not ready", label), err.Error(), fmt.Sprintf("Adjust permissions for %s or choose a different path in the env file.", path))
 		return
@@ -87,114 +73,4 @@ func checkRuntimePathReadOnly(report *Report, scope, code, label, path string, m
 	}
 
 	report.warn(scope, code, fmt.Sprintf("%s does not exist yet", label), readiness.Path, fmt.Sprintf("The update preflight would create %s if %s stays writable.", readiness.Path, readiness.ProbePath))
-}
-
-func inspectDirReadiness(path string, minFreeMB int, hasMinFree bool) (dirReadiness, error) {
-	cleanPath := filepath.Clean(path)
-	if cleanPath == "." || cleanPath == "" {
-		return dirReadiness{}, fmt.Errorf("path must not be blank")
-	}
-
-	fi, err := os.Stat(cleanPath)
-	if err == nil {
-		if !fi.IsDir() {
-			return dirReadiness{}, fmt.Errorf("%s exists but is not a directory", cleanPath)
-		}
-
-		writable, err := pathWriteAccess(cleanPath)
-		if err != nil {
-			return dirReadiness{}, err
-		}
-
-		readiness := dirReadiness{
-			Path:        cleanPath,
-			ProbePath:   cleanPath,
-			Exists:      true,
-			Writable:    writable,
-			Creatable:   writable,
-			FreeSpaceOK: true,
-		}
-
-		if hasMinFree {
-			if err := platformfs.EnsureFreeSpace(cleanPath, uint64(minFreeMB)*1024*1024); err != nil {
-				var freeErr platformfs.InsufficientFreeSpaceError
-				if errors.As(err, &freeErr) {
-					readiness.FreeSpaceOK = false
-					return readiness, nil
-				}
-				return dirReadiness{}, err
-			}
-		}
-
-		return readiness, nil
-	}
-	if !os.IsNotExist(err) {
-		return dirReadiness{}, fmt.Errorf("stat %s: %w", cleanPath, err)
-	}
-
-	parent, err := nearestExistingParent(cleanPath)
-	if err != nil {
-		return dirReadiness{}, err
-	}
-
-	writable, err := pathWriteAccess(parent)
-	if err != nil {
-		return dirReadiness{}, err
-	}
-
-	readiness := dirReadiness{
-		Path:        cleanPath,
-		ProbePath:   parent,
-		Exists:      false,
-		Writable:    writable,
-		Creatable:   writable,
-		FreeSpaceOK: true,
-	}
-
-	if hasMinFree {
-		if err := platformfs.EnsureFreeSpace(parent, uint64(minFreeMB)*1024*1024); err != nil {
-			var freeErr platformfs.InsufficientFreeSpaceError
-			if errors.As(err, &freeErr) {
-				readiness.FreeSpaceOK = false
-				return readiness, nil
-			}
-			return dirReadiness{}, err
-		}
-	}
-
-	return readiness, nil
-}
-
-func nearestExistingParent(path string) (string, error) {
-	current := filepath.Clean(path)
-	for {
-		current = filepath.Dir(current)
-		fi, err := os.Stat(current)
-		if err == nil {
-			if !fi.IsDir() {
-				return "", fmt.Errorf("%s exists but is not a directory", current)
-			}
-			return current, nil
-		}
-		if !os.IsNotExist(err) {
-			return "", fmt.Errorf("stat %s: %w", current, err)
-		}
-		if next := filepath.Dir(current); next == current {
-			return "", fmt.Errorf("could not find an existing parent directory for %s", path)
-		}
-	}
-}
-
-func pathWriteAccess(path string) (bool, error) {
-	const writeAndTraverse = 0x2 | 0x1
-
-	err := syscall.Access(path, writeAndTraverse)
-	switch {
-	case err == nil:
-		return true, nil
-	case errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
-		return false, nil
-	default:
-		return false, fmt.Errorf("check write access for %s: %w", path, err)
-	}
 }

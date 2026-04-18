@@ -102,8 +102,8 @@
         "validate_manual_backup_pair",
         "write_rollback_plan_reports"
       ],
-      "line_count": 361,
-      "sha256": "90fa3797f6dfe7a1a20fa847f453644e39ee5ca394753542964e6ddb4c60bcac"
+      "line_count": 396,
+      "sha256": "fb14144abecd16ff2e0dfc40d1f3b1b7c1ea572d7c649af84efe5f9d31b76dfd"
     },
     "scripts/verify-backup.sh": {
       "function_names": [

@@ -98,6 +98,7 @@ main() {
   test_update_can_skip_optional_steps
   test_update_propagates_go_runtime_timeout_failure
   test_update_dry_run_delegates_to_go_update_plan
+  test_rollback_dry_run_delegates_to_go_rollback_plan
   test_backup_delegates_to_go_backup_exec
   test_smoke_test_can_keep_artifacts
   test_restore_drill_supports_explicit_selection_skip_probe_and_keep_artifacts

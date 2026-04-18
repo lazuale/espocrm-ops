@@ -341,6 +341,81 @@ EOF
   pass_test "Regression case passed"
 }
 
+test_rollback_dry_run_delegates_to_go_rollback_plan() {
+  announce_test "Regression case"
+
+  local env_file="$TEST_TMP_ROOT/env.rollback-dry-run"
+  local output_file="$TEST_TMP_ROOT/rollback-dry-run.out"
+  local status_mock="$TEST_TMP_ROOT/mock.status-report.rollback-dry-run.sh"
+  local backup_mock="$TEST_TMP_ROOT/mock.backup.rollback-dry-run.sh"
+  local restore_db_mock="$TEST_TMP_ROOT/mock.restore-db.rollback-dry-run.sh"
+  local restore_files_mock="$TEST_TMP_ROOT/mock.restore-files.rollback-dry-run.sh"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.rollback-dry-run.sh"
+
+  restore_replaced_repo_files
+  copy_example_env dev "$env_file"
+
+  cat > "$status_mock" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock status-report should not run"
+EOF
+  chmod +x "$status_mock"
+  replace_repo_file_temporarily "$status_mock" "$SCRIPT_DIR/status-report.sh"
+
+  cat > "$backup_mock" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock backup should not run"
+EOF
+  chmod +x "$backup_mock"
+  replace_repo_file_temporarily "$backup_mock" "$SCRIPT_DIR/backup.sh"
+
+  cat > "$restore_db_mock" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock restore-db should not run"
+EOF
+  chmod +x "$restore_db_mock"
+  replace_repo_file_temporarily "$restore_db_mock" "$SCRIPT_DIR/restore-db.sh"
+
+  cat > "$restore_files_mock" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock restore-files should not run"
+EOF
+  chmod +x "$restore_files_mock"
+  replace_repo_file_temporarily "$restore_files_mock" "$SCRIPT_DIR/restore-files.sh"
+
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+case "${1:-}" in
+  rollback-plan)
+    echo "mock rollback-plan args: $*"
+    ;;
+  *)
+    echo "unexpected espops args: $*" >&2
+    exit 98
+    ;;
+esac
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/rollback.sh" dev --dry-run --db-backup /tmp/db.sql.gz --files-backup /tmp/files.tar.gz --no-snapshot --no-start --skip-http-probe --timeout 321; then
+    fail_test "Regression case failed"
+  fi
+
+  assert_file_contains "$output_file" "mock rollback-plan args: rollback-plan --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --timeout 321 --env-file $env_file --db-backup /tmp/db.sql.gz --files-backup /tmp/files.tar.gz --no-snapshot --no-start --skip-http-probe" "runtime output"
+  assert_file_not_contains "$output_file" "mock status-report should not run" "runtime output"
+  assert_file_not_contains "$output_file" "mock backup should not run" "runtime output"
+  assert_file_not_contains "$output_file" "mock restore-db should not run" "runtime output"
+  assert_file_not_contains "$output_file" "mock restore-files should not run" "runtime output"
+
+  restore_replaced_repo_files
+  pass_test "Regression case passed"
+}
+
 test_backup_delegates_to_go_backup_exec() {
   announce_test "Regression case"
 

@@ -13,10 +13,11 @@ source "$SCRIPT_DIR/lib/artifacts.sh"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/rollback.sh <dev|prod> [--force] [--confirm-prod prod] [--db-backup PATH --files-backup PATH] [--no-snapshot] [--no-start] [--skip-http-probe] [--timeout SEC]
+Usage: ./scripts/rollback.sh <dev|prod> [--dry-run] [--force] [--confirm-prod prod] [--db-backup PATH --files-backup PATH] [--no-snapshot] [--no-start] [--skip-http-probe] [--timeout SEC]
 
 Examples:
   ./scripts/rollback.sh dev --force --timeout 900
+  ./scripts/rollback.sh dev --dry-run
   ./scripts/rollback.sh prod --force --confirm-prod prod
   ./scripts/rollback.sh prod --force --confirm-prod prod --db-backup /opt/espocrm-data/backups/prod/db/espocrm-prod_YYYY-MM-DD_HH-MM-SS.sql.gz --files-backup /opt/espocrm-data/backups/prod/files/espocrm-prod_files_YYYY-MM-DD_HH-MM-SS.tar.gz
   ./scripts/rollback.sh prod --force --confirm-prod prod --no-snapshot --no-start
@@ -177,6 +178,7 @@ DB_BACKUP_ARG=""
 FILES_BACKUP_ARG=""
 FORCE=0
 CONFIRM_PROD=""
+DRY_RUN=0
 SNAPSHOT_BEFORE_ROLLBACK=1
 NO_START=0
 SKIP_HTTP_PROBE=0
@@ -186,6 +188,10 @@ while [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; do
   case "${POSITIONAL_ARGS[0]}" in
     --force)
       FORCE=1
+      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
+      ;;
+    --dry-run)
+      DRY_RUN=1
       POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
       ;;
     --confirm-prod)
@@ -238,6 +244,35 @@ require_explicit_contour
 
 if [[ -n "$DB_BACKUP_ARG" || -n "$FILES_BACKUP_ARG" ]]; then
   [[ -n "$DB_BACKUP_ARG" && -n "$FILES_BACKUP_ARG" ]] || die "Manual rollback requires both --db-backup and --files-backup"
+fi
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  rollback_plan_args=(
+    rollback-plan
+    --scope "$ESPO_ENV"
+    --project-dir "$ROOT_DIR"
+    --compose-file "$ROOT_DIR/compose.yaml"
+    --timeout "$TIMEOUT_SECONDS"
+  )
+
+  if [[ -n "${ENV_FILE:-}" ]]; then
+    rollback_plan_args+=(--env-file "$ENV_FILE")
+  fi
+  if [[ -n "$DB_BACKUP_ARG" ]]; then
+    rollback_plan_args+=(--db-backup "$DB_BACKUP_ARG" --files-backup "$FILES_BACKUP_ARG")
+  fi
+  if [[ $SNAPSHOT_BEFORE_ROLLBACK -eq 0 ]]; then
+    rollback_plan_args+=(--no-snapshot)
+  fi
+  if [[ $NO_START -eq 1 ]]; then
+    rollback_plan_args+=(--no-start)
+  fi
+  if [[ $SKIP_HTTP_PROBE -eq 1 ]]; then
+    rollback_plan_args+=(--skip-http-probe)
+  fi
+
+  run_espops "${rollback_plan_args[@]}"
+  exit $?
 fi
 
 acquire_operation_lock rollback
