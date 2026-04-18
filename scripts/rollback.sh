@@ -351,7 +351,7 @@ stop_app_services
 
 echo "[4/7] Taking an emergency snapshot of the current state before rollback"
 if [[ $SNAPSHOT_BEFORE_ROLLBACK -eq 1 ]]; then
-  ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
+  ESPO_SHELL_EXEC_CONTEXT=1 ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
 else
   echo "Emergency snapshot skipped because of --no-snapshot"
 fi

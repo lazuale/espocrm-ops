@@ -496,6 +496,50 @@ EOF
   pass_test "Regression case passed"
 }
 
+test_backup_reuses_inherited_shell_context() {
+  announce_test "Regression case"
+
+  local env_file="$TEST_TMP_ROOT/env.backup-inherited-context"
+  local output_file="$TEST_TMP_ROOT/backup-inherited-context.out"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.backup.inherited.sh"
+
+  copy_example_env dev "$env_file"
+
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+case "${1:-}" in
+  backup-exec)
+    echo "mock backup-exec args: $*"
+    ;;
+  run-operation)
+    echo "unexpected run-operation args: $*" >&2
+    exit 97
+    ;;
+  *)
+    echo "unexpected espops args: $*" >&2
+    exit 98
+    ;;
+esac
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env \
+    COMPOSE_PROJECT_NAME=backup-inherited-context \
+    ENV_FILE="$env_file" \
+    ESPO_OPERATION_LOCK=1 \
+    ESPO_MAINTENANCE_LOCK=1 \
+    ESPO_SHELL_EXEC_CONTEXT=1 \
+    ESPOPS_BIN="$mock_espops" \
+    bash "$SCRIPT_DIR/backup.sh" dev --skip-db --no-stop; then
+    fail_test "Regression case failed"
+  fi
+
+  assert_file_contains "$output_file" "mock backup-exec args: backup-exec --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --skip-db --no-stop" "runtime output"
+  assert_file_not_contains "$output_file" "unexpected run-operation args:" "runtime output"
+  pass_test "Regression case passed"
+}
+
 test_smoke_test_can_keep_artifacts() {
   announce_test "Regression case"
 
@@ -724,6 +768,7 @@ test_doctor_does_not_require_ripgrep_for_own_published_ports() {
   set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/doctor-no-rg-backups"
   set_env_value "$env_file" APP_PORT "$app_port"
   set_env_value "$env_file" SITE_URL "http://127.0.0.1:$app_port"
+  set_env_value "$env_file" WS_PUBLIC_URL "ws://127.0.0.1:19081"
   set_env_value "$env_file" DB_ROOT_PASSWORD "doctor-no-rg-root"
   set_env_value "$env_file" DB_PASSWORD "doctor-no-rg-db"
   set_env_value "$env_file" ADMIN_PASSWORD "doctor-no-rg-admin"
@@ -760,11 +805,26 @@ if [[ "\${1:-}" == "compose" && "\$args" == *" config "* ]]; then
   exit 0
 fi
 
+if [[ "\${1:-}" == "compose" && "\$args" == *" ps "* && "\$args" == *" --status running "* && "\$args" == *" --services "* ]]; then
+  echo "espocrm"
+  exit 0
+fi
+
 if [[ "\${1:-}" == "compose" && "\$args" == *" ps "* && "\$args" == *" --status running "* ]]; then
   cat <<'EOF2'
 NAME                 IMAGE                COMMAND   SERVICE   CREATED   STATUS          PORTS
 espo-prod-espocrm-1  espocrm/mock:latest  "httpd"   espocrm   1m ago    Up 1m (healthy) 0.0.0.0:${app_port}->80/tcp
 EOF2
+  exit 0
+fi
+
+if [[ "\${1:-}" == "compose" && "\$args" == *" ps "* && "\$args" == *" -q "* && "\$args" == *" espocrm "* ]]; then
+  echo "espo-prod-espocrm-1"
+  exit 0
+fi
+
+if [[ "\${1:-}" == "inspect" && "\${2:-}" == "--format" ]]; then
+  echo "healthy"
   exit 0
 fi
 
@@ -795,7 +855,8 @@ EOF
     true
   fi
 
-  assert_file_contains "$output_file" "[prod] Port APP_PORT=$app_port is already published by the current contour" "runtime output"
+  assert_file_contains "$output_file" "[prod][OK] Running services are healthy" "runtime output"
+  assert_file_not_contains "$output_file" "WS_PUBLIC_URL still contains a placeholder value" "runtime output"
   assert_file_not_contains "$output_file" "rg: command not found" "runtime output"
   pass_test "Regression case passed"
 }

@@ -268,7 +268,7 @@ if [[ $SNAPSHOT_BEFORE_RESTORE -eq 1 ]]; then
   if [[ $NO_STOP -eq 1 ]]; then
     SNAPSHOT_ARGS+=("--no-stop")
   fi
-  run_repo_script "$SCRIPT_DIR/backup.sh" "${SNAPSHOT_ARGS[@]}"
+  ESPO_SHELL_EXEC_CONTEXT=1 run_repo_script "$SCRIPT_DIR/backup.sh" "${SNAPSHOT_ARGS[@]}"
 fi
 
 echo "Database restore via the Go backend"

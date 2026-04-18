@@ -100,6 +100,7 @@ main() {
   test_update_dry_run_delegates_to_go_update_plan
   test_rollback_dry_run_delegates_to_go_rollback_plan
   test_backup_delegates_to_go_backup_exec
+  test_backup_reuses_inherited_shell_context
   test_smoke_test_can_keep_artifacts
   test_restore_drill_supports_explicit_selection_skip_probe_and_keep_artifacts
   test_status_report_writes_output_files

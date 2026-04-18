@@ -66,7 +66,7 @@
         "write_restore_db_plan_reports"
       ],
       "line_count": 284,
-      "sha256": "a6a52094e23b734a703ab9c2fc6182c7223402af9cb6d795197bc8cc75a27ea4"
+      "sha256": "0a5485b83ba682afb203dd7e103091b01267594acf30ecfd527c2097a77076bb"
     },
     "scripts/restore-drill.sh": {
       "function_names": [
@@ -92,7 +92,7 @@
         "write_restore_files_plan_reports"
       ],
       "line_count": 300,
-      "sha256": "8637171224f82f1c92c0872707652c8f7518ab7f025c681a7053f95d0e14a840"
+      "sha256": "7870fac60a5f2bffd4a4436bc7c5e3125d9f35f33bc74dabdbb46587df84bc09"
     },
     "scripts/rollback.sh": {
       "function_names": [
@@ -103,7 +103,7 @@
         "write_rollback_plan_reports"
       ],
       "line_count": 396,
-      "sha256": "fb14144abecd16ff2e0dfc40d1f3b1b7c1ea572d7c649af84efe5f9d31b76dfd"
+      "sha256": "9b35bd980e0456a7542f9e9252b90a3b3da2d769babe9fbfa45841236ac9a625"
     },
     "scripts/verify-backup.sh": {
       "function_names": [

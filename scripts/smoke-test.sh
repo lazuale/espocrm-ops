@@ -153,7 +153,7 @@ echo "[3/5] Checking application HTTP availability: $SITE_URL"
 http_probe "$SITE_URL"
 
 echo "[4/5] Creating a backup"
-run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
+ESPO_SHELL_EXEC_CONTEXT=1 run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
 
 echo "[5/5] Verifying the backup"
 run_repo_script "$SCRIPT_DIR/verify-backup.sh" "$ESPO_ENV"
