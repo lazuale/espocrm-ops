@@ -266,11 +266,9 @@ func buildRuntimeApplyStep(plan UpdatePlan, blockers []doctorusecase.Check, flow
 		}
 	}
 
-	details := fmt.Sprintf("Would run docker compose up -d with %s and env %s.", plan.ComposeFile, plan.EnvFile)
+	details := "Would pull updated images, then restart the stack with the current configuration."
 	if plan.SkipPull {
 		details = "Would restart the stack with the current configuration; image pull would be skipped because of --skip-pull."
-	} else {
-		details = "Would pull updated images, then restart the stack with the current configuration."
 	}
 
 	return PlanStep{

@@ -11,6 +11,8 @@ import (
 	"strings"
 )
 
+const legacyTarRegularType = byte(0)
+
 func VerifyGzipReadable(filePath string) error {
 	f, err := os.Open(filePath)
 	if err != nil {
@@ -129,7 +131,7 @@ func UnpackTarGz(archivePath, destDir string, validateHeader func(*tar.Header) e
 			if err := os.MkdirAll(targetPath, 0o755); err != nil {
 				return err
 			}
-		case tar.TypeReg, tar.TypeRegA:
+		case tar.TypeReg, legacyTarRegularType:
 			if err := ensureArchiveFileTarget(destDir, archivePath, hdr.Name, targetPath); err != nil {
 				return err
 			}

@@ -24,37 +24,6 @@ func envFileContourHint() string {
 	return strings.TrimSpace(os.Getenv("ESPO_ENV_FILE_CONTOUR"))
 }
 
-func envWithOverrides(entries ...string) []string {
-	env := append([]string(nil), os.Environ()...)
-	for _, entry := range entries {
-		if strings.TrimSpace(entry) == "" {
-			continue
-		}
-		key := envEntryKey(entry)
-		replaced := false
-		for i, current := range env {
-			if envEntryKey(current) == key {
-				env[i] = entry
-				replaced = true
-				break
-			}
-		}
-		if !replaced {
-			env = append(env, entry)
-		}
-	}
-
-	return env
-}
-
-func envEntryKey(entry string) string {
-	if before, _, ok := strings.Cut(entry, "="); ok {
-		return before
-	}
-
-	return entry
-}
-
 type backupExecutionConfig struct {
 	BackupRoot     string
 	StorageDir     string

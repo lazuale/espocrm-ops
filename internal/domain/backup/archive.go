@@ -7,6 +7,8 @@ import (
 	"strings"
 )
 
+const legacyTarRegularType = byte(0)
+
 func ValidateFilesArchiveHeader(hdr *tar.Header) error {
 	name := pathpkg.Clean(hdr.Name)
 
@@ -21,7 +23,9 @@ func ValidateFilesArchiveHeader(hdr *tar.Header) error {
 	}
 
 	switch hdr.Typeflag {
-	case tar.TypeDir, tar.TypeReg, tar.TypeRegA:
+	case tar.TypeDir:
+		return nil
+	case tar.TypeReg, legacyTarRegularType:
 		return nil
 	case tar.TypeSymlink:
 		return fmt.Errorf("symlink entries are not allowed: %s", hdr.Name)

@@ -24,7 +24,7 @@ func TestValidateFilesArchiveHeaderAllowsRegularTreeEntries(t *testing.T) {
 	tests := []tar.Header{
 		{Name: "storage", Typeflag: tar.TypeDir},
 		{Name: "storage/file.txt", Typeflag: tar.TypeReg},
-		{Name: "./storage/file.txt", Typeflag: tar.TypeRegA},
+		{Name: "./storage/file.txt", Typeflag: legacyTarRegularType},
 	}
 
 	for _, tt := range tests {

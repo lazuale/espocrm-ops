@@ -141,6 +141,29 @@ func TestUnpackTarGz_ReturnsTypedSemanticErrors(t *testing.T) {
 			t.Fatalf("expected ArchiveEntryConflictError, got %T", err)
 		}
 	})
+
+	t.Run("legacy regular file entry", func(t *testing.T) {
+		tmp := t.TempDir()
+		archivePath := filepath.Join(tmp, "legacy-regular.tar.gz")
+		destDir := filepath.Join(tmp, "dest")
+
+		writeTarGzArchive(t, archivePath, tar.Header{
+			Name:     "storage/file.txt",
+			Typeflag: legacyTarRegularType,
+			Mode:     0o644,
+			Size:     int64(len("legacy")),
+		}, []byte("legacy"))
+		if err := os.MkdirAll(destDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+
+		if err := UnpackTarGz(archivePath, destDir, nil); err != nil {
+			t.Fatalf("expected legacy regular file type to unpack: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(destDir, "storage", "file.txt")); err != nil {
+			t.Fatalf("expected unpacked file to exist: %v", err)
+		}
+	})
 }
 
 func writeTarGzArchive(t *testing.T, path string, entries ...any) {
