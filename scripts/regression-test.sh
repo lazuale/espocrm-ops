@@ -117,8 +117,8 @@ main() {
   test_cli_help_contract
   test_toolkit_layer_boundaries
   test_regression_helpers_preserve_repo_file_modes
-  test_ci_references_every_public_script
   test_ci_guards_repo_local_artifacts
+  test_single_workflow_path_is_enforced
   test_docker_daemon_preflight_is_fail_fast
   test_docker_cleanup_supports_explicit_report_dir
   test_docker_cleanup_rejects_invalid_duration
