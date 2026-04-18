@@ -171,6 +171,39 @@ type UpdateRuntimeArtifacts struct {
 	SiteURL     string `json:"site_url,omitempty"`
 }
 
+type UpdatePlanDetails struct {
+	Scope          string `json:"scope"`
+	Ready          bool   `json:"ready"`
+	Steps          int    `json:"steps"`
+	WouldRun       int    `json:"would_run"`
+	Skipped        int    `json:"skipped"`
+	Blocked        int    `json:"blocked"`
+	Unknown        int    `json:"unknown"`
+	Warnings       int    `json:"warnings"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+	SkipDoctor     bool   `json:"skip_doctor"`
+	SkipBackup     bool   `json:"skip_backup"`
+	SkipPull       bool   `json:"skip_pull"`
+	SkipHTTPProbe  bool   `json:"skip_http_probe"`
+}
+
+type UpdatePlanArtifacts struct {
+	ProjectDir     string `json:"project_dir"`
+	ComposeFile    string `json:"compose_file"`
+	EnvFile        string `json:"env_file"`
+	ComposeProject string `json:"compose_project,omitempty"`
+	BackupRoot     string `json:"backup_root,omitempty"`
+	SiteURL        string `json:"site_url,omitempty"`
+}
+
+type UpdatePlanItem struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Details string `json:"details,omitempty"`
+	Action  string `json:"action,omitempty"`
+}
+
 type DoctorDetails struct {
 	TargetScope string `json:"target_scope"`
 	Ready       bool   `json:"ready"`

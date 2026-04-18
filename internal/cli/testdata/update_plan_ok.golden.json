@@ -1,0 +1,55 @@
+{
+  "command": "update-plan",
+  "ok": true,
+  "message": "update dry-run plan completed",
+  "details": {
+    "scope": "prod",
+    "ready": true,
+    "steps": 4,
+    "would_run": 4,
+    "skipped": 0,
+    "blocked": 0,
+    "unknown": 0,
+    "warnings": 0,
+    "timeout_seconds": 600,
+    "skip_doctor": false,
+    "skip_backup": false,
+    "skip_pull": false,
+    "skip_http_probe": false
+  },
+  "artifacts": {
+    "project_dir": "REPLACE_PROJECT_DIR",
+    "compose_file": "REPLACE_COMPOSE_FILE",
+    "env_file": "REPLACE_ENV_FILE",
+    "compose_project": "espocrm-prod",
+    "backup_root": "REPLACE_BACKUP_ROOT",
+    "site_url": "http://127.0.0.1:18080"
+  },
+  "dry_run": true,
+  "items": [
+    {
+      "code": "doctor",
+      "status": "would_run",
+      "summary": "Pre-update doctor would run",
+      "details": "Would validate env/config resolution, runtime paths, lock readiness, Docker/Compose access, compose config, and current runtime health."
+    },
+    {
+      "code": "backup_recovery_point",
+      "status": "would_run",
+      "summary": "A pre-update recovery point would be created",
+      "details": "Scope prod would write a recovery point under REPLACE_BACKUP_ROOT using prefix espocrm-prod and would start the db container temporarily before taking the recovery point."
+    },
+    {
+      "code": "runtime_apply",
+      "status": "would_run",
+      "summary": "Runtime apply would run",
+      "details": "Would pull updated images, then restart the stack with the current configuration."
+    },
+    {
+      "code": "runtime_readiness",
+      "status": "would_run",
+      "summary": "Post-update readiness checks would run",
+      "details": "Would wait up to 600 seconds for db, espocrm, espocrm-daemon, and espocrm-websocket. The final HTTP probe would check http://127.0.0.1:18080."
+    }
+  ]
+}

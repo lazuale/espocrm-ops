@@ -22,10 +22,7 @@ type LockReadiness struct {
 }
 
 func CheckSharedOperationReadiness(rootDir string) (LockReadiness, error) {
-	metadataPath, handlePath, err := sharedOperationLockPaths(rootDir)
-	if err != nil {
-		return LockReadiness{}, err
-	}
+	metadataPath, handlePath := predictedSharedOperationLockPaths(rootDir)
 
 	legacy, pid, err := legacyMetadataOnlyLock(metadataPath, handlePath)
 	if err != nil {
@@ -39,19 +36,29 @@ func CheckSharedOperationReadiness(rootDir string) (LockReadiness, error) {
 		}, nil
 	}
 
-	handle, err := os.OpenFile(handlePath, os.O_CREATE|os.O_RDWR, 0o600)
+	handle, err := os.Open(handlePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return LockReadiness{
+				State:        LockReady,
+				MetadataPath: metadataPath,
+			}, nil
+		}
 		return LockReadiness{}, fmt.Errorf("open lock handle %s: %w", handlePath, err)
 	}
 	defer handle.Close()
 
 	if err := syscall.Flock(int(handle.Fd()), syscall.LOCK_EX|syscall.LOCK_NB); err == nil {
 		_ = syscall.Flock(int(handle.Fd()), syscall.LOCK_UN)
-		state := LockReady
-		if _, statErr := os.Stat(metadataPath); statErr == nil {
+		state := LockStale
+		if _, statErr := os.Stat(metadataPath); statErr != nil {
+			if os.IsNotExist(statErr) {
+				state = LockStale
+			} else {
+				return LockReadiness{}, fmt.Errorf("stat lock metadata %s: %w", metadataPath, statErr)
+			}
+		} else {
 			state = LockStale
-		} else if statErr != nil && !os.IsNotExist(statErr) {
-			return LockReadiness{}, fmt.Errorf("stat lock metadata %s: %w", metadataPath, statErr)
 		}
 		return LockReadiness{
 			State:        state,

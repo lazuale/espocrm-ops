@@ -26,6 +26,7 @@ type Request struct {
 	ComposeFile     string
 	EnvFileOverride string
 	EnvContourHint  string
+	PathCheckMode   PathCheckMode
 }
 
 type Check struct {
@@ -61,6 +62,7 @@ type dockerState struct {
 }
 
 func Diagnose(req Request) (Report, error) {
+	pathMode := normalizePathCheckMode(req.PathCheckMode)
 	report := Report{
 		TargetScope: strings.TrimSpace(req.Scope),
 		ProjectDir:  filepath.Clean(req.ProjectDir),
@@ -73,7 +75,7 @@ func Diagnose(req Request) (Report, error) {
 
 	loaded := map[string]platformconfig.OperationEnv{}
 	for _, scope := range requestedScopes(report.TargetScope) {
-		env, ok := diagnoseScope(&report, req, scope, docker)
+		env, ok := diagnoseScope(&report, req, scope, docker, pathMode)
 		if ok {
 			loaded[scope] = env
 		}
@@ -124,7 +126,7 @@ func requestedScopes(target string) []string {
 	return []string{target}
 }
 
-func diagnoseScope(report *Report, req Request, scope string, docker dockerState) (platformconfig.OperationEnv, bool) {
+func diagnoseScope(report *Report, req Request, scope string, docker dockerState, pathMode PathCheckMode) (platformconfig.OperationEnv, bool) {
 	env, err := platformconfig.LoadOperationEnv(report.ProjectDir, scope, req.EnvFileOverride, req.EnvContourHint)
 	if err != nil {
 		report.fail(scope, "env_resolution", fmt.Sprintf("Could not resolve the %s env file", scope), err.Error(), envAction(err, report.ProjectDir, scope))
@@ -142,9 +144,9 @@ func diagnoseScope(report *Report, req Request, scope string, docker dockerState
 	checkEnvContract(report, scope, env)
 
 	minFreeMB, hasMinFree := parseInteger(env.Value("MIN_FREE_DISK_MB"))
-	checkWritablePath(report, scope, "db_storage_dir", "DB_STORAGE_DIR", platformconfig.ResolveProjectPath(report.ProjectDir, env.DBStorageDir()), minFreeMB, hasMinFree)
-	checkWritablePath(report, scope, "espo_storage_dir", "ESPO_STORAGE_DIR", platformconfig.ResolveProjectPath(report.ProjectDir, env.ESPOStorageDir()), minFreeMB, hasMinFree)
-	checkWritablePath(report, scope, "backup_root", "BACKUP_ROOT", backupRoot, minFreeMB, hasMinFree)
+	checkRuntimePath(report, scope, "db_storage_dir", "DB_STORAGE_DIR", platformconfig.ResolveProjectPath(report.ProjectDir, env.DBStorageDir()), minFreeMB, hasMinFree, pathMode)
+	checkRuntimePath(report, scope, "espo_storage_dir", "ESPO_STORAGE_DIR", platformconfig.ResolveProjectPath(report.ProjectDir, env.ESPOStorageDir()), minFreeMB, hasMinFree, pathMode)
+	checkRuntimePath(report, scope, "backup_root", "BACKUP_ROOT", backupRoot, minFreeMB, hasMinFree, pathMode)
 	checkMaintenanceLock(report, scope, backupRoot)
 
 	if docker.composeReady && docker.daemonReady {
@@ -300,22 +302,6 @@ func checkRunningServices(report *Report, scope string, cfg platformdocker.Compo
 	}
 
 	report.ok(scope, "running_services", "Running services are healthy", strings.Join(services, ", "))
-}
-
-func checkWritablePath(report *Report, scope, code, label, path string, minFreeMB int, hasMinFree bool) {
-	if err := platformfs.EnsureWritableDir(path); err != nil {
-		report.fail(scope, code, fmt.Sprintf("%s is not writable", label), err.Error(), fmt.Sprintf("Adjust permissions for %s or choose a different path in the env file.", path))
-		return
-	}
-
-	if hasMinFree {
-		if err := platformfs.EnsureFreeSpace(path, uint64(minFreeMB)*1024*1024); err != nil {
-			report.fail(scope, code, fmt.Sprintf("%s is below the configured free-space threshold", label), err.Error(), fmt.Sprintf("Free space under %s or lower MIN_FREE_DISK_MB intentionally after reviewing the risk.", path))
-			return
-		}
-	}
-
-	report.ok(scope, code, fmt.Sprintf("%s is writable", label), path)
 }
 
 func checkEnvContract(report *Report, scope string, env platformconfig.OperationEnv) {

@@ -200,10 +200,16 @@ func sharedOperationLockPaths(rootDir string) (string, string, error) {
 		return "", "", fmt.Errorf("create operation lock root %s: %w", lockRoot, err)
 	}
 
+	metadataPath, handlePath := predictedSharedOperationLockPaths(rootDir)
+	return metadataPath, handlePath, nil
+}
+
+func predictedSharedOperationLockPaths(rootDir string) (string, string) {
+	lockRoot := filepath.Join(os.TempDir(), "espocrm-toolkit-locks")
 	sum := sha256.Sum256([]byte(rootDir))
 	name := "repo-operation-" + hex.EncodeToString(sum[:8])[:16]
 	metadataPath := filepath.Join(lockRoot, name+".lock")
-	return metadataPath, filepath.Join(lockRoot, name+".flock"), nil
+	return metadataPath, filepath.Join(lockRoot, name+".flock")
 }
 
 func metadataLockHandlePath(metadataPath string) string {
@@ -239,8 +245,11 @@ func metadataLockState(metadataPath string) (string, string, error) {
 		return "legacy_unverified", pid, nil
 	}
 
-	handle, err := os.OpenFile(handlePath, os.O_CREATE|os.O_RDWR, 0o600)
+	handle, err := os.Open(handlePath)
 	if err != nil {
+		if os.IsNotExist(err) {
+			return "legacy_unverified", pid, nil
+		}
 		return "", "", fmt.Errorf("open lock handle %s: %w", handlePath, err)
 	}
 	defer handle.Close()

@@ -11,10 +11,11 @@ source "$SCRIPT_DIR/lib/artifacts.sh"
 
 usage() {
   cat <<'EOF'
-Usage: ./scripts/update.sh <dev|prod> [--skip-doctor] [--skip-backup] [--skip-pull] [--skip-http-probe] [--timeout SEC]
+Usage: ./scripts/update.sh <dev|prod> [--dry-run] [--skip-doctor] [--skip-backup] [--skip-pull] [--skip-http-probe] [--timeout SEC]
 
 Examples:
   ./scripts/update.sh prod
+  ./scripts/update.sh prod --dry-run
   ./scripts/update.sh dev --skip-backup
   ./scripts/update.sh prod --timeout 900
 
@@ -53,11 +54,16 @@ SKIP_DOCTOR=0
 SKIP_BACKUP=0
 SKIP_PULL=0
 SKIP_HTTP_PROBE=0
+DRY_RUN=0
 BUNDLE_ON_FAIL=1
 TIMEOUT_SECONDS=600
 
 while [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; do
   case "${POSITIONAL_ARGS[0]}" in
+    --dry-run)
+      DRY_RUN=1
+      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
+      ;;
     --skip-doctor)
       SKIP_DOCTOR=1
       POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
@@ -93,6 +99,35 @@ done
 [[ "$TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || die "Timeout must be an integer number of seconds"
 
 require_explicit_contour
+
+if [[ $DRY_RUN -eq 1 ]]; then
+  update_plan_args=(
+    update-plan
+    --scope "$ESPO_ENV"
+    --project-dir "$ROOT_DIR"
+    --compose-file "$ROOT_DIR/compose.yaml"
+    --timeout "$TIMEOUT_SECONDS"
+  )
+
+  if [[ -n "${ENV_FILE:-}" ]]; then
+    update_plan_args+=(--env-file "$ENV_FILE")
+  fi
+  if [[ $SKIP_DOCTOR -eq 1 ]]; then
+    update_plan_args+=(--skip-doctor)
+  fi
+  if [[ $SKIP_BACKUP -eq 1 ]]; then
+    update_plan_args+=(--skip-backup)
+  fi
+  if [[ $SKIP_PULL -eq 1 ]]; then
+    update_plan_args+=(--skip-pull)
+  fi
+  if [[ $SKIP_HTTP_PROBE -eq 1 ]]; then
+    update_plan_args+=(--skip-http-probe)
+  fi
+
+  run_espops "${update_plan_args[@]}"
+  exit $?
+fi
 
 if [[ "${ESPO_SHELL_EXEC_CONTEXT:-0}" != "1" ]]; then
   preflight_args=(

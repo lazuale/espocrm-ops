@@ -1,5 +1,6 @@
 {
   "doctor_ok.golden.json": "dbb5eb3dca35900a94a88828702605487f4dc7f8ac9a50425d4bb8d03ce0daf8",
   "history_ok.golden.json": "d8d32099ef5090d1c43d620ca2589cda2dbeb334c064242f90dc4a7de7262359",
+  "update_plan_ok.golden.json": "99515e88d20343d7d6d801ac8c89456e137b5fc9b2d8e6914a35317c2fa7ed61",
   "verify_backup_ok.golden.json": "2d80de214db5d380d34410b30fc3c83fc70e8ff296bfd93d75edb501cf86e22a"
 }

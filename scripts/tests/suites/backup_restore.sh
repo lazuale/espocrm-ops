@@ -13,7 +13,7 @@ test_env_leakage_is_blocked() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "Required variable is not set: DB_NAME" "runtime output"
+  assert_file_contains "$output_file" "DB_NAME is required" "runtime output"
   assert_file_not_contains "$output_file" "leaked_from_parent" "runtime output"
   pass_test "Regression case passed"
 }
