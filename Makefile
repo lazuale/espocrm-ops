@@ -2,8 +2,13 @@ SHELL := bash
 PYTHON ?= python3
 APP := espops
 BIN := bin/$(APP)
+HEALTH_TOOLS_BIN ?= $(HOME)/go/bin
+GOVULNCHECK_VERSION ?= v1.2.0
+STATICCHECK_VERSION ?= v0.7.0
+GOLANGCI_LINT_VERSION ?= v2.11.4
+FAST_GATE_COMPONENTS := test vet ai-shell-json-smoke bashcheck shellcheck
 
-.PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke policy build test test-cli test-golden fmt vet clean integration ci regression bashcheck shellcheck
+.PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke policy build test test-cli test-golden fmt vet clean integration ci check-fast check-fast-components check-full regression bashcheck shellcheck vulncheck staticcheck lint coverage install-health-tools
 
 ai-validate:
 	$(PYTHON) AI/generators/validate_specs.py
@@ -58,7 +63,24 @@ ai-shell-json-smoke: build
 		"$$tmp_root/out/backup-catalog-dev.json" \
 		"$$tmp_root/out/overview-dev.json"
 
-ci: ai-check test vet ai-shell-json-smoke bashcheck shellcheck
+check-fast-components: $(FAST_GATE_COMPONENTS)
+
+check-fast: ai-check check-fast-components
+
+check-full:
+	$(MAKE) ai-refresh
+	git diff --exit-code -- AI/compiled
+	$(MAKE) ai-check
+	$(MAKE) check-fast-components
+	go test -race ./...
+	$(MAKE) vulncheck
+	$(MAKE) staticcheck
+	$(MAKE) lint
+	$(MAKE) coverage
+	$(MAKE) integration
+	$(MAKE) regression
+
+ci: check-fast
 
 build:
 	mkdir -p bin
@@ -78,6 +100,25 @@ integration:
 
 regression:
 	bash scripts/regression-test.sh
+
+vulncheck:
+	govulncheck ./...
+
+staticcheck:
+	staticcheck ./...
+
+lint:
+	golangci-lint run --no-config ./...
+
+coverage:
+	go test ./... -coverprofile=coverage.out
+	go tool cover -func=coverage.out
+
+install-health-tools:
+	mkdir -p "$(HEALTH_TOOLS_BIN)"
+	GOBIN="$(HEALTH_TOOLS_BIN)" go install golang.org/x/vuln/cmd/govulncheck@$(GOVULNCHECK_VERSION)
+	GOBIN="$(HEALTH_TOOLS_BIN)" go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
+	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(HEALTH_TOOLS_BIN)" $(GOLANGCI_LINT_VERSION)
 
 bashcheck:
 	bash -n scripts/espo.sh scripts/*.sh scripts/lib/*.sh scripts/tests/*.sh scripts/tests/suites/*.sh

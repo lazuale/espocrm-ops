@@ -20,10 +20,11 @@ defaults:
 
 jobs:
   merge-gate:
-    timeout-minutes: 30
+    timeout-minutes: 60
     runs-on: ubuntu-latest
     env:
       BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
+      HEALTH_TOOLS_BIN: ${{ runner.temp }}/go-bin
     steps:
       - uses: actions/checkout@v6
         with:
@@ -45,6 +46,16 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends shellcheck
 
+      - name: Install Go health tools
+        run: |
+          set -Eeuo pipefail
+          make install-health-tools
+
+      - name: Add Go health tools to PATH
+        run: |
+          set -Eeuo pipefail
+          echo "${HEALTH_TOOLS_BIN}" >> "$GITHUB_PATH"
+
       - name: Validate PR body
         if: github.event_name == 'pull_request'
         run: |
@@ -52,7 +63,7 @@ jobs:
           printf '%s\n' "${{ github.event.pull_request.body }}" > "${RUNNER_TEMP:-/tmp}/pr-body.md"
           PR_BODY_PATH="${RUNNER_TEMP:-/tmp}/pr-body.md" python3 AI/generators/pr_body_check.py
 
-      - name: Run merge gate
+      - name: Run full health gate
         run: |
           set -Eeuo pipefail
-          make ci
+          make check-full

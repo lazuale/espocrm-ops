@@ -37,5 +37,8 @@ Standard cycle:
 - Edit code or `AI/spec/*`.
 - Run `make ai-refresh`.
 - Run `make ai-check`.
-- Run `make ci`.
+- Run `make ci` as the fast gate only.
+- Do not claim the repository is healthy from `make ci` alone after any Go version, toolchain, dependency, workflow, or enforcement-surface change.
+- Use `make check-full` as the authoritative post-upgrade health gate before claiming the repository is healthy after those changes.
+- `make check-full` must run, in order: `make ai-refresh`, `make ai-check`, the fast gate, `go test -race ./...`, `govulncheck ./...`, `staticcheck ./...`, `golangci-lint run --no-config ./...`, `go test ./... -coverprofile=coverage.out`, `go tool cover -func=coverage.out`, `make integration`, and `make regression`.
 - Update `ops/adr/*` only when the AI rules require an ADR for an architecture or contract change.
