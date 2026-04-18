@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
@@ -24,57 +25,39 @@ func newJournalPruneCmd() *cobra.Command {
 				return err
 			}
 
-			pruneResult, err := journalusecase.Prune(journalusecase.PruneInput{
-				JournalDir: app.options.JournalDir,
-				KeepDays:   keepDays,
-				Keep:       keep,
-				DryRun:     dryRun,
-			})
-			if err != nil {
-				return CodeError{
-					Code:    codeForError(err, exitcode.InternalError),
-					Err:     err,
-					ErrCode: errorCodeForError(err, "journal_prune_failed"),
+			return RunResultCommand(cmd, CommandSpec{
+				Name:       "journal-prune",
+				ErrorCode:  "journal_prune_failed",
+				ExitCode:   exitcode.InternalError,
+				RenderText: renderJournalPruneText,
+			}, func() (result.Result, error) {
+				pruneResult, err := journalusecase.Prune(journalusecase.PruneInput{
+					JournalDir: app.options.JournalDir,
+					KeepDays:   keepDays,
+					Keep:       keep,
+					DryRun:     dryRun,
+				})
+				if err != nil {
+					return result.Result{}, err
 				}
-			}
 
-			warnings := journalusecase.WarningsFromReadStats(pruneResult.ReadStats)
-			details := journalusecase.PruneDetailsFromStats(
-				pruneResult.ReadStats,
-				pruneResult.Checked,
-				pruneResult.Deleted,
-				pruneResult.RemovedDirs,
-				keepDays,
-				keep,
-				dryRun,
-			)
-
-			if app.IsJSONEnabled() {
-				return result.Render(cmd.OutOrStdout(), result.Result{
-					Command:  "journal-prune",
+				return result.Result{
 					OK:       true,
 					Message:  fmt.Sprintf("journal prune completed, deleted=%d removed_dirs=%d", pruneResult.Deleted, pruneResult.RemovedDirs),
-					Warnings: warnings,
+					Warnings: journalusecase.WarningsFromReadStats(pruneResult.ReadStats),
 					DryRun:   dryRun,
-					Details:  details,
-					Items:    prunePathsAsItems(pruneResult),
-				}, true)
-			}
-
-			_, err = fmt.Fprintf(
-				cmd.OutOrStdout(),
-				"journal prune completed: total_files_seen=%d loaded_entries=%d skipped_corrupt=%d deleted=%d removed_dirs=%d dry_run=%t\n",
-				pruneResult.ReadStats.TotalFilesSeen,
-				pruneResult.ReadStats.LoadedEntries,
-				pruneResult.ReadStats.SkippedCorrupt,
-				pruneResult.Deleted,
-				pruneResult.RemovedDirs,
-				dryRun,
-			)
-			if err != nil {
-				return err
-			}
-			return renderWarnings(cmd.OutOrStdout(), warnings)
+					Details: journalusecase.PruneDetailsFromStats(
+						pruneResult.ReadStats,
+						pruneResult.Checked,
+						pruneResult.Deleted,
+						pruneResult.RemovedDirs,
+						keepDays,
+						keep,
+						dryRun,
+					),
+					Items: prunePathsAsItems(pruneResult),
+				}, nil
+			})
 		},
 	}
 
@@ -108,4 +91,23 @@ func prunePathsAsItems(pruneResult journalusecase.PruneOutput) []any {
 		items = append(items, result.PruneItem{Type: "dir", Path: path})
 	}
 	return items
+}
+
+func renderJournalPruneText(w io.Writer, res result.Result) error {
+	details, ok := res.Details.(result.PruneDetails)
+	if !ok {
+		return fmt.Errorf("unexpected journal prune details type %T", res.Details)
+	}
+
+	_, err := fmt.Fprintf(
+		w,
+		"journal prune completed: total_files_seen=%d loaded_entries=%d skipped_corrupt=%d deleted=%d removed_dirs=%d dry_run=%t\n",
+		details.TotalFilesSeen,
+		details.LoadedEntries,
+		details.SkippedCorrupt,
+		details.Deleted,
+		details.RemovedDirs,
+		details.DryRun,
+	)
+	return err
 }

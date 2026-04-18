@@ -82,8 +82,8 @@
         "usage",
         "use_go_backend"
       ],
-      "line_count": 406,
-      "sha256": "859de9f1f9d2d40b19e641c55017ea07eb2cefd28013f3d3575303fe511dfc0d"
+      "line_count": 407,
+      "sha256": "890f41ad17cf88a3a1b329b6a1f158b88f1ceacc27e0fca5d7b7549077afb50e"
     },
     "scripts/restore-files.sh": {
       "function_names": [
@@ -96,18 +96,14 @@
     },
     "scripts/rollback.sh": {
       "function_names": [
-        "assert_go_backend_ready",
-        "json_extract_string_field",
         "on_error",
         "select_latest_valid_backup_set",
-        "select_latest_valid_backup_set_go",
         "usage",
-        "use_go_backend",
         "validate_manual_backup_pair",
         "write_rollback_plan_reports"
       ],
-      "line_count": 391,
-      "sha256": "cd210cf646eea7d298259d79a7a3a9683786818086f9b792dbf8fd01972c6697"
+      "line_count": 361,
+      "sha256": "90fa3797f6dfe7a1a20fa847f453644e39ee5ca394753542964e6ddb4c60bcac"
     },
     "scripts/verify-backup.sh": {
       "function_names": [

@@ -104,12 +104,58 @@ func envKey(entry string) string {
 	return entry
 }
 
-func CheckDockerAvailable() error {
-	_, err := Run("docker", "version", "--format", "{{.Server.Version}}")
-	if err != nil {
+func CheckDockerCLIAvailable() error {
+	if _, err := exec.LookPath("docker"); err != nil {
 		return UnavailableError{Err: err}
 	}
 
+	return nil
+}
+
+func DockerClientVersion() (string, error) {
+	if err := CheckDockerCLIAvailable(); err != nil {
+		return "", err
+	}
+
+	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "version", "--format", "{{.Client.Version}}")
+	if err != nil {
+		return "", UnavailableError{Err: err}
+	}
+
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+func DockerServerVersion() (string, error) {
+	if err := CheckDockerCLIAvailable(); err != nil {
+		return "", err
+	}
+
+	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "version", "--format", "{{.Server.Version}}")
+	if err != nil {
+		return "", UnavailableError{Err: err}
+	}
+
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+func ComposeVersion() (string, error) {
+	if err := CheckDockerCLIAvailable(); err != nil {
+		return "", err
+	}
+
+	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "compose", "version", "--short")
+	if err != nil {
+		return "", UnavailableError{Err: err}
+	}
+
+	return strings.TrimSpace(res.Stdout), nil
+}
+
+func CheckDockerAvailable() error {
+	_, err := DockerServerVersion()
+	if err != nil {
+		return err
+	}
 	return nil
 }
 

@@ -1,0 +1,112 @@
+{
+  "command": "doctor",
+  "ok": true,
+  "message": "doctor passed",
+  "details": {
+    "target_scope": "prod",
+    "ready": true,
+    "checks": 13,
+    "passed": 13,
+    "warnings": 0,
+    "failed": 0
+  },
+  "artifacts": {
+    "project_dir": "REPLACE_PROJECT_DIR",
+    "compose_file": "REPLACE_COMPOSE_FILE",
+    "scopes": [
+      {
+        "scope": "prod",
+        "env_file": "REPLACE_ENV_FILE",
+        "backup_root": "REPLACE_BACKUP_ROOT"
+      }
+    ]
+  },
+  "items": [
+    {
+      "code": "compose_file",
+      "status": "ok",
+      "summary": "Compose file is ready",
+      "details": "REPLACE_COMPOSE_FILE"
+    },
+    {
+      "code": "shared_operation_lock",
+      "status": "ok",
+      "summary": "The shared operation lock is available",
+      "details": "REPLACE_SHARED_LOCK"
+    },
+    {
+      "code": "docker_cli",
+      "status": "ok",
+      "summary": "Docker CLI is available",
+      "details": "docker 25.0.2"
+    },
+    {
+      "code": "docker_daemon",
+      "status": "ok",
+      "summary": "Docker daemon is reachable",
+      "details": "server 25.0.2"
+    },
+    {
+      "code": "docker_compose",
+      "status": "ok",
+      "summary": "Docker Compose is available",
+      "details": "compose 2.24.1"
+    },
+    {
+      "scope": "prod",
+      "code": "env_resolution",
+      "status": "ok",
+      "summary": "Loaded prod env file",
+      "details": "REPLACE_ENV_FILE"
+    },
+    {
+      "scope": "prod",
+      "code": "env_contract",
+      "status": "ok",
+      "summary": "The env file satisfies the runtime contract",
+      "details": "REPLACE_ENV_FILE"
+    },
+    {
+      "scope": "prod",
+      "code": "db_storage_dir",
+      "status": "ok",
+      "summary": "DB_STORAGE_DIR is writable",
+      "details": "REPLACE_DB_STORAGE_DIR"
+    },
+    {
+      "scope": "prod",
+      "code": "espo_storage_dir",
+      "status": "ok",
+      "summary": "ESPO_STORAGE_DIR is writable",
+      "details": "REPLACE_ESPO_STORAGE_DIR"
+    },
+    {
+      "scope": "prod",
+      "code": "backup_root",
+      "status": "ok",
+      "summary": "BACKUP_ROOT is writable",
+      "details": "REPLACE_BACKUP_ROOT"
+    },
+    {
+      "scope": "prod",
+      "code": "maintenance_lock",
+      "status": "ok",
+      "summary": "The maintenance lock is available",
+      "details": "REPLACE_MAINTENANCE_LOCK"
+    },
+    {
+      "scope": "prod",
+      "code": "compose_config",
+      "status": "ok",
+      "summary": "Docker Compose config validation passed",
+      "details": "compose file REPLACE_COMPOSE_FILE with env REPLACE_ENV_FILE"
+    },
+    {
+      "scope": "prod",
+      "code": "running_services",
+      "status": "ok",
+      "summary": "No services are currently running for this contour",
+      "details": "The runtime health probe is not required while the contour is stopped."
+    }
+  ]
+}

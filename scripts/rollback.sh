@@ -2,8 +2,6 @@
 set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
-BIN="$ROOT_DIR/bin/espops"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck disable=SC1091
@@ -28,39 +26,14 @@ Examples:
 EOF
 }
 
-use_go_backend() {
-  [[ "${ESPO_USE_GO_BACKEND:-0}" == "1" ]]
-}
+select_latest_valid_backup_set() {
+  local output status selection_fields expected_manifest_json
+  local -a selection_items=()
 
-assert_go_backend_ready() {
-  use_go_backend || return 0
-  [[ -x "$BIN" ]] || die "ESPO_USE_GO_BACKEND=1 requires a built binary: $BIN (for example: go build -o bin/espops ./cmd/espops)"
-}
-
-json_extract_string_field() {
-  local field="$1"
-
-  awk -v field="$field" '
-    $0 ~ "\"" field "\"" {
-      line = $0
-      sub(/^[[:space:]]*"[^"]+"[[:space:]]*:[[:space:]]*"/, "", line)
-      sub(/",[[:space:]]*$/, "", line)
-      sub(/"[[:space:]]*$/, "", line)
-      gsub(/\\"/, "\"", line)
-      gsub(/\\\\/, "\\", line)
-      print line
-      exit
-    }
-  '
-}
-
-select_latest_valid_backup_set_go() {
-  local output status expected_manifest_json
-
-  assert_go_backend_ready
+  command_exists python3 || die "python3 is required to parse the Go verify-backup JSON contract for rollback"
 
   set +e
-  output="$("$BIN" --json verify-backup --backup-root "$BACKUP_ROOT_ABS" 2>&1)"
+  output="$(run_espops --json verify-backup --backup-root "$BACKUP_ROOT_ABS" 2>&1)"
   status=$?
   set -e
 
@@ -69,40 +42,37 @@ select_latest_valid_backup_set_go() {
     return "$status"
   fi
 
-  SELECTED_MANIFEST_JSON="$(printf '%s\n' "$output" | json_extract_string_field manifest)"
-  SELECTED_DB_BACKUP="$(printf '%s\n' "$output" | json_extract_string_field db_backup)"
-  SELECTED_FILES_BACKUP="$(printf '%s\n' "$output" | json_extract_string_field files_backup)"
+  selection_fields="$(
+    printf '%s\n' "$output" | python3 -c 'import json, sys
+data = json.load(sys.stdin)
+artifacts = data.get("artifacts") or {}
+required = ("manifest", "db_backup", "files_backup")
+values = []
+for key in required:
+    value = artifacts.get(key)
+    if not isinstance(value, str) or not value.strip():
+        raise SystemExit(f"verify-backup JSON contract for rollback is missing artifacts.{key}")
+    values.append(value.strip())
+print("\n".join(values))'
+  )" || die "Go verify-backup returned an incomplete JSON contract for rollback"
 
-  [[ -n "$SELECTED_MANIFEST_JSON" && -n "$SELECTED_DB_BACKUP" && -n "$SELECTED_FILES_BACKUP" ]] \
-    || die "Go backend returned an incomplete verify-backup JSON contract for rollback"
+  mapfile -t selection_items <<<"$selection_fields"
+  [[ ${#selection_items[@]} -eq 3 ]] || die "Go verify-backup returned an incomplete JSON contract for rollback"
+  SELECTED_MANIFEST_JSON="${selection_items[0]}"
+  SELECTED_DB_BACKUP="${selection_items[1]}"
+  SELECTED_FILES_BACKUP="${selection_items[2]}"
+
   backup_pair_is_coherent "$SELECTED_DB_BACKUP" "$SELECTED_FILES_BACKUP" \
-    || die "Go backend selected an incoherent backup-file pair for rollback"
+    || die "Go verify-backup selected an incoherent backup-file pair for rollback"
   IFS='|' read -r SELECTED_PREFIX SELECTED_STAMP < <(backup_group_from_db_file "$SELECTED_DB_BACKUP") \
-    || die "Go backend selected a DB backup with an unsupported name: $SELECTED_DB_BACKUP"
+    || die "Go verify-backup selected a DB backup with an unsupported name: $SELECTED_DB_BACKUP"
   IFS='|' read -r _selected_db _selected_files SELECTED_MANIFEST_TXT expected_manifest_json < <(
     backup_set_paths "$BACKUP_ROOT_ABS" "$SELECTED_PREFIX" "$SELECTED_STAMP"
   )
   [[ "$SELECTED_MANIFEST_JSON" == "$expected_manifest_json" ]] \
-    || die "Go backend selected a manifest that does not match the backup-set name: $SELECTED_MANIFEST_JSON"
+    || die "Go verify-backup selected a manifest that does not match the backup-set name: $SELECTED_MANIFEST_JSON"
 
   [[ -f "$SELECTED_MANIFEST_TXT" ]] || SELECTED_MANIFEST_TXT=""
-}
-
-select_latest_valid_backup_set() {
-  local group_key
-
-  if use_go_backend; then
-    select_latest_valid_backup_set_go
-    return
-  fi
-
-  group_key="$(latest_complete_backup_group_key "$BACKUP_ROOT_ABS" 1 1 1 1 1 || true)"
-  [[ -n "$group_key" ]] || return 1
-
-  IFS='|' read -r SELECTED_PREFIX SELECTED_STAMP <<< "$group_key"
-  IFS='|' read -r SELECTED_DB_BACKUP SELECTED_FILES_BACKUP SELECTED_MANIFEST_TXT SELECTED_MANIFEST_JSON < <(
-    backup_set_paths "$BACKUP_ROOT_ABS" "$SELECTED_PREFIX" "$SELECTED_STAMP"
-  )
 
   return 0
 }

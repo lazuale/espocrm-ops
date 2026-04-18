@@ -5,8 +5,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/common.sh"
 # shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/locks.sh"
-# shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/compose.sh"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/artifacts.sh"
@@ -49,6 +47,7 @@ on_error() {
   exit "$exit_code"
 }
 
+RAW_ARGS=("$@")
 parse_contour_arg "$@"
 SKIP_DOCTOR=0
 SKIP_BACKUP=0
@@ -95,11 +94,23 @@ done
 
 require_explicit_contour
 
-acquire_operation_lock update
-resolve_env_file
-load_env
-ensure_runtime_dirs
-acquire_maintenance_lock update
+if [[ "${ESPO_SHELL_EXEC_CONTEXT:-0}" != "1" ]]; then
+  preflight_args=(
+    run-operation
+    --scope "$ESPO_ENV"
+    --operation update
+    --project-dir "$ROOT_DIR"
+  )
+
+  if [[ -n "${ENV_FILE:-}" ]]; then
+    preflight_args+=(--env-file "$ENV_FILE")
+  fi
+
+  preflight_args+=(-- bash "$0" "${RAW_ARGS[@]}")
+  run_espops "${preflight_args[@]}"
+  exit $?
+fi
+
 require_compose
 
 BACKUP_ROOT_ABS="$(root_path "$BACKUP_ROOT")"
@@ -119,8 +130,6 @@ POST_REPORT_TXT="$REPORTS_DIR/${NAME_PREFIX}_post-update_${STAMP}.txt"
 POST_REPORT_JSON="$REPORTS_DIR/${NAME_PREFIX}_post-update_${STAMP}.json"
 FAILURE_BUNDLE_PATH="$SUPPORT_DIR/${NAME_PREFIX}_update-failure_${STAMP}.tar.gz"
 ERROR_HANDLER_ACTIVE=0
-# shellcheck disable=SC2034
-READINESS_TIMEOUT_BUDGET="$TIMEOUT_SECONDS"
 
 trap 'on_error' ERR
 
@@ -137,37 +146,38 @@ else
   echo "Environment check skipped because of --skip-doctor"
 fi
 
-echo "[3/6] Creating the pre-update recovery point"
 if [[ $SKIP_BACKUP -eq 0 ]]; then
-  if ! service_is_running db; then
-    note "The DB container was not running, starting db temporarily for backup"
-    compose up -d db
-    wait_for_service_ready_with_shared_timeout READINESS_TIMEOUT_BUDGET db "update"
-  fi
-
-  ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/backup.sh" "$ESPO_ENV"
+  update_backup_args=(
+    update-backup
+    --scope "$ESPO_ENV"
+    --project-dir "$ROOT_DIR"
+    --compose-file "$ROOT_DIR/compose.yaml"
+    --env-file "$ENV_FILE"
+    --timeout "$TIMEOUT_SECONDS"
+  )
+  run_espops "${update_backup_args[@]}"
 else
   echo "Backup skipped because of --skip-backup"
 fi
 
-echo "[4/6] Updating images"
-if [[ $SKIP_PULL -eq 0 ]]; then
-  compose pull
-else
-  echo "Image pull skipped because of --skip-pull"
+update_runtime_args=(
+  update-runtime
+  --project-dir "$ROOT_DIR"
+  --compose-file "$ROOT_DIR/compose.yaml"
+  --env-file "$ENV_FILE"
+  --site-url "$SITE_URL"
+  --timeout "$TIMEOUT_SECONDS"
+)
+
+if [[ $SKIP_PULL -eq 1 ]]; then
+  update_runtime_args+=(--skip-pull)
 fi
 
-echo "[5/6] Restarting the stack with the current configuration"
-compose up -d
-
-echo "[6/6] Checking readiness after the update"
-wait_for_application_stack_with_shared_timeout READINESS_TIMEOUT_BUDGET "update"
-
-if [[ $SKIP_HTTP_PROBE -eq 0 ]]; then
-  http_probe "$SITE_URL"
-else
-  echo "HTTP probe skipped because of --skip-http-probe"
+if [[ $SKIP_HTTP_PROBE -eq 1 ]]; then
+  update_runtime_args+=(--skip-http-probe)
 fi
+
+run_espops "${update_runtime_args[@]}"
 
 ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --output "$POST_REPORT_TXT"
 ENV_FILE="$ENV_FILE" run_repo_script "$SCRIPT_DIR/status-report.sh" "$ESPO_ENV" --json --output "$POST_REPORT_JSON"

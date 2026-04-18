@@ -37,7 +37,7 @@ ai-shell-json-smoke: build
 	runtime_dev="$$tmp_root/runtime/dev"; \
 	backup_dev="$$tmp_root/backups/dev"; \
 	mkdir -p "$$runtime_dev/db" "$$runtime_dev/espo" "$$backup_dev" "$$tmp_root/out"; \
-	cp .env.dev.example "$$env_dev"; \
+	cp ops/env/.env.dev.example "$$env_dev"; \
 	chmod 600 "$$env_dev"; \
 	source scripts/lib/common.sh; \
 	set_env_value "$$env_dev" DB_STORAGE_DIR "$$runtime_dev/db"; \

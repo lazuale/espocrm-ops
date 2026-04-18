@@ -2,7 +2,9 @@ package cli
 
 import (
 	"fmt"
+	"io"
 
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
 	"github.com/spf13/cobra"
@@ -21,53 +23,57 @@ func newLastOperationCmd() *cobra.Command {
 				return err
 			}
 
-			last, err := journalusecase.LastOperation(journalusecase.LastOperationInput{
-				JournalDir: app.options.JournalDir,
-				Command:    commandName,
-			})
-			if err != nil {
-				return err
-			}
-			warnings := journalusecase.WarningsFromReadStats(last.Stats)
-			details := journalusecase.OperationLookupDetailsFromReadStats(last.Stats)
-			details.Command = commandName
-
-			if last.Entry != nil {
-				if app.IsJSONEnabled() {
-					return result.Render(cmd.OutOrStdout(), result.Result{
-						Command:  "last-operation",
-						OK:       true,
-						Warnings: warnings,
-						Items:    []any{*last.Entry},
-						Details:  details,
-					}, true)
+			return RunResultCommand(cmd, CommandSpec{
+				Name:       "last-operation",
+				ErrorCode:  "last_operation_failed",
+				ExitCode:   exitcode.InternalError,
+				RenderText: renderLastOperationText,
+			}, func() (result.Result, error) {
+				last, err := journalusecase.LastOperation(journalusecase.LastOperationInput{
+					JournalDir: app.options.JournalDir,
+					Command:    commandName,
+				})
+				if err != nil {
+					return result.Result{}, err
 				}
 
-				if _, err := fmt.Fprintln(cmd.OutOrStdout(), formatEntryLine(*last.Entry)); err != nil {
-					return err
-				}
-				return renderWarnings(cmd.OutOrStdout(), warnings)
-			}
+				details := journalusecase.OperationLookupDetailsFromReadStats(last.Stats)
+				details.Command = commandName
 
-			if app.IsJSONEnabled() {
-				return result.Render(cmd.OutOrStdout(), result.Result{
-					Command:  "last-operation",
+				items := []any{}
+				message := "no operation found"
+				if last.Entry != nil {
+					items = append(items, *last.Entry)
+					message = ""
+				}
+
+				return result.Result{
 					OK:       true,
-					Message:  "no operation found",
-					Warnings: warnings,
-					Items:    []any{},
+					Message:  message,
+					Warnings: journalusecase.WarningsFromReadStats(last.Stats),
+					Items:    items,
 					Details:  details,
-				}, true)
-			}
-
-			if _, err = fmt.Fprintln(cmd.OutOrStdout(), "no operation found"); err != nil {
-				return err
-			}
-			return renderWarnings(cmd.OutOrStdout(), warnings)
+				}, nil
+			})
 		},
 	}
 
 	cmd.Flags().StringVar(&commandName, "command", "", "filter by command name")
 
 	return cmd
+}
+
+func renderLastOperationText(w io.Writer, res result.Result) error {
+	if len(res.Items) == 0 {
+		_, err := fmt.Fprintln(w, "no operation found")
+		return err
+	}
+
+	entry, ok := res.Items[0].(journalusecase.Entry)
+	if !ok {
+		return fmt.Errorf("unexpected last operation item type %T", res.Items[0])
+	}
+
+	_, err := fmt.Fprintln(w, formatEntryLine(entry))
+	return err
 }

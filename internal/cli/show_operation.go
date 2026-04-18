@@ -1,6 +1,10 @@
 package cli
 
 import (
+	"fmt"
+	"io"
+
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
 	"github.com/spf13/cobra"
@@ -19,35 +23,46 @@ func newShowOperationCmd() *cobra.Command {
 				return err
 			}
 
-			operation, err := journalusecase.ShowOperation(journalusecase.ShowOperationInput{
-				JournalDir: app.options.JournalDir,
-				ID:         id,
-			})
-			if err != nil {
-				return err
-			}
+			return RunResultCommand(cmd, CommandSpec{
+				Name:       "show-operation",
+				ErrorCode:  "show_operation_failed",
+				ExitCode:   exitcode.InternalError,
+				RenderText: renderShowOperationText,
+			}, func() (result.Result, error) {
+				operation, err := journalusecase.ShowOperation(journalusecase.ShowOperationInput{
+					JournalDir: app.options.JournalDir,
+					ID:         id,
+				})
+				if err != nil {
+					return result.Result{}, err
+				}
 
-			warnings := journalusecase.WarningsFromReadStats(operation.Stats)
-			details := journalusecase.OperationLookupDetailsFromReadStats(operation.Stats)
-			details.ID = id
-			if app.IsJSONEnabled() {
-				return result.Render(cmd.OutOrStdout(), result.Result{
-					Command:  "show-operation",
+				details := journalusecase.OperationLookupDetailsFromReadStats(operation.Stats)
+				details.ID = id
+				return result.Result{
 					OK:       true,
-					Warnings: warnings,
+					Warnings: journalusecase.WarningsFromReadStats(operation.Stats),
 					Details:  details,
 					Items:    []any{operation.Entry},
-				}, true)
-			}
-
-			if err := renderEntryDetail(cmd.OutOrStdout(), operation.Entry); err != nil {
-				return err
-			}
-			return renderWarnings(cmd.OutOrStdout(), warnings)
+				}, nil
+			})
 		},
 	}
 
 	cmd.Flags().StringVar(&id, "id", "", "operation id")
 
 	return cmd
+}
+
+func renderShowOperationText(w io.Writer, res result.Result) error {
+	if len(res.Items) != 1 {
+		return fmt.Errorf("expected one operation item, got %d", len(res.Items))
+	}
+
+	entry, ok := res.Items[0].(journalusecase.Entry)
+	if !ok {
+		return fmt.Errorf("unexpected show-operation item type %T", res.Items[0])
+	}
+
+	return renderEntryDetail(w, entry)
 }

@@ -3,13 +3,18 @@
     "backup",
     "backup-audit",
     "backup-catalog",
+    "backup-exec",
+    "doctor",
     "espops",
     "history",
     "journal-prune",
     "last-operation",
     "restore-db",
     "restore-files",
+    "run-operation -- <command> [args...]",
     "show-operation",
+    "update-backup",
+    "update-runtime",
     "verify-backup"
   ],
   "command_specs": [
@@ -35,15 +40,37 @@
       "use": "backup-catalog"
     },
     {
+      "error_code": "backup_failed",
+      "exit_code": "exitcode.InternalError",
+      "file": "internal/cli/backup_execute.go",
+      "name": "backup-exec",
+      "use": "backup-exec"
+    },
+    {
+      "exit_code": "exitcode.ValidationError",
+      "file": "internal/cli/doctor.go",
+      "name": "doctor",
+      "use": "doctor"
+    },
+    {
+      "error_code": "history_failed",
+      "exit_code": "exitcode.InternalError",
       "file": "internal/cli/history.go",
+      "name": "history",
       "use": "history"
     },
     {
+      "error_code": "journal_prune_failed",
+      "exit_code": "exitcode.InternalError",
       "file": "internal/cli/journal_prune.go",
+      "name": "journal-prune",
       "use": "journal-prune"
     },
     {
+      "error_code": "last_operation_failed",
+      "exit_code": "exitcode.InternalError",
       "file": "internal/cli/last_operation.go",
+      "name": "last-operation",
       "use": "last-operation"
     },
     {
@@ -65,8 +92,32 @@
       "use": "espops"
     },
     {
+      "error_code": "operation_execute_failed",
+      "exit_code": "exitcode.InternalError",
+      "file": "internal/cli/run_operation.go",
+      "name": "run-operation",
+      "use": "run-operation -- <command> [args...]"
+    },
+    {
+      "error_code": "show_operation_failed",
+      "exit_code": "exitcode.InternalError",
       "file": "internal/cli/show_operation.go",
+      "name": "show-operation",
       "use": "show-operation"
+    },
+    {
+      "error_code": "update_backup_failed",
+      "exit_code": "exitcode.InternalError",
+      "file": "internal/cli/update_backup.go",
+      "name": "update-backup",
+      "use": "update-backup"
+    },
+    {
+      "error_code": "update_runtime_failed",
+      "exit_code": "exitcode.InternalError",
+      "file": "internal/cli/update_runtime.go",
+      "name": "update-runtime",
+      "use": "update-runtime"
     },
     {
       "error_code": "backup_verification_failed",
@@ -77,29 +128,36 @@
     }
   ],
   "files": {
-    "cmd/espops/main.go": "e210096fabce65e612f513fd4faa2e3be5a2750a591802f5cc342a924c07b448",
+    "cmd/espops/main.go": "a0299a8799522d066b960ada40b94ce94256b7c0f95d33a7b477c26b5a189a3a",
     "internal/cli/backup.go": "ed0e03eb8a8671941f2e077af14f77ba472dfb2353a7756be2aa19040abcc5ef",
     "internal/cli/backup_audit.go": "bb7655571f89708d680f242a59919f78b782ac3e05da57f75ec2dbd0fb5e3e39",
     "internal/cli/backup_catalog.go": "8160ea487da85b64f200026c04984db3b134cfa701f8fed872cd0772b22a2d5b",
+    "internal/cli/backup_execute.go": "6d5e24c0f0fcd37fb80a7331c54fabb1869612c5c1952f902e747b6ff8725813",
     "internal/cli/deps.go": "0d4f908a5792645fa0531c56998bc41b46495daf1728d781a0752f091f4d5be2",
-    "internal/cli/env.go": "b523d8778b61b02207b6a22ae7c1acd001c19675b859f178f75e820bfdb48153",
-    "internal/cli/errors.go": "aa6126881149f6302a5384153675f9b0d47e9686920a4c38a7ce7e8cf2fdc03f",
+    "internal/cli/doctor.go": "b80a6dfa46d44e16699f6b02d85293abc5da8051ce1129310aa83c3800b030f5",
+    "internal/cli/env.go": "b9b4a6b050ac101bac74db267ee7b9daeffdbe522294d3d9924b06938a9cd0ff",
+    "internal/cli/errors.go": "9978ff99f236fa5c290c823644b0a21f2c54107f93b21a81705e464e3e8356a6",
+    "internal/cli/execute.go": "5fec68c5ab4afe811a7746ca1152802de424a272a7a30889015e5ce30349861b",
     "internal/cli/formatters.go": "4227bd663bef0f26c75467388b1fcecc6dc2c5120135eae48ad2fb55b6787eae",
-    "internal/cli/history.go": "b09fa413413b593407f99814c93bafe68e6ab40c22aec588bd385ca7fda7761d",
-    "internal/cli/journal_prune.go": "e7f168952b4e43344236f8ac5cb0f9966bc482887a63708fff2d3c61cf3959e9",
+    "internal/cli/history.go": "3a514281ce3c8b99afe41e749ed287a26f5b2b477ae3a7b9dd71dbbf96cea5ca",
+    "internal/cli/journal_prune.go": "f270c55f3929f102e3af44350a45d9f9a2543f0bf35fbe7eccfc3561e1569231",
     "internal/cli/json_state.go": "a4091b0b2706c509f5d75bed84a3bce129d7896b18276f7c5093e8f64e5f0dd0",
-    "internal/cli/last_operation.go": "87882fa4e2e9e9aefc50893ece96e55ceb36d2b71974445a75d113173b2b5334",
+    "internal/cli/last_operation.go": "c555ab20d367c85da9c3269f687177bde8ca9ce5f808be938f7fe8377860a31c",
     "internal/cli/options.go": "f981caa14329f2cd60f964ffc35b7b5360379fc173da46de25d91db28791faf4",
     "internal/cli/restore_db.go": "a0ef26f3aa01d4b6b757ac99d49891403095cc28532d2b8d7ad7c6cf6ffa7424",
     "internal/cli/restore_files.go": "5abba4364f67dec590d5b478bba3cf2ad37b53461e1ba0e89d752d7c6b83d6d0",
     "internal/cli/restore_plan.go": "5280212e7fbf87057b913f30956ab1fcf9adf0ed43a1611703162ef0ab51fd4d",
-    "internal/cli/root.go": "0f3713c709044451003e494420dc2261fc17953f6849bedb6d8c43ad734d2662",
-    "internal/cli/runner.go": "9bbbdaaac298d569f1e0b0afbc89500ef6fb60748c050f52b488f9730ee62b7a",
-    "internal/cli/show_operation.go": "2cb15d83657a3c7b82365c7d045f3cdadd54f651634a194306bcd7e646220afe",
+    "internal/cli/result_error.go": "c059a699c0ded832df09c5795afbc8ae163d419f07caf4075a7e65a533e93a42",
+    "internal/cli/root.go": "2da52445743d6f633071b8756e0525dc591d94cb1e9428c5e83b3fa7801343d8",
+    "internal/cli/run_operation.go": "e203af3c06e71c1bc5a8f9880f7f0a7fd41d74f0b1c142609f706c601d4d0a04",
+    "internal/cli/runner.go": "aad8d9688501a22cc2fb6202be036f7b89a0e3fcb5950bf0ded7b10da56627c6",
+    "internal/cli/show_operation.go": "07c45e253e3ada56c70a2bca7321e976a1d787e6271574f142baa0405abd4640",
+    "internal/cli/update_backup.go": "221f2901257f357c37e6390824d2a6dea362f06b94011b49dcc4c39d6aab597b",
+    "internal/cli/update_runtime.go": "3ec5aaa82e738d8e6cd66a249799149e3a9d122e473f6b9f51d0f1586e521e01",
     "internal/cli/verify_backup.go": "750c4a058077aeafcc5cc419fc4fce797bd74fdbd1fd18d2128fb11625eed4f5",
     "internal/contract/apperr/error.go": "5d0383f6170f98dc395d707a717f1f4a056d898c6ffa8c5fcd203d848ac8ab34",
     "internal/contract/exitcode/exitcode.go": "a07aff80b60303009b03ae43a458a8637765015c0cc3e689cdb22c546dbbe79b",
-    "internal/contract/result/details.go": "c4235b2a1345206a01c179def8895af5216735406d9bb4e95d1ad2f29e36b7c1",
+    "internal/contract/result/details.go": "0fc6264905a79ffa54b9a274328aa8d139b42692f0dd9144239b395d428f5157",
     "internal/contract/result/render.go": "4cdf2fab0ef92964dd4795500d4773ab5d540fb60b1d6e70909a953ffdadc4c5",
     "internal/contract/result/result.go": "0d228e3a82bae79c3f322358e887615c436962352a815f6a2a90a1194a1900fc"
   },

@@ -100,15 +100,15 @@ remove_tree_with_reasoned_fallback() {
   if ! remove_tree_failure_supports_docker_fallback "$target" "$error_file"; then
     rm -f -- "$error_file"
     if [[ -n "$error_excerpt" ]]; then
-      warn "Regular removal failed without signs of a permission or ownership scenario: $target ($error_excerpt)"
+      warn "Regular removal failed without signs of a permission/ownership scenario: $target ($error_excerpt)"
     else
-      warn "Regular removal failed without signs of a permission or ownership scenario: $target"
+      warn "Regular removal failed without signs of a permission/ownership scenario: $target"
     fi
     return 1
   fi
 
   rm -f -- "$error_file"
-  warn "Regular removal hit a permission or ownership scenario, trying Docker fallback: $target"
+  warn "Regular removal hit a permission/ownership scenario, trying Docker fallback: $target"
   docker_remove_tree "$target" || return 1
 
   if [[ -d "$target" ]]; then

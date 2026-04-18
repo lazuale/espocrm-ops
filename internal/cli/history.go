@@ -2,8 +2,10 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"time"
 
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
 	"github.com/spf13/cobra"
@@ -45,54 +47,43 @@ func newHistoryCmd() *cobra.Command {
 				return usageError(fmt.Errorf("--since must be before or equal to --until"))
 			}
 
-			history, err := journalusecase.History(journalusecase.HistoryInput{
-				JournalDir: app.options.JournalDir,
-				Filters: journalusecase.Filters{
-					Command:    commandName,
-					OKOnly:     okOnly,
-					FailedOnly: failedOnly,
-					Since:      since,
-					Until:      until,
-					Limit:      limit,
-				},
-			})
-			if err != nil {
-				return err
-			}
+			return RunResultCommand(cmd, CommandSpec{
+				Name:       "history",
+				ErrorCode:  "history_failed",
+				ExitCode:   exitcode.InternalError,
+				RenderText: renderHistoryText,
+			}, func() (result.Result, error) {
+				history, err := journalusecase.History(journalusecase.HistoryInput{
+					JournalDir: app.options.JournalDir,
+					Filters: journalusecase.Filters{
+						Command:    commandName,
+						OKOnly:     okOnly,
+						FailedOnly: failedOnly,
+						Since:      since,
+						Until:      until,
+						Limit:      limit,
+					},
+				})
+				if err != nil {
+					return result.Result{}, err
+				}
 
-			warnings := journalusecase.WarningsFromReadStats(history.Stats)
-			details := journalusecase.HistoryDetailsFromReadStats(history.Stats)
-			details.Limit = limit
-			details.Command = commandName
-			details.OKOnly = okOnly
-			details.FailedOnly = failedOnly
-			details.Since = sinceRaw
-			details.Until = untilRaw
+				details := journalusecase.HistoryDetailsFromReadStats(history.Stats)
+				details.Limit = limit
+				details.Command = commandName
+				details.OKOnly = okOnly
+				details.FailedOnly = failedOnly
+				details.Since = sinceRaw
+				details.Until = untilRaw
 
-			if app.IsJSONEnabled() {
-				return result.Render(cmd.OutOrStdout(), result.Result{
-					Command:  "history",
+				return result.Result{
 					OK:       true,
 					Message:  fmt.Sprintf("found %d operations", len(history.Entries)),
-					Warnings: warnings,
+					Warnings: journalusecase.WarningsFromReadStats(history.Stats),
 					Items:    journalEntriesAsItems(history.Entries),
 					Details:  details,
-				}, true)
-			}
-
-			if len(history.Entries) == 0 {
-				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "no operations found"); err != nil {
-					return err
-				}
-			} else {
-				for _, entry := range history.Entries {
-					if _, err := fmt.Fprintln(cmd.OutOrStdout(), formatEntryLine(entry)); err != nil {
-						return err
-					}
-				}
-			}
-
-			return renderWarnings(cmd.OutOrStdout(), warnings)
+				}, nil
+			})
 		},
 	}
 
@@ -125,4 +116,23 @@ func parseRFC3339Flag(name, raw string) (*time.Time, error) {
 	}
 
 	return &parsed, nil
+}
+
+func renderHistoryText(w io.Writer, res result.Result) error {
+	if len(res.Items) == 0 {
+		_, err := fmt.Fprintln(w, "no operations found")
+		return err
+	}
+
+	for _, raw := range res.Items {
+		entry, ok := raw.(journalusecase.Entry)
+		if !ok {
+			return fmt.Errorf("unexpected history item type %T", raw)
+		}
+		if _, err := fmt.Fprintln(w, formatEntryLine(entry)); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

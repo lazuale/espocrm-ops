@@ -312,7 +312,8 @@ echo "Files backup for the restore drill: $FILES_BACKUP_FILE"
 
 require_compose
 
-DRILL_ENV_FILE="$(mktemp "$ROOT_DIR/.env.restore-drill.${ESPO_ENV}.XXXXXX")"
+mkdir -p "$ROOT_DIR/.cache/env"
+DRILL_ENV_FILE="$(mktemp "$ROOT_DIR/.cache/env/restore-drill.${ESPO_ENV}.XXXXXX.env")"
 cp "$SOURCE_ENV_FILE" "$DRILL_ENV_FILE"
 
 set_env_value "$DRILL_ENV_FILE" "COMPOSE_PROJECT_NAME" "espo-restore-drill-$ESPO_ENV"

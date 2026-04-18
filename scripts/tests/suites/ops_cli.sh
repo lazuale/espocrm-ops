@@ -9,10 +9,12 @@ test_update_can_skip_optional_steps() {
   local status_mock="$TEST_TMP_ROOT/mock.status-report.update.sh"
   local doctor_mock="$TEST_TMP_ROOT/mock.doctor.update.sh"
   local backup_mock="$TEST_TMP_ROOT/mock.backup.update.sh"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.update.sh"
 
   restore_replaced_repo_files
   copy_example_env dev "$env_file"
   set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/update-skip-backups"
+  set_env_value "$env_file" SITE_URL "https://dev-update.test"
 
   cat > "$status_mock" <<'EOF'
 #!/usr/bin/env bash
@@ -71,39 +73,94 @@ EOF
   chmod +x "$backup_mock"
   replace_repo_file_temporarily "$backup_mock" "$SCRIPT_DIR/backup.sh"
 
-  create_mock_docker_update_success "$mock_bin_dir"
-  create_mock_curl_guard "$mock_bin_dir"
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+case "${1:-}" in
+  run-operation)
+    echo "mock run-operation args: $*"
+    scope=""
+    env_file=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --scope)
+          scope="$2"
+          shift 2
+          ;;
+        --operation|--project-dir|--env-file)
+          if [[ "$1" == "--env-file" ]]; then
+            env_file="$2"
+          fi
+          shift 2
+          ;;
+        --)
+          shift
+          break
+          ;;
+        *)
+          echo "unexpected run-operation arg: $1" >&2
+          exit 97
+          ;;
+      esac
+    done
 
-  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/update.sh" dev --skip-doctor --skip-backup --skip-pull --skip-http-probe --timeout 321; then
+    export ESPO_ENV="$scope"
+    export RESOLVED_ENV_CONTOUR="$scope"
+    export ENV_FILE="$env_file"
+    export ESPO_OPERATION_LOCK=1
+    export ESPO_MAINTENANCE_LOCK=1
+    export ESPO_SHELL_EXEC_CONTEXT=1
+    if [[ -n "$env_file" ]]; then
+      set -a
+      # shellcheck disable=SC1090
+      source "$env_file"
+      set +a
+    fi
+    "$@"
+    ;;
+  update-runtime)
+    echo "mock update-runtime args: $*"
+    ;;
+  *)
+    echo "unexpected espops args: $*" >&2
+    exit 98
+    ;;
+esac
+EOF
+  chmod +x "$mock_espops"
+
+  create_mock_docker_update_success "$mock_bin_dir"
+
+  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/update.sh" dev --skip-doctor --skip-backup --skip-pull --skip-http-probe --timeout 321; then
     fail_test "Regression case failed"
   fi
 
   assert_file_contains "$output_file" "Environment check skipped because of --skip-doctor" "runtime output"
   assert_file_contains "$output_file" "Backup skipped because of --skip-backup" "runtime output"
-  assert_file_contains "$output_file" "Image pull skipped because of --skip-pull" "runtime output"
-  assert_file_contains "$output_file" "HTTP probe skipped because of --skip-http-probe" "runtime output"
+  assert_file_contains "$output_file" "mock run-operation args: run-operation --scope dev --operation update --project-dir $ROOT_DIR --env-file $env_file -- bash $SCRIPT_DIR/update.sh dev --skip-doctor --skip-backup --skip-pull --skip-http-probe --timeout 321" "runtime output"
+  assert_file_contains "$output_file" "mock update-runtime args: update-runtime --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --site-url https://dev-update.test --timeout 321 --skip-pull --skip-http-probe" "runtime output"
   assert_file_contains "$output_file" "Update completed successfully" "runtime output"
   assert_file_not_contains "$output_file" "mock doctor should not run" "runtime output"
   assert_file_not_contains "$output_file" "mock backup should not run" "runtime output"
   assert_file_not_contains "$output_file" "mock docker pull should not run" "runtime output"
-  assert_file_not_contains "$output_file" "mock curl should not run" "runtime output"
   restore_replaced_repo_files
   pass_test "Regression case passed"
 }
 
-test_update_uses_shared_timeout_budget_for_readiness_steps() {
+test_update_propagates_go_runtime_timeout_failure() {
   announce_test "Regression case"
   local env_file="$TEST_TMP_ROOT/env.update-timeout-budget"
   local output_file="$TEST_TMP_ROOT/update-timeout-budget.out"
   local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-update-timeout-budget"
   local state_dir="$TEST_TMP_ROOT/mock-docker-update-timeout-state"
-  local time_file="$TEST_TMP_ROOT/mock-time-update-timeout.txt"
   local status_mock="$TEST_TMP_ROOT/mock.status-report.update-timeout.sh"
-  local backup_mock="$TEST_TMP_ROOT/mock.backup.update-timeout.sh"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.update-timeout.sh"
 
   restore_replaced_repo_files
   copy_example_env dev "$env_file"
   set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/update-timeout-budget-backups"
+  set_env_value "$env_file" SITE_URL "https://dev-update-timeout.test"
 
   cat > "$status_mock" <<'EOF'
 #!/usr/bin/env bash
@@ -132,49 +189,170 @@ EOF
   chmod +x "$status_mock"
   replace_repo_file_temporarily "$status_mock" "$SCRIPT_DIR/status-report.sh"
 
-  cat > "$backup_mock" <<'EOF'
+  cat > "$mock_espops" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-echo "mock backup args: $*"
+case "${1:-}" in
+  run-operation)
+    echo "mock run-operation args: $*"
+    scope=""
+    env_file=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --scope)
+          scope="$2"
+          shift 2
+          ;;
+        --operation|--project-dir|--env-file)
+          if [[ "$1" == "--env-file" ]]; then
+            env_file="$2"
+          fi
+          shift 2
+          ;;
+        --)
+          shift
+          break
+          ;;
+        *)
+          echo "unexpected run-operation arg: $1" >&2
+          exit 97
+          ;;
+      esac
+    done
+
+    export ESPO_ENV="$scope"
+    export RESOLVED_ENV_CONTOUR="$scope"
+    export ENV_FILE="$env_file"
+    export ESPO_OPERATION_LOCK=1
+    export ESPO_MAINTENANCE_LOCK=1
+    export ESPO_SHELL_EXEC_CONTEXT=1
+    if [[ -n "$env_file" ]]; then
+      set -a
+      # shellcheck disable=SC1090
+      source "$env_file"
+      set +a
+    fi
+    "$@"
+    ;;
+  update-backup)
+    echo "mock update-backup args: $*"
+    exit 0
+    ;;
+  update-runtime)
+    echo "mock update-runtime args: $*"
+    echo "ERROR [update_runtime_failed]: timed out while waiting for service readiness 'espocrm-daemon' (10 sec.)" >&2
+    exit 5
+    ;;
+  *)
+    echo "unexpected espops args: $*" >&2
+    exit 98
+    ;;
+esac
 EOF
-  chmod +x "$backup_mock"
-  replace_repo_file_temporarily "$backup_mock" "$SCRIPT_DIR/backup.sh"
+  chmod +x "$mock_espops"
 
   create_mock_docker_shared_timeout_budget "$mock_bin_dir"
-  create_mock_time_control "$mock_bin_dir"
 
   mkdir -p "$state_dir"
-  printf '0\n' > "$time_file"
-  cat > "$state_dir/db.statuses" <<'EOF'
-starting
-healthy
-healthy
-EOF
-  cat > "$state_dir/espocrm.statuses" <<'EOF'
-starting
-healthy
-EOF
-  cat > "$state_dir/espocrm-daemon.statuses" <<'EOF'
-starting
-EOF
-  cat > "$state_dir/espocrm-websocket.statuses" <<'EOF'
-healthy
-EOF
+  printf 'db\n' > "$state_dir/running-services"
 
   if run_command_capture "$output_file" env \
     PATH="$mock_bin_dir:$PATH" \
     MOCK_DOCKER_STATE_DIR="$state_dir" \
-    MOCK_TIME_FILE="$time_file" \
     ENV_FILE="$env_file" \
+    ESPOPS_BIN="$mock_espops" \
     bash "$SCRIPT_DIR/update.sh" dev --skip-doctor --skip-pull --skip-http-probe --timeout 10; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "mock backup args: dev" "runtime output"
-  assert_file_contains "$output_file" "runtime output" "runtime output"
+  assert_file_contains "$output_file" "mock run-operation args: run-operation --scope dev --operation update --project-dir $ROOT_DIR --env-file $env_file -- bash $SCRIPT_DIR/update.sh dev --skip-doctor --skip-pull --skip-http-probe --timeout 10" "runtime output"
+  assert_file_contains "$output_file" "mock update-backup args: update-backup --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --timeout 10" "runtime output"
+  assert_file_contains "$output_file" "mock update-runtime args: update-runtime --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --site-url https://dev-update-timeout.test --timeout 10 --skip-pull --skip-http-probe" "runtime output"
+  assert_file_contains "$output_file" "timed out while waiting for service readiness 'espocrm-daemon' (10 sec.)" "runtime output"
   assert_file_not_contains "$output_file" "Update completed successfully" "runtime output"
 
   restore_replaced_repo_files
+  pass_test "Regression case passed"
+}
+
+test_backup_delegates_to_go_backup_exec() {
+  announce_test "Regression case"
+
+  local env_file="$TEST_TMP_ROOT/env.backup-go-delegation"
+  local output_file="$TEST_TMP_ROOT/backup-go-delegation.out"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.backup.sh"
+
+  copy_example_env dev "$env_file"
+  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/backup-go-delegation-backups"
+  set_env_value "$env_file" ESPO_STORAGE_DIR "$TEST_TMP_ROOT/backup-go-delegation-storage/espo"
+
+  mkdir -p "$TEST_TMP_ROOT/backup-go-delegation-storage/espo"
+  printf 'backup-go-delegation\n' > "$TEST_TMP_ROOT/backup-go-delegation-storage/espo/file.txt"
+
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+case "${1:-}" in
+  run-operation)
+    echo "mock run-operation args: $*"
+    scope=""
+    env_file=""
+    shift
+    while [[ $# -gt 0 ]]; do
+      case "$1" in
+        --scope)
+          scope="$2"
+          shift 2
+          ;;
+        --operation|--project-dir|--env-file)
+          if [[ "$1" == "--env-file" ]]; then
+            env_file="$2"
+          fi
+          shift 2
+          ;;
+        --)
+          shift
+          break
+          ;;
+        *)
+          echo "unexpected run-operation arg: $1" >&2
+          exit 97
+          ;;
+      esac
+    done
+
+    export ESPO_ENV="$scope"
+    export RESOLVED_ENV_CONTOUR="$scope"
+    export ENV_FILE="$env_file"
+    export ESPO_OPERATION_LOCK=1
+    export ESPO_MAINTENANCE_LOCK=1
+    export ESPO_SHELL_EXEC_CONTEXT=1
+    if [[ -n "$env_file" ]]; then
+      set -a
+      # shellcheck disable=SC1090
+      source "$env_file"
+      set +a
+    fi
+    "$@"
+    ;;
+  backup-exec)
+    echo "mock backup-exec args: $*"
+    ;;
+  *)
+    echo "unexpected espops args: $*" >&2
+    exit 98
+    ;;
+esac
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/backup.sh" dev --skip-db --no-stop; then
+    fail_test "Regression case failed"
+  fi
+
+  assert_file_contains "$output_file" "mock run-operation args: run-operation --scope dev --operation backup --project-dir $ROOT_DIR --env-file $env_file -- bash $SCRIPT_DIR/backup.sh dev --skip-db --no-stop" "runtime output"
+  assert_file_contains "$output_file" "mock backup-exec args: backup-exec --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --skip-db --no-stop" "runtime output"
   pass_test "Regression case passed"
 }
 
@@ -213,7 +391,7 @@ EOF
     fail_test "Regression case failed"
   fi
 
-  smoke_env_file="$(find "$ROOT_DIR" -maxdepth 1 -type f -name '.env.smoke.dev.*' | sort | tail -n 1)"
+  smoke_env_file="$(find "$ROOT_DIR/.cache/env" -maxdepth 1 -type f -name 'smoke.dev.*.env' | sort | tail -n 1)"
   [[ -n "$smoke_env_file" && -f "$smoke_env_file" ]] || fail_test "Regression case failed"
   [[ -d "$ROOT_DIR/storage/smoke/dev" ]] || fail_test "Regression case failed"
   [[ -d "$ROOT_DIR/backups/smoke/dev" ]] || fail_test "Regression case failed"
@@ -305,7 +483,7 @@ EOF
     fail_test "Regression case failed"
   fi
 
-  drill_env_file="$(find "$ROOT_DIR" -maxdepth 1 -type f -name '.env.restore-drill.dev.*' | sort | tail -n 1)"
+  drill_env_file="$(find "$ROOT_DIR/.cache/env" -maxdepth 1 -type f -name 'restore-drill.dev.*.env' | sort | tail -n 1)"
   [[ -n "$drill_env_file" && -f "$drill_env_file" ]] || fail_test "Regression case failed"
   [[ -d "$ROOT_DIR/storage/restore-drill/dev/db" ]] || fail_test "Regression case failed"
   [[ -d "$ROOT_DIR/storage/restore-drill/dev/espo" ]] || fail_test "Regression case failed"
@@ -495,8 +673,8 @@ test_doctor_all_switches_between_contours() {
     true
   fi
 
-  assert_file_contains "$output_file" "runtime output" "runtime output"
-  assert_file_contains "$output_file" "runtime output" "runtime output"
+  assert_file_contains "$output_file" "[prod] Env file loaded successfully" "runtime output"
+  assert_file_contains "$output_file" "[dev] Env file loaded successfully" "runtime output"
   assert_file_contains "$output_file" "[cross] COMPOSE_PROJECT_NAME differs between prod and dev" "runtime output"
   pass_test "Regression case passed"
 }

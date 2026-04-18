@@ -1197,7 +1197,7 @@ test_restore_db_requires_force_and_prod_confirmation() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "runtime output" "runtime output"
+  assert_file_contains "$output_file" "requires an explicit --force flag" "runtime output"
 
   if run_command_capture "$output_file" env ENV_FILE="$prod_env_file" bash "$SCRIPT_DIR/restore-db.sh" prod "$db_backup" --force --no-stop --no-start; then
     fail_test "Regression case failed"
@@ -1227,7 +1227,7 @@ test_restore_files_requires_force_and_prod_confirmation() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "runtime output" "runtime output"
+  assert_file_contains "$output_file" "requires an explicit --force flag" "runtime output"
 
   if run_command_capture "$output_file" env ENV_FILE="$prod_env_file" bash "$SCRIPT_DIR/restore-files.sh" prod "$archive_file" --force --no-stop --no-start; then
     fail_test "Regression case failed"
@@ -1322,6 +1322,66 @@ test_rollback_selects_manifest_valid_set() {
   pass_test "Regression case passed"
 }
 
+test_rollback_auto_selection_uses_go_verify_contract() {
+  announce_test "Regression case"
+
+  local backup_root="$TEST_TMP_ROOT/rollback-go-contract-backups"
+  local env_file="$TEST_TMP_ROOT/env.rollback-go-contract"
+  local output_file="$TEST_TMP_ROOT/rollback-go-contract.out"
+  local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-rollback-go-contract"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.rollback"
+  local espops_log="$TEST_TMP_ROOT/mock.espops.rollback.log"
+  local selected_stamp="2026-04-07_01-00-00"
+
+  create_db_backup "$backup_root" "espocrm-prod" "$selected_stamp" "db-selected-by-go-contract"
+  create_files_backup "$backup_root" "espocrm-prod" "$selected_stamp" "files-selected-by-go-contract"
+  create_manifest_pair "$backup_root" "espocrm-prod" "$selected_stamp" "prod" "go-contract-prod"
+
+  copy_example_env prod "$env_file"
+  set_env_value "$env_file" DB_STORAGE_DIR "$TEST_TMP_ROOT/rollback-go-contract-storage/db"
+  set_env_value "$env_file" ESPO_STORAGE_DIR "$TEST_TMP_ROOT/rollback-go-contract-storage/espo"
+  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
+  set_env_value "$env_file" BACKUP_NAME_PREFIX "espocrm-test-prod"
+
+  cat > "$mock_espops" <<EOF
+#!/usr/bin/env bash
+set -Eeuo pipefail
+: "\${MOCK_ESPOPS_LOG:?}"
+printf '%s\n' "\$*" >> "\$MOCK_ESPOPS_LOG"
+cat <<'JSON'
+{
+  "command": "verify-backup",
+  "ok": true,
+  "message": "backup verification passed",
+  "artifacts": {
+    "manifest": "$backup_root/manifests/espocrm-prod_${selected_stamp}.manifest.json",
+    "db_backup": "$backup_root/db/espocrm-prod_${selected_stamp}.sql.gz",
+    "files_backup": "$backup_root/files/espocrm-prod_files_${selected_stamp}.tar.gz"
+  },
+  "details": {
+    "scope": "prod",
+    "created_at": "2026-04-07T01:00:00Z"
+  }
+}
+JSON
+EOF
+  chmod +x "$mock_espops"
+
+  create_mock_docker_rollback_guard "$mock_bin_dir"
+
+  if run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" MOCK_ESPOPS_LOG="$espops_log" bash "$SCRIPT_DIR/rollback.sh" prod --force --confirm-prod prod --no-snapshot; then
+    fail_test "Regression case failed"
+  fi
+
+  assert_file_contains "$espops_log" "--json verify-backup --backup-root $backup_root" "runtime output"
+  assert_file_contains "$output_file" "Backup-set selection mode: auto-latest-valid" "runtime output"
+  assert_file_contains "$output_file" "Selected timestamp: $selected_stamp" "runtime output"
+  assert_file_contains "$output_file" "Database backup: $backup_root/db/espocrm-prod_${selected_stamp}.sql.gz" "runtime output"
+  assert_file_contains "$output_file" "Files backup: $backup_root/files/espocrm-prod_files_${selected_stamp}.tar.gz" "runtime output"
+  assert_file_contains "$output_file" "mock rollback stop after selection" "runtime output"
+  pass_test "Regression case passed"
+}
+
 test_rollback_manual_pair_writes_plan_with_flags() {
   announce_test "Regression case"
 
@@ -1378,7 +1438,7 @@ test_rollback_requires_force_and_prod_confirmation() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "runtime output" "runtime output"
+  assert_file_contains "$output_file" "requires an explicit --force flag" "runtime output"
 
   if run_command_capture "$output_file" env ENV_FILE="$env_file" bash "$SCRIPT_DIR/rollback.sh" prod --force --no-snapshot; then
     fail_test "Regression case failed"
@@ -1458,7 +1518,7 @@ EOF
   fi
 
   assert_file_not_contains "$output_file" "[info] Database backup:" "runtime output"
-  assert_file_contains "$output_file" "runtime output" "runtime output"
+  assert_file_contains "$output_file" "[info] Files backup: $source_backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz" "runtime output"
   assert_file_contains "$output_file" "mock stack args: prod up -d db" "runtime output"
   assert_file_contains "$output_file" "mock restore-files args: prod $source_backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz --force --confirm-prod prod --no-snapshot --no-stop --no-start" "runtime output"
   assert_file_contains "$output_file" "The target contour was left stopped because of --no-start" "runtime output"
@@ -1483,7 +1543,7 @@ test_migrate_backup_requires_force_and_prod_confirmation() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "runtime output" "runtime output"
+  assert_file_contains "$output_file" "requires an explicit --force flag" "runtime output"
 
   if run_command_capture "$output_file" bash "$SCRIPT_DIR/migrate-backup.sh" dev prod --force; then
     fail_test "Regression case failed"

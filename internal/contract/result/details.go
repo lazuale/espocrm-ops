@@ -43,6 +43,17 @@ type BackupDetails struct {
 	Sidecars  bool   `json:"sidecars"`
 }
 
+type BackupExecuteDetails struct {
+	Scope                  string `json:"scope"`
+	CreatedAt              string `json:"created_at"`
+	SkipDB                 bool   `json:"skip_db"`
+	SkipFiles              bool   `json:"skip_files"`
+	NoStop                 bool   `json:"no_stop"`
+	ConsistentSnapshot     bool   `json:"consistent_snapshot"`
+	AppServicesWereRunning bool   `json:"app_services_were_running"`
+	RetentionDays          int    `json:"retention_days"`
+}
+
 type BackupCatalogDetails struct {
 	BackupRoot     string `json:"backup_root"`
 	VerifyChecksum bool   `json:"verify_checksum"`
@@ -106,6 +117,15 @@ type BackupArtifacts struct {
 	FilesChecksum string `json:"files_checksum"`
 }
 
+type BackupExecuteArtifacts struct {
+	ManifestTXT   string `json:"manifest_txt"`
+	ManifestJSON  string `json:"manifest_json"`
+	DBBackup      string `json:"db_backup,omitempty"`
+	FilesBackup   string `json:"files_backup,omitempty"`
+	DBChecksum    string `json:"db_checksum,omitempty"`
+	FilesChecksum string `json:"files_checksum,omitempty"`
+}
+
 type RestoreFilesArtifacts struct {
 	Manifest  string `json:"manifest"`
 	Files     string `json:"files_backup,omitempty"`
@@ -117,6 +137,81 @@ type RestoreDBArtifacts struct {
 	DBBackup    string `json:"db_backup,omitempty"`
 	DBContainer string `json:"db_container"`
 	DBName      string `json:"db_name"`
+}
+
+type UpdateBackupDetails struct {
+	TimeoutSeconds         int    `json:"timeout_seconds"`
+	StartedDBTemporarily   bool   `json:"started_db_temporarily"`
+	CreatedAt              string `json:"created_at"`
+	ConsistentSnapshot     bool   `json:"consistent_snapshot"`
+	AppServicesWereRunning bool   `json:"app_services_were_running"`
+}
+
+type UpdateBackupArtifacts struct {
+	Scope         string `json:"scope"`
+	ManifestTXT   string `json:"manifest_txt"`
+	ManifestJSON  string `json:"manifest_json"`
+	DBBackup      string `json:"db_backup,omitempty"`
+	FilesBackup   string `json:"files_backup,omitempty"`
+	DBChecksum    string `json:"db_checksum,omitempty"`
+	FilesChecksum string `json:"files_checksum,omitempty"`
+}
+
+type UpdateRuntimeDetails struct {
+	TimeoutSeconds int      `json:"timeout_seconds"`
+	SkipPull       bool     `json:"skip_pull"`
+	SkipHTTPProbe  bool     `json:"skip_http_probe"`
+	ServicesReady  []string `json:"services_ready,omitempty"`
+}
+
+type UpdateRuntimeArtifacts struct {
+	ProjectDir  string `json:"project_dir"`
+	ComposeFile string `json:"compose_file"`
+	EnvFile     string `json:"env_file"`
+	SiteURL     string `json:"site_url,omitempty"`
+}
+
+type DoctorDetails struct {
+	TargetScope string `json:"target_scope"`
+	Ready       bool   `json:"ready"`
+	Checks      int    `json:"checks"`
+	Passed      int    `json:"passed"`
+	Warnings    int    `json:"warnings"`
+	Failed      int    `json:"failed"`
+}
+
+type DoctorScopeArtifact struct {
+	Scope      string `json:"scope"`
+	EnvFile    string `json:"env_file,omitempty"`
+	BackupRoot string `json:"backup_root,omitempty"`
+}
+
+type DoctorArtifacts struct {
+	ProjectDir  string                `json:"project_dir"`
+	ComposeFile string                `json:"compose_file"`
+	Scopes      []DoctorScopeArtifact `json:"scopes,omitempty"`
+}
+
+type DoctorCheck struct {
+	Scope   string `json:"scope,omitempty"`
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Details string `json:"details,omitempty"`
+	Action  string `json:"action,omitempty"`
+}
+
+type RunOperationDetails struct {
+	Scope          string   `json:"scope"`
+	Operation      string   `json:"operation"`
+	Command        []string `json:"command"`
+	ComposeProject string   `json:"compose_project,omitempty"`
+}
+
+type RunOperationArtifacts struct {
+	ProjectDir string `json:"project_dir"`
+	EnvFile    string `json:"env_file,omitempty"`
+	BackupRoot string `json:"backup_root,omitempty"`
 }
 
 type PruneItem struct {

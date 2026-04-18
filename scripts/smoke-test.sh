@@ -89,10 +89,11 @@ require_compose
 SMOKE_ENV_FILE=""
 
 if [[ $USE_EXAMPLE_ENV -eq 1 ]]; then
-  EXAMPLE_ENV_FILE="$ROOT_DIR/.env.${ESPO_ENV}.example"
+  EXAMPLE_ENV_FILE="$ROOT_DIR/ops/env/.env.${ESPO_ENV}.example"
   [[ -f "$EXAMPLE_ENV_FILE" ]] || die "Env-file template not found: $EXAMPLE_ENV_FILE"
 
-  SMOKE_ENV_FILE="$(mktemp "$ROOT_DIR/.env.smoke.${ESPO_ENV}.XXXXXX")"
+  mkdir -p "$ROOT_DIR/.cache/env"
+  SMOKE_ENV_FILE="$(mktemp "$ROOT_DIR/.cache/env/smoke.${ESPO_ENV}.XXXXXX.env")"
   cp "$EXAMPLE_ENV_FILE" "$SMOKE_ENV_FILE"
 
   if [[ "$ESPO_ENV" == "prod" ]]; then

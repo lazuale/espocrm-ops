@@ -13,9 +13,9 @@ import (
 )
 
 type CodeError struct {
-	Code    int
-	Err     error
-	ErrCode string
+	Code     int
+	Err      error
+	ErrCode  string
 	Warnings []string
 }
 
@@ -43,6 +43,14 @@ func (e CodeError) WarningMessages() []string {
 		return nil
 	}
 	return append([]string(nil), e.Warnings...)
+}
+
+type silentCodeError struct {
+	CodeError
+}
+
+func (e silentCodeError) SuppressTextError() bool {
+	return true
 }
 
 func usageError(err error) error {
@@ -84,13 +92,12 @@ func noArgs(cmd *cobra.Command, args []string) error {
 }
 
 func codeForError(err error, fallback int) int {
-	if kind, ok := apperr.KindOf(err); ok {
-		return exitCodeForKind(kind, fallback)
+	if coded, ok := err.(exitCodedError); ok {
+		return coded.ExitCode()
 	}
 
-	var coded exitCodedError
-	if errors.As(err, &coded) {
-		return coded.ExitCode()
+	if kind, ok := apperr.KindOf(err); ok {
+		return exitCodeForKind(kind, fallback)
 	}
 
 	var pathErr *os.PathError
@@ -150,8 +157,8 @@ func ErrorResult(command string, err error, fallbackExitCode int, fallbackErrorC
 	warnings := warningMessages(err)
 
 	return result.Result{
-		Command: command,
-		OK:      false,
+		Command:  command,
+		OK:       false,
 		Warnings: warnings,
 		Error: &result.ErrorInfo{
 			Code:     errCode,

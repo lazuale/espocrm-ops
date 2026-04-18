@@ -53,6 +53,10 @@ ALLOWED_ROOT_MARKDOWN = {
     "CONTRIBUTING.md",
 }
 ALLOWED_OPS_MARKDOWN_ROOT = "ops/adr/"
+REQUIRED_OPS_ENV_EXAMPLES = {
+    "ops/env/.env.dev.example",
+    "ops/env/.env.prod.example",
+}
 
 
 def main() -> int:
@@ -126,6 +130,26 @@ def main() -> int:
         print(
             "unexpected root markdown:",
             ", ".join(unexpected_root_markdown),
+            file=sys.stderr,
+        )
+        return 1
+
+    root_env_examples = sorted(path.name for path in ROOT.glob(".env.*.example"))
+    if root_env_examples:
+        print(
+            "unexpected root env examples:",
+            ", ".join(root_env_examples),
+            file=sys.stderr,
+        )
+        return 1
+
+    missing_ops_env_examples = sorted(
+        rel for rel in REQUIRED_OPS_ENV_EXAMPLES if not (ROOT / rel).exists()
+    )
+    if missing_ops_env_examples:
+        print(
+            "missing ops env examples:",
+            ", ".join(missing_ops_env_examples),
             file=sys.stderr,
         )
         return 1

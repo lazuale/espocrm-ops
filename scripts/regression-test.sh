@@ -88,6 +88,7 @@ main() {
   test_restore_drill_selects_complete_set
   test_restore_drill_rejects_equal_ports
   test_rollback_selects_manifest_valid_set
+  test_rollback_auto_selection_uses_go_verify_contract
   test_rollback_manual_pair_writes_plan_with_flags
   test_rollback_requires_force_and_prod_confirmation
   test_migrate_backup_selects_complete_pair_and_switches_env
@@ -95,7 +96,8 @@ main() {
   test_migrate_backup_requires_force_and_prod_confirmation
   test_migrate_backup_rejects_config_contract_drift
   test_update_can_skip_optional_steps
-  test_update_uses_shared_timeout_budget_for_readiness_steps
+  test_update_propagates_go_runtime_timeout_failure
+  test_backup_delegates_to_go_backup_exec
   test_smoke_test_can_keep_artifacts
   test_restore_drill_supports_explicit_selection_skip_probe_and_keep_artifacts
   test_status_report_writes_output_files

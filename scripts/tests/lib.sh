@@ -105,11 +105,10 @@ cleanup_generated_repo_artifacts() {
   rm -rf -- \
     "$ROOT_DIR/backups/smoke" \
     "$ROOT_DIR/backups/restore-drill" \
+    "$ROOT_DIR/.cache/env" \
     "$ROOT_DIR/storage/smoke" \
     "$ROOT_DIR/storage/restore-drill"
   rm -rf -- "$ROOT_DIR"/.support.*
-  rm -f -- "$ROOT_DIR"/.env.smoke.*
-  rm -f -- "$ROOT_DIR"/.env.restore-drill.*
 }
 
 cleanup() {
@@ -173,7 +172,7 @@ run_command_capture() {
 copy_example_env() {
   local contour="$1"
   local target="$2"
-  replace_repo_file "$ROOT_DIR/.env.${contour}.example" "$target"
+  replace_repo_file "$ROOT_DIR/ops/env/.env.${contour}.example" "$target"
   chmod 600 "$target"
 }
 

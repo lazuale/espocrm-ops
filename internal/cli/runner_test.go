@@ -2,6 +2,8 @@ package cli
 
 import (
 	"errors"
+	"fmt"
+	"io"
 	"strings"
 	"testing"
 	"time"
@@ -212,5 +214,91 @@ func TestRunCommand_PayloadSerializationFailure_AddsWarning(t *testing.T) {
 	}
 	if cw.entries[0].Details != nil {
 		t.Fatalf("expected failed details payload to be omitted from journal, got: %+v", cw.entries[0].Details)
+	}
+}
+
+func TestRunResultCommand_DoesNotWriteJournalEntries(t *testing.T) {
+	cw := &captureWriter{}
+	opts := []testAppOption{
+		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-read-only"),
+		withJournalWriterFactory(func(dir string) JournalWriter {
+			return cw
+		}),
+	}
+
+	cmd := &cobra.Command{}
+	bindTestApp(cmd, opts...)
+	cmd.SetOut(&strings.Builder{})
+
+	if err := RunResultCommand(cmd, CommandSpec{
+		Name:      "history",
+		ErrorCode: "history_failed",
+		ExitCode:  1,
+	}, func() (result.Result, error) {
+		return result.Result{
+			OK:      true,
+			Message: "history loaded",
+		}, nil
+	}); err != nil {
+		t.Fatalf("RunResultCommand returned success error: %v", err)
+	}
+
+	if len(cw.entries) != 0 {
+		t.Fatalf("expected no journal entries for non-journaling success, got %d", len(cw.entries))
+	}
+
+	err := RunResultCommand(cmd, CommandSpec{
+		Name:      "show-operation",
+		ErrorCode: "show_operation_failed",
+		ExitCode:  1,
+	}, func() (result.Result, error) {
+		return result.Result{}, errors.New("boom")
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	if len(cw.entries) != 0 {
+		t.Fatalf("expected no journal entries for non-journaling failure, got %d", len(cw.entries))
+	}
+}
+
+func TestRunCommand_CustomRenderText_AppendsWarnings(t *testing.T) {
+	opts := []testAppOption{
+		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-custom-render"),
+		withJournalWriterFactory(func(dir string) JournalWriter {
+			return failingWriter{}
+		}),
+	}
+
+	cmd := &cobra.Command{}
+	bindTestApp(cmd, opts...)
+	out := &strings.Builder{}
+	cmd.SetOut(out)
+
+	err := RunCommand(cmd, CommandSpec{
+		Name:      "backup-audit",
+		ErrorCode: "backup_audit_failed",
+		ExitCode:  1,
+		RenderText: func(w io.Writer, res result.Result) error {
+			_, err := fmt.Fprintln(w, "audit summary")
+			return err
+		},
+	}, func() (result.Result, error) {
+		return result.Result{
+			OK:      true,
+			Message: "ignored by custom renderer",
+		}, nil
+	})
+	if err != nil {
+		t.Fatalf("RunCommand returned error: %v", err)
+	}
+
+	got := out.String()
+	if !strings.Contains(got, "audit summary") {
+		t.Fatalf("expected custom text output, got: %s", got)
+	}
+	if !strings.Contains(got, "WARNING: failed to write journal entry") {
+		t.Fatalf("expected warning after custom render, got: %s", got)
 	}
 }

@@ -48,12 +48,17 @@ func (a *App) NewRootCmd() *cobra.Command {
 	})
 
 	cmd.AddCommand(
+		bindApp(newDoctorCmd(), a),
 		bindApp(newBackupCmd(), a),
+		bindApp(newBackupExecuteCmd(), a),
 		bindApp(newBackupAuditCmd(), a),
 		bindApp(newBackupCatalogCmd(), a),
+		bindApp(newRunOperationCmd(), a),
 		bindApp(newVerifyBackupCmd(), a),
 		bindApp(newRestoreFilesCmd(), a),
 		bindApp(newRestoreDBCmd(), a),
+		bindApp(newUpdateBackupCmd(), a),
+		bindApp(newUpdateRuntimeCmd(), a),
 		bindApp(newHistoryCmd(), a),
 		bindApp(newLastOperationCmd(), a),
 		bindApp(newShowOperationCmd(), a),

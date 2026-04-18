@@ -5,8 +5,70 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"strings"
 )
+
+func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPath string) error {
+	container, err := composeServiceContainerID(cfg, service)
+	if err != nil {
+		return fmt.Errorf("resolve db container for service %s: %w", service, err)
+	}
+	if strings.TrimSpace(container) == "" {
+		return ContainerNotRunningError{Container: service}
+	}
+
+	dumpClient, err := detectDBDumpClient(container)
+	if err != nil {
+		return err
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create db backup: %w", err)
+	}
+	defer f.Close()
+
+	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
+	if err != nil {
+		return fmt.Errorf("create gzip writer: %w", err)
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			_ = gz.Close()
+		}
+	}()
+
+	var stderr strings.Builder
+	cmd := exec.Command(
+		"docker",
+		"exec", "-i",
+		"-e", "MYSQL_PWD",
+		container,
+		dumpClient,
+		"-u", user,
+		dbName,
+		"--single-transaction",
+		"--quick",
+		"--routines",
+		"--triggers",
+		"--events",
+	)
+	cmd.Env = dockerCommandEnv("MYSQL_PWD=" + password)
+	cmd.Stdout = gz
+	cmd.Stderr = &stderr
+
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("dump mysql database %s in container %s: %w%s", dbName, container, err, commandErrorSuffix(stderr.String()))
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("finish db backup gzip: %w", err)
+	}
+	closed = true
+
+	return nil
+}
 
 func RestoreMySQLDumpGz(dbPath, container, user, password, dbName string) error {
 	f, err := os.Open(dbPath)
@@ -104,6 +166,19 @@ func DetectDBClient(container string) (string, error) {
 	return "", DBClientDetectionError{Container: container, Err: lastErr}
 }
 
+func detectDBDumpClient(container string) (string, error) {
+	var lastErr error
+	for _, client := range []string{"mariadb-dump", "mysqldump"} {
+		if _, err := Run("docker", "exec", container, client, "--version"); err == nil {
+			return client, nil
+		} else {
+			lastErr = err
+		}
+	}
+
+	return "", fmt.Errorf("detect db dump client in container %s: %w", container, lastErr)
+}
+
 func runMySQLSQL(container, client, password, dbName, sql string) error {
 	return pipeMySQL(container, client, password, dbName, strings.NewReader(sql))
 }
@@ -128,4 +203,25 @@ func pipeMySQL(container, client, password, dbName string, input io.Reader) erro
 	}
 
 	return nil
+}
+
+func commandErrorSuffix(stderr string) string {
+	if line := lastNonBlankLine(stderr); line != "" {
+		return ": " + line
+	}
+
+	return ""
+}
+
+func lastNonBlankLine(text string) string {
+	text = strings.ReplaceAll(text, "\r", "")
+	lines := strings.Split(text, "\n")
+	for i := len(lines) - 1; i >= 0; i-- {
+		line := strings.TrimSpace(lines[i])
+		if line != "" {
+			return line
+		}
+	}
+
+	return ""
 }

@@ -2,7 +2,6 @@ package architecture
 
 import (
 	"github.com/lazuale/espocrm-ops/internal/cli"
-	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 	"github.com/spf13/cobra"
@@ -31,18 +30,6 @@ func (a *App) RootCmd() *cobra.Command {
 	return a.cli.NewRootCmd()
 }
 
-func (a *App) IsJSONEnabled() bool {
-	if a == nil {
-		return false
-	}
-
-	return a.cli.IsJSONEnabled()
-}
-
-func (a *App) IsUsageError(err error) bool {
-	return cli.IsUsageError(err)
-}
-
-func (a *App) ErrorResult(command string, err error, fallbackExitCode int, fallbackErrorCode string) (result.Result, int) {
-	return cli.ErrorResult(command, err, fallbackExitCode, fallbackErrorCode)
+func (a *App) ExecuteRoot(root *cobra.Command) int {
+	return cli.ExecuteRoot(root)
 }

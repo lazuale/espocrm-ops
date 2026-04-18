@@ -1,8 +1,6 @@
 .env
 .env.dev
 .env.prod
-.env.smoke.*
-.env.restore-drill.*
 .env.local
 .env.*.local
 
@@ -22,6 +20,3 @@ Thumbs.db
 .vscode/
 .codex
 bin/
-
-!.env.dev.example
-!.env.prod.example
