@@ -141,6 +141,13 @@ func TestRunCommand_SerializesTypedArtifactsAndDetailsIntoJournal(t *testing.T) 
 				Scope:     "prod",
 				CreatedAt: "2026-04-15T11:00:00Z",
 			},
+			Items: []any{
+				result.UpdateItem{
+					Code:    "doctor",
+					Status:  "completed",
+					Summary: "Doctor completed",
+				},
+			},
 		}, nil
 	})
 	if err != nil {
@@ -152,6 +159,9 @@ func TestRunCommand_SerializesTypedArtifactsAndDetailsIntoJournal(t *testing.T) 
 	}
 
 	entry := cw.entries[0]
+	if entry.Message != "backup verification passed" {
+		t.Fatalf("unexpected message: %q", entry.Message)
+	}
 	if entry.Artifacts["manifest"] != "/tmp/manifest.json" {
 		t.Fatalf("unexpected artifacts.manifest: %v", entry.Artifacts["manifest"])
 	}
@@ -166,6 +176,16 @@ func TestRunCommand_SerializesTypedArtifactsAndDetailsIntoJournal(t *testing.T) 
 	}
 	if entry.Details["created_at"] != "2026-04-15T11:00:00Z" {
 		t.Fatalf("unexpected details.created_at: %v", entry.Details["created_at"])
+	}
+	if len(entry.Items) != 1 {
+		t.Fatalf("unexpected items: %#v", entry.Items)
+	}
+	item, ok := entry.Items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected item type: %T", entry.Items[0])
+	}
+	if item["code"] != "doctor" || item["status"] != "completed" {
+		t.Fatalf("unexpected item payload: %#v", item)
 	}
 }
 

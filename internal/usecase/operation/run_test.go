@@ -50,6 +50,13 @@ func TestExecutionFinishSuccessPopulatesResultAndJournalEntry(t *testing.T) {
 		Details: map[string]any{
 			"dry_run": true,
 		},
+		Items: []any{
+			map[string]any{
+				"code":    "doctor",
+				"status":  "completed",
+				"summary": "Doctor completed",
+			},
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -68,11 +75,24 @@ func TestExecutionFinishSuccessPopulatesResultAndJournalEntry(t *testing.T) {
 	if entry.OperationID != "op-test-1" || entry.Command != "test-command" || !entry.OK || !entry.DryRun {
 		t.Fatalf("unexpected journal entry: %#v", entry)
 	}
+	if entry.Message != "ok" {
+		t.Fatalf("unexpected message: %q", entry.Message)
+	}
 	if entry.Artifacts["manifest"] != "/tmp/manifest.json" {
 		t.Fatalf("unexpected artifacts: %#v", entry.Artifacts)
 	}
 	if entry.Details["dry_run"] != true {
 		t.Fatalf("unexpected details: %#v", entry.Details)
+	}
+	if len(entry.Items) != 1 {
+		t.Fatalf("unexpected items: %#v", entry.Items)
+	}
+	item, ok := entry.Items[0].(map[string]any)
+	if !ok {
+		t.Fatalf("unexpected item type: %T", entry.Items[0])
+	}
+	if item["code"] != "doctor" || item["status"] != "completed" {
+		t.Fatalf("unexpected item payload: %#v", item)
 	}
 }
 

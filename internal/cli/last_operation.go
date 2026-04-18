@@ -43,7 +43,7 @@ func newLastOperationCmd() *cobra.Command {
 				items := []any{}
 				message := "no operation found"
 				if last.Entry != nil {
-					items = append(items, *last.Entry)
+					items = append(items, journalusecase.Explain(*last.Entry))
 					message = ""
 				}
 
@@ -69,11 +69,10 @@ func renderLastOperationText(w io.Writer, res result.Result) error {
 		return err
 	}
 
-	entry, ok := res.Items[0].(journalusecase.Entry)
+	report, ok := res.Items[0].(journalusecase.OperationReport)
 	if !ok {
 		return fmt.Errorf("unexpected last operation item type %T", res.Items[0])
 	}
 
-	_, err := fmt.Fprintln(w, formatEntryLine(entry))
-	return err
+	return renderOperationReportText(w, report)
 }

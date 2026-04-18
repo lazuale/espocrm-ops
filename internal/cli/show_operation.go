@@ -43,7 +43,7 @@ func newShowOperationCmd() *cobra.Command {
 					OK:       true,
 					Warnings: journalusecase.WarningsFromReadStats(operation.Stats),
 					Details:  details,
-					Items:    []any{operation.Entry},
+					Items:    []any{journalusecase.Explain(operation.Entry)},
 				}, nil
 			})
 		},
@@ -59,10 +59,10 @@ func renderShowOperationText(w io.Writer, res result.Result) error {
 		return fmt.Errorf("expected one operation item, got %d", len(res.Items))
 	}
 
-	entry, ok := res.Items[0].(journalusecase.Entry)
+	report, ok := res.Items[0].(journalusecase.OperationReport)
 	if !ok {
 		return fmt.Errorf("unexpected show-operation item type %T", res.Items[0])
 	}
 
-	return renderEntryDetail(w, entry)
+	return renderOperationReportText(w, report)
 }

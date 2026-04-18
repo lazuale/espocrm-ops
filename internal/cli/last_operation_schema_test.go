@@ -107,3 +107,80 @@ func TestSchema_LastOperation_JSON_TrimsCommandFilter(t *testing.T) {
 		t.Fatalf("expected trimmed command filter, got %v", command)
 	}
 }
+
+func TestSchema_LastOperation_JSON_Report(t *testing.T) {
+	tmp := t.TempDir()
+	journalDir := filepath.Join(tmp, "journal")
+	if err := os.MkdirAll(journalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeJournalEntryFile(t, journalDir, "update.json", map[string]any{
+		"operation_id":  "op-update-3",
+		"command":       "update",
+		"started_at":    "2026-04-18T12:00:00Z",
+		"finished_at":   "2026-04-18T12:00:05Z",
+		"ok":            false,
+		"message":       "update failed",
+		"error_code":    "update_failed",
+		"error_message": "doctor found readiness failures",
+		"details": map[string]any{
+			"scope": "prod",
+		},
+		"artifacts": map[string]any{
+			"project_dir":  "/srv/espocrm",
+			"compose_file": "/srv/espocrm/compose.yaml",
+			"env_file":     "/srv/espocrm/.env.prod",
+		},
+		"items": []map[string]any{
+			{
+				"code":    "doctor",
+				"status":  "failed",
+				"summary": "Doctor stopped the update",
+				"details": "db is unhealthy",
+				"action":  "Resolve the reported doctor failures before rerunning update.",
+			},
+			{
+				"code":    "runtime_apply",
+				"status":  "not_run",
+				"summary": "Runtime apply did not run because doctor failed",
+			},
+		},
+	})
+
+	out, err := runRootCommand(t,
+		"--journal-dir", journalDir,
+		"--json",
+		"last-operation",
+	)
+	if err != nil {
+		t.Fatalf("command failed: %v\noutput=%s", err, out)
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(out), &obj); err != nil {
+		t.Fatal(err)
+	}
+
+	items := requireJSONPath(t, obj, "items").([]any)
+	if len(items) != 1 {
+		t.Fatalf("expected one item, got %#v", items)
+	}
+
+	report := items[0].(map[string]any)
+	counts := requireJSONPath(t, report, "counts").(map[string]any)
+	if int(counts["failed"].(float64)) != 1 {
+		t.Fatalf("unexpected failed count: %v", counts["failed"])
+	}
+	if int(counts["blocked"].(float64)) != 1 {
+		t.Fatalf("unexpected blocked count: %v", counts["blocked"])
+	}
+	failure := requireJSONPath(t, report, "failure").(map[string]any)
+	if failure["step_code"] != "doctor" {
+		t.Fatalf("unexpected failure attribution: %#v", failure)
+	}
+	steps := requireJSONPath(t, report, "steps").([]any)
+	if second := steps[1].(map[string]any); second["status"] != "blocked" {
+		t.Fatalf("expected blocked downstream step, got %#v", second)
+	}
+}
