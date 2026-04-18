@@ -1,0 +1,89 @@
+package cli
+
+import (
+	"fmt"
+	"net"
+	"net/http"
+	"os"
+	"path/filepath"
+	"testing"
+	"time"
+)
+
+func TestGolden_Update_JSON(t *testing.T) {
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "project")
+	journalDir := filepath.Join(tmp, "journal")
+	stateDir := filepath.Join(tmp, "docker-state")
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	fixedNow := time.Date(2026, 4, 18, 12, 0, 0, 0, time.UTC)
+	appPort := freeTCPPort(t)
+	wsPort := freeTCPPort(t)
+
+	useJournalClockForTest(t, fixedNow)
+
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "file.txt"), []byte("update-test\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
+	writeUpdateRuntimeStatusFile(t, stateDir, "espocrm", "healthy")
+	writeUpdateRuntimeStatusFile(t, stateDir, "espocrm-daemon", "healthy")
+	writeUpdateRuntimeStatusFile(t, stateDir, "espocrm-websocket", "healthy")
+
+	listener, err := net.Listen("tcp", fmt.Sprintf("127.0.0.1:%d", appPort))
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := &http.Server{Handler: http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})}
+	go func() {
+		_ = server.Serve(listener)
+	}()
+	defer func() {
+		_ = server.Close()
+	}()
+
+	writeDoctorEnvFile(t, projectDir, "prod", map[string]string{
+		"APP_PORT":      fmt.Sprintf("%d", appPort),
+		"WS_PORT":       fmt.Sprintf("%d", wsPort),
+		"SITE_URL":      "http://" + listener.Addr().String(),
+		"WS_PUBLIC_URL": fmt.Sprintf("ws://127.0.0.1:%d", wsPort),
+	})
+
+	prependFakeDockerForUpdateCLITest(t)
+	t.Setenv("DOCKER_MOCK_UPDATE_STATE_DIR", stateDir)
+	t.Setenv("DOCKER_MOCK_UPDATE_DUMP_STDOUT", "create table test(id int);\n")
+
+	out, err := runRootCommandWithOptions(
+		t,
+		[]testAppOption{withFixedTestRuntime(fixedNow, "op-update-1")},
+		"--journal-dir", journalDir,
+		"--json",
+		"update",
+		"--scope", "prod",
+		"--project-dir", projectDir,
+		"--timeout", "10",
+	)
+	if err != nil {
+		t.Fatalf("command failed: %v\noutput=%s", err, out)
+	}
+
+	normalized := normalizeUpdateJSON(t, []byte(out))
+	assertGoldenJSON(t, normalized, filepath.Join("testdata", "update_ok.golden.json"))
+}

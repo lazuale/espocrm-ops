@@ -65,36 +65,26 @@ func ExecuteShell(req ExecuteShellRequest) (ExecuteShellInfo, error) {
 		return info, apperr.Wrap(apperr.KindValidation, "operation_execute_failed", fmt.Errorf("operation command is required"))
 	}
 
-	env, err := platformconfig.LoadOperationEnv(req.ProjectDir, info.Scope, req.EnvFileOverride, req.EnvContourHint)
+	ctx, err := PrepareOperation(OperationContextRequest{
+		Scope:           info.Scope,
+		Operation:       info.Operation,
+		ProjectDir:      req.ProjectDir,
+		EnvFileOverride: req.EnvFileOverride,
+		EnvContourHint:  req.EnvContourHint,
+		LogWriter:       req.LogWriter,
+	})
 	if err != nil {
-		return info, wrapOperationEnvError(err)
-	}
-
-	info.EnvFile = env.FilePath
-	info.ComposeProject = env.ComposeProject()
-	info.BackupRoot = platformconfig.ResolveProjectPath(req.ProjectDir, env.BackupRoot())
-
-	if err := ensureRuntimeDirs(req.ProjectDir, env); err != nil {
-		return info, apperr.Wrap(apperr.KindIO, "operation_execute_failed", err)
-	}
-
-	opLock, err := platformlocks.AcquireSharedOperationLock(req.ProjectDir, info.Operation, req.LogWriter)
-	if err != nil {
-		return info, wrapOperationLockError(err)
+		return info, err
 	}
 	defer func() {
-		_ = opLock.Release()
+		_ = ctx.Release()
 	}()
 
-	maintenanceLock, err := platformlocks.AcquireMaintenanceLock(info.BackupRoot, info.Scope, info.Operation, req.LogWriter)
-	if err != nil {
-		return info, wrapOperationLockError(err)
-	}
-	defer func() {
-		_ = maintenanceLock.Release()
-	}()
+	info.EnvFile = ctx.Env.FilePath
+	info.ComposeProject = ctx.ComposeProject
+	info.BackupRoot = ctx.BackupRoot
 
-	childEnv := platformconfig.ApplyOperationEnv(req.BaseEnv, env, map[string]string{
+	childEnv := ctx.ApplyEnv(req.BaseEnv, map[string]string{
 		"ESPO_MAINTENANCE_LOCK":   "1",
 		"ESPO_OPERATION_LOCK":     "1",
 		"ESPO_SHELL_EXEC_CONTEXT": "1",

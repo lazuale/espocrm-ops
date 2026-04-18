@@ -49,6 +49,7 @@ func (a *App) NewRootCmd() *cobra.Command {
 
 	cmd.AddCommand(
 		bindApp(newDoctorCmd(), a),
+		bindApp(newUpdateCmd(), a),
 		bindApp(newUpdatePlanCmd(), a),
 		bindApp(newRollbackPlanCmd(), a),
 		bindApp(newBackupCmd(), a),

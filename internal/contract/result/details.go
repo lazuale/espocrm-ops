@@ -204,6 +204,44 @@ type UpdatePlanItem struct {
 	Action  string `json:"action,omitempty"`
 }
 
+type UpdateDetails struct {
+	Scope          string `json:"scope"`
+	Ready          bool   `json:"ready"`
+	Steps          int    `json:"steps"`
+	Completed      int    `json:"completed"`
+	Skipped        int    `json:"skipped"`
+	Failed         int    `json:"failed"`
+	NotRun         int    `json:"not_run"`
+	TimeoutSeconds int    `json:"timeout_seconds"`
+	SkipDoctor     bool   `json:"skip_doctor"`
+	SkipBackup     bool   `json:"skip_backup"`
+	SkipPull       bool   `json:"skip_pull"`
+	SkipHTTPProbe  bool   `json:"skip_http_probe"`
+}
+
+type UpdateArtifacts struct {
+	ProjectDir     string `json:"project_dir"`
+	ComposeFile    string `json:"compose_file"`
+	EnvFile        string `json:"env_file"`
+	ComposeProject string `json:"compose_project,omitempty"`
+	BackupRoot     string `json:"backup_root,omitempty"`
+	SiteURL        string `json:"site_url,omitempty"`
+	ManifestTXT    string `json:"manifest_txt,omitempty"`
+	ManifestJSON   string `json:"manifest_json,omitempty"`
+	DBBackup       string `json:"db_backup,omitempty"`
+	FilesBackup    string `json:"files_backup,omitempty"`
+	DBChecksum     string `json:"db_checksum,omitempty"`
+	FilesChecksum  string `json:"files_checksum,omitempty"`
+}
+
+type UpdateItem struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Details string `json:"details,omitempty"`
+	Action  string `json:"action,omitempty"`
+}
+
 type RollbackPlanDetails struct {
 	Scope           string `json:"scope"`
 	Ready           bool   `json:"ready"`

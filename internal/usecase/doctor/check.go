@@ -21,12 +21,14 @@ const (
 )
 
 type Request struct {
-	Scope           string
-	ProjectDir      string
-	ComposeFile     string
-	EnvFileOverride string
-	EnvContourHint  string
-	PathCheckMode   PathCheckMode
+	Scope                  string
+	ProjectDir             string
+	ComposeFile            string
+	EnvFileOverride        string
+	EnvContourHint         string
+	PathCheckMode          PathCheckMode
+	InheritedOperationLock bool
+	InheritedMaintenance   bool
 }
 
 type Check struct {
@@ -70,7 +72,7 @@ func Diagnose(req Request) (Report, error) {
 	}
 
 	checkComposeFile(&report)
-	checkSharedOperationLock(&report)
+	checkSharedOperationLock(&report, req.InheritedOperationLock)
 	docker := checkDocker(&report)
 
 	loaded := map[string]platformconfig.OperationEnv{}
@@ -147,7 +149,7 @@ func diagnoseScope(report *Report, req Request, scope string, docker dockerState
 	checkRuntimePath(report, scope, "db_storage_dir", "DB_STORAGE_DIR", platformconfig.ResolveProjectPath(report.ProjectDir, env.DBStorageDir()), minFreeMB, hasMinFree, pathMode)
 	checkRuntimePath(report, scope, "espo_storage_dir", "ESPO_STORAGE_DIR", platformconfig.ResolveProjectPath(report.ProjectDir, env.ESPOStorageDir()), minFreeMB, hasMinFree, pathMode)
 	checkRuntimePath(report, scope, "backup_root", "BACKUP_ROOT", backupRoot, minFreeMB, hasMinFree, pathMode)
-	checkMaintenanceLock(report, scope, backupRoot)
+	checkMaintenanceLock(report, scope, backupRoot, req.InheritedMaintenance)
 
 	if docker.composeReady && docker.daemonReady {
 		cfg := platformdocker.ComposeConfig{
@@ -171,7 +173,12 @@ func checkComposeFile(report *Report) {
 	report.ok("", "compose_file", "Compose file is ready", report.ComposeFile)
 }
 
-func checkSharedOperationLock(report *Report) {
+func checkSharedOperationLock(report *Report, inherited bool) {
+	if inherited {
+		report.ok("", "shared_operation_lock", "The shared operation lock is already held by the parent operation", "Inherited from the active update execution.")
+		return
+	}
+
 	readiness, err := platformlocks.CheckSharedOperationReadiness(report.ProjectDir)
 	if err != nil {
 		report.fail("", "shared_operation_lock", "Could not inspect the shared operation lock", err.Error(), "Check the filesystem permissions for the temporary lock directory and rerun doctor.")
@@ -192,7 +199,12 @@ func checkSharedOperationLock(report *Report) {
 	}
 }
 
-func checkMaintenanceLock(report *Report, scope, backupRoot string) {
+func checkMaintenanceLock(report *Report, scope, backupRoot string, inherited bool) {
+	if inherited {
+		report.ok(scope, "maintenance_lock", "The maintenance lock is already held by the parent operation", backupRoot)
+		return
+	}
+
 	readiness, err := platformlocks.CheckMaintenanceReadiness(backupRoot)
 	if err != nil {
 		report.fail(scope, "maintenance_lock", "Could not inspect the maintenance lock", err.Error(), "Check the backup lock directory permissions and rerun doctor.")

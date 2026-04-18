@@ -12,6 +12,13 @@ import (
 
 const readinessPollInterval = 5 * time.Second
 
+const (
+	RuntimeStagePullImages       = "pull_images"
+	RuntimeStageRestartStack     = "restart_stack"
+	RuntimeStageRuntimeReadiness = "runtime_readiness"
+	RuntimeStageHTTPProbe        = "http_probe"
+)
+
 var runtimeServices = []string{
 	"db",
 	"espocrm",
@@ -34,6 +41,8 @@ type RuntimeApplyInfo struct {
 	SkipPull       bool
 	SkipHTTPProbe  bool
 	ServicesReady  []string
+	RuntimeApplied bool
+	FailedStage    string
 }
 
 func ApplyRuntime(req RuntimeApplyRequest) (RuntimeApplyInfo, error) {
@@ -51,17 +60,21 @@ func ApplyRuntime(req RuntimeApplyRequest) (RuntimeApplyInfo, error) {
 
 	if !req.SkipPull {
 		if err := platformdocker.ComposePull(cfg); err != nil {
+			info.FailedStage = RuntimeStagePullImages
 			return info, apperr.Wrap(apperr.KindExternal, "update_runtime_failed", err)
 		}
 	}
 
 	if err := platformdocker.ComposeUp(cfg); err != nil {
+		info.FailedStage = RuntimeStageRestartStack
 		return info, apperr.Wrap(apperr.KindExternal, "update_runtime_failed", err)
 	}
+	info.RuntimeApplied = true
 
 	deadline := time.Now().UTC().Add(time.Duration(req.TimeoutSeconds) * time.Second)
 	for _, service := range runtimeServices {
 		if err := waitForServiceReady(cfg, service, deadline, req.TimeoutSeconds); err != nil {
+			info.FailedStage = RuntimeStageRuntimeReadiness
 			return info, apperr.Wrap(apperr.KindExternal, "update_runtime_failed", err)
 		}
 		info.ServicesReady = append(info.ServicesReady, service)
@@ -69,6 +82,7 @@ func ApplyRuntime(req RuntimeApplyRequest) (RuntimeApplyInfo, error) {
 
 	if !req.SkipHTTPProbe {
 		if err := httpProbe(req.SiteURL); err != nil {
+			info.FailedStage = RuntimeStageHTTPProbe
 			return info, apperr.Wrap(apperr.KindExternal, "update_runtime_failed", err)
 		}
 	}
