@@ -16,6 +16,7 @@ import (
 	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 )
 
 const (
@@ -68,6 +69,7 @@ type RollbackPlan struct {
 	FilesBackup     string
 	Warnings        []string
 	Steps           []PlanStep
+	Recovery        operationusecase.RecoveryInfo
 }
 
 type resolvedTarget struct {

@@ -45,6 +45,15 @@ type RuntimeApplyInfo struct {
 	FailedStage    string
 }
 
+type RuntimeReadinessRequest struct {
+	ProjectDir     string
+	ComposeFile    string
+	EnvFile        string
+	SiteURL        string
+	TimeoutSeconds int
+	SkipHTTPProbe  bool
+}
+
 func ApplyRuntime(req RuntimeApplyRequest) (RuntimeApplyInfo, error) {
 	info := RuntimeApplyInfo{
 		TimeoutSeconds: req.TimeoutSeconds,
@@ -71,17 +80,36 @@ func ApplyRuntime(req RuntimeApplyRequest) (RuntimeApplyInfo, error) {
 	}
 	info.RuntimeApplied = true
 
-	deadline := time.Now().UTC().Add(time.Duration(req.TimeoutSeconds) * time.Second)
+	return continueRuntimeReadiness(info, cfg, req.SiteURL)
+}
+
+func ApplyRuntimeReadiness(req RuntimeReadinessRequest) (RuntimeApplyInfo, error) {
+	info := RuntimeApplyInfo{
+		TimeoutSeconds: req.TimeoutSeconds,
+		SkipHTTPProbe:  req.SkipHTTPProbe,
+	}
+
+	cfg := platformdocker.ComposeConfig{
+		ProjectDir:  req.ProjectDir,
+		ComposeFile: req.ComposeFile,
+		EnvFile:     req.EnvFile,
+	}
+
+	return continueRuntimeReadiness(info, cfg, req.SiteURL)
+}
+
+func continueRuntimeReadiness(info RuntimeApplyInfo, cfg platformdocker.ComposeConfig, siteURL string) (RuntimeApplyInfo, error) {
+	deadline := time.Now().UTC().Add(time.Duration(info.TimeoutSeconds) * time.Second)
 	for _, service := range runtimeServices {
-		if err := waitForServiceReady(cfg, service, deadline, req.TimeoutSeconds); err != nil {
+		if err := waitForServiceReady(cfg, service, deadline, info.TimeoutSeconds); err != nil {
 			info.FailedStage = RuntimeStageRuntimeReadiness
 			return info, apperr.Wrap(apperr.KindExternal, "update_runtime_failed", err)
 		}
 		info.ServicesReady = append(info.ServicesReady, service)
 	}
 
-	if !req.SkipHTTPProbe {
-		if err := httpProbe(req.SiteURL); err != nil {
+	if !info.SkipHTTPProbe {
+		if err := httpProbe(siteURL); err != nil {
 			info.FailedStage = RuntimeStageHTTPProbe
 			return info, apperr.Wrap(apperr.KindExternal, "update_runtime_failed", err)
 		}

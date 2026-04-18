@@ -174,4 +174,8 @@ func TestContract_ShowOperation_JSON_Report(t *testing.T) {
 	if failure["step_code"] != "target_selection" {
 		t.Fatalf("unexpected failure attribution: %#v", failure)
 	}
+	recovery := requireJSONPath(t, report, "recovery").(map[string]any)
+	if recovery["decision"] != "retry_from_start" {
+		t.Fatalf("expected retry_from_start recovery decision, got %#v", recovery)
+	}
 }

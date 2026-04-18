@@ -167,8 +167,14 @@ func updatePlanResult(plan updateusecase.UpdatePlan) result.Result {
 	wouldRun, skipped, blocked, unknown := plan.Counts()
 
 	message := "update dry-run plan completed"
+	if plan.Recovery.Active() {
+		message = "update recovery plan completed"
+	}
 	if !plan.Ready() {
 		message = "update dry-run plan found blocking conditions"
+		if plan.Recovery.Active() {
+			message = "update recovery plan found blocking conditions"
+		}
 	}
 
 	items := make([]any, 0, len(plan.Steps))
@@ -202,6 +208,7 @@ func updatePlanResult(plan updateusecase.UpdatePlan) result.Result {
 			SkipBackup:     plan.SkipBackup,
 			SkipPull:       plan.SkipPull,
 			SkipHTTPProbe:  plan.SkipHTTPProbe,
+			Recovery:       recoveryResultDetails(plan.Recovery),
 		},
 		Artifacts: result.UpdatePlanArtifacts{
 			ProjectDir:     plan.ProjectDir,
@@ -290,6 +297,10 @@ func renderUpdatePlanText(w io.Writer, res result.Result) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Warnings:     %d\n", details.Warnings); err != nil {
+		return err
+	}
+
+	if err := renderRecoveryAttemptSection(w, details.Recovery); err != nil {
 		return err
 	}
 

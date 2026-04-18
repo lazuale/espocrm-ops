@@ -11,6 +11,7 @@ import (
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 )
 
 const (
@@ -56,6 +57,7 @@ type UpdatePlan struct {
 	SkipHTTPProbe  bool
 	Warnings       []string
 	Steps          []PlanStep
+	Recovery       operationusecase.RecoveryInfo
 }
 
 type planIssue struct {

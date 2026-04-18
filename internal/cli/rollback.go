@@ -9,6 +9,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 	rollbackusecase "github.com/lazuale/espocrm-ops/internal/usecase/rollback"
 	"github.com/spf13/cobra"
@@ -28,6 +29,8 @@ func newRollbackCmd() *cobra.Command {
 	var dryRun bool
 	var force bool
 	var confirmProd string
+	var recoverOperation string
+	var recoverMode string
 
 	cmd := &cobra.Command{
 		Use:   "rollback",
@@ -48,6 +51,8 @@ func newRollbackCmd() *cobra.Command {
 				dryRun:         dryRun,
 				force:          force,
 				confirmProd:    confirmProd,
+				recoverID:      recoverOperation,
+				recoverMode:    recoverMode,
 			}
 			if err := validateRollbackInput(cmd, &in); err != nil {
 				return err
@@ -74,6 +79,8 @@ func newRollbackCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what rollback would do without making changes")
 	cmd.Flags().BoolVar(&force, "force", false, "confirm that the destructive rollback should run")
 	cmd.Flags().StringVar(&confirmProd, "confirm-prod", "", "confirm destructive prod rollback by passing the literal value `prod`")
+	cmd.Flags().StringVar(&recoverOperation, "recover-operation", "", "recover a failed or blocked rollback operation by id")
+	cmd.Flags().StringVar(&recoverMode, "recover-mode", journalusecase.RecoveryModeAuto, "recovery mode: auto, retry, or resume")
 
 	return cmd
 }
@@ -92,9 +99,47 @@ type rollbackInput struct {
 	dryRun         bool
 	force          bool
 	confirmProd    string
+	recoverID      string
+	recoverMode    string
 }
 
 func validateRollbackInput(cmd *cobra.Command, in *rollbackInput) error {
+	in.recoverID = strings.TrimSpace(in.recoverID)
+	if cmd.Flags().Changed("recover-operation") && in.recoverID == "" {
+		return requiredFlagError("--recover-operation")
+	}
+	in.confirmProd = strings.TrimSpace(in.confirmProd)
+	if in.confirmProd != "" && in.confirmProd != "prod" {
+		return usageError(fmt.Errorf("--confirm-prod accepts only the value prod"))
+	}
+
+	if in.recoverID != "" {
+		if err := normalizeRecoveryModeFlag(cmd, "recover-mode", &in.recoverMode); err != nil {
+			return err
+		}
+		if err := rejectRecoveryOverrides(cmd, "--recover-operation",
+			"scope",
+			"project-dir",
+			"compose-file",
+			"env-file",
+			"db-backup",
+			"files-backup",
+			"no-snapshot",
+			"no-start",
+			"skip-http-probe",
+			"timeout",
+		); err != nil {
+			return err
+		}
+		if in.dryRun {
+			return nil
+		}
+		if !in.force {
+			return usageError(fmt.Errorf("rollback recovery requires an explicit --force flag"))
+		}
+		return nil
+	}
+
 	planIn := rollbackPlanInput{
 		scope:          in.scope,
 		projectDir:     in.projectDir,
@@ -118,11 +163,6 @@ func validateRollbackInput(cmd *cobra.Command, in *rollbackInput) error {
 	in.dbBackup = planIn.dbBackup
 	in.filesBackup = planIn.filesBackup
 	in.timeoutSeconds = planIn.timeoutSeconds
-	in.confirmProd = strings.TrimSpace(in.confirmProd)
-
-	if in.confirmProd != "" && in.confirmProd != "prod" {
-		return usageError(fmt.Errorf("--confirm-prod accepts only the value prod"))
-	}
 	if in.dryRun {
 		return nil
 	}
@@ -149,19 +189,31 @@ func runRollbackDryRun(cmd *cobra.Command, in rollbackInput) error {
 		spec.Name,
 	)
 
-	plan, err := rollbackusecase.BuildPlan(rollbackusecase.PlanRequest{
-		Scope:           in.scope,
-		ProjectDir:      in.projectDir,
-		ComposeFile:     in.composeFile,
-		EnvFileOverride: in.envFile,
-		EnvContourHint:  envFileContourHint(),
-		DBBackup:        in.dbBackup,
-		FilesBackup:     in.filesBackup,
-		NoSnapshot:      in.noSnapshot,
-		NoStart:         in.noStart,
-		SkipHTTPProbe:   in.skipHTTPProbe,
-		TimeoutSeconds:  in.timeoutSeconds,
-	})
+	var (
+		plan rollbackusecase.RollbackPlan
+		err  error
+	)
+	if in.recoverID != "" {
+		report, selection, recoveryErr := loadRollbackRecovery(cmd, in)
+		if recoveryErr != nil {
+			return commandFailure(cmd, appForCommand(cmd), spec, commandRunModeWithJournal, exec, result.Result{}, recoveryErr)
+		}
+		plan, err = rollbackusecase.RecoverPlan(report, selection)
+	} else {
+		plan, err = rollbackusecase.BuildPlan(rollbackusecase.PlanRequest{
+			Scope:           in.scope,
+			ProjectDir:      in.projectDir,
+			ComposeFile:     in.composeFile,
+			EnvFileOverride: in.envFile,
+			EnvContourHint:  envFileContourHint(),
+			DBBackup:        in.dbBackup,
+			FilesBackup:     in.filesBackup,
+			NoSnapshot:      in.noSnapshot,
+			NoStart:         in.noStart,
+			SkipHTTPProbe:   in.skipHTTPProbe,
+			TimeoutSeconds:  in.timeoutSeconds,
+		})
+	}
 	if err != nil {
 		return commandFailure(cmd, appForCommand(cmd), spec, commandRunModeWithJournal, exec, result.Result{}, err)
 	}
@@ -199,20 +251,32 @@ func runRollbackExecute(cmd *cobra.Command, in rollbackInput) error {
 		spec.Name,
 	)
 
-	info, err := rollbackusecase.Execute(rollbackusecase.ExecuteRequest{
-		Scope:           in.scope,
-		ProjectDir:      in.projectDir,
-		ComposeFile:     in.composeFile,
-		EnvFileOverride: in.envFile,
-		EnvContourHint:  envFileContourHint(),
-		DBBackup:        in.dbBackup,
-		FilesBackup:     in.filesBackup,
-		NoSnapshot:      in.noSnapshot,
-		NoStart:         in.noStart,
-		SkipHTTPProbe:   in.skipHTTPProbe,
-		TimeoutSeconds:  in.timeoutSeconds,
-		LogWriter:       cmd.ErrOrStderr(),
-	})
+	var (
+		info rollbackusecase.ExecuteInfo
+		err  error
+	)
+	if in.recoverID != "" {
+		report, selection, recoveryErr := loadRollbackRecovery(cmd, in)
+		if recoveryErr != nil {
+			return commandFailure(cmd, appForCommand(cmd), spec, commandRunModeWithJournal, exec, result.Result{}, recoveryErr)
+		}
+		info, err = rollbackusecase.RecoverExecute(report, selection, cmd.ErrOrStderr())
+	} else {
+		info, err = rollbackusecase.Execute(rollbackusecase.ExecuteRequest{
+			Scope:           in.scope,
+			ProjectDir:      in.projectDir,
+			ComposeFile:     in.composeFile,
+			EnvFileOverride: in.envFile,
+			EnvContourHint:  envFileContourHint(),
+			DBBackup:        in.dbBackup,
+			FilesBackup:     in.filesBackup,
+			NoSnapshot:      in.noSnapshot,
+			NoStart:         in.noStart,
+			SkipHTTPProbe:   in.skipHTTPProbe,
+			TimeoutSeconds:  in.timeoutSeconds,
+			LogWriter:       cmd.ErrOrStderr(),
+		})
+	}
 
 	res := rollbackResult(info)
 	res.Command = spec.Name
@@ -224,11 +288,41 @@ func runRollbackExecute(cmd *cobra.Command, in rollbackInput) error {
 	return finishJournaledCommandSuccess(cmd, spec, exec, res)
 }
 
+func loadRollbackRecovery(cmd *cobra.Command, in rollbackInput) (journalusecase.OperationReport, journalusecase.RecoverySelection, error) {
+	app := appForCommand(cmd)
+
+	operation, err := journalusecase.ShowOperation(journalusecase.ShowOperationInput{
+		JournalDir: app.options.JournalDir,
+		ID:         in.recoverID,
+	})
+	if err != nil {
+		return journalusecase.OperationReport{}, journalusecase.RecoverySelection{}, err
+	}
+
+	report := journalusecase.Explain(operation.Entry)
+	selection, err := journalusecase.ResolveRecoverySelection(report, in.recoverMode)
+	if err != nil {
+		return journalusecase.OperationReport{}, journalusecase.RecoverySelection{}, apperr.Wrap(apperr.KindValidation, "rollback_recovery_refused", err)
+	}
+
+	if !in.dryRun && report.Scope == "prod" && in.confirmProd != "prod" {
+		return journalusecase.OperationReport{}, journalusecase.RecoverySelection{}, usageError(fmt.Errorf("prod rollback recovery also requires --confirm-prod prod"))
+	}
+
+	return report, selection, nil
+}
+
 func rollbackResult(info rollbackusecase.ExecuteInfo) result.Result {
 	completed, skipped, failed, notRun := info.Counts()
 	message := "rollback completed"
+	if info.Recovery.Active() {
+		message = "rollback recovery completed"
+	}
 	if !info.Ready() {
 		message = "rollback failed"
+		if info.Recovery.Active() {
+			message = "rollback recovery failed"
+		}
 	}
 
 	items := make([]any, 0, len(info.Steps))
@@ -248,21 +342,23 @@ func rollbackResult(info rollbackusecase.ExecuteInfo) result.Result {
 		Message:  message,
 		Warnings: append([]string(nil), info.Warnings...),
 		Details: result.RollbackDetails{
-			Scope:                info.Scope,
-			Ready:                info.Ready(),
-			SelectionMode:        info.SelectionMode,
-			Steps:                len(info.Steps),
-			Completed:            completed,
-			Skipped:              skipped,
-			Failed:               failed,
-			NotRun:               notRun,
-			Warnings:             len(info.Warnings),
-			TimeoutSeconds:       info.TimeoutSeconds,
-			SnapshotEnabled:      info.SnapshotEnabled,
-			NoStart:              info.NoStart,
-			SkipHTTPProbe:        info.SkipHTTPProbe,
-			StartedDBTemporarily: info.StartedDBTemporarily,
-			ServicesReady:        append([]string(nil), info.ServicesReady...),
+			Scope:                  info.Scope,
+			Ready:                  info.Ready(),
+			SelectionMode:          info.SelectionMode,
+			RequestedSelectionMode: info.RequestedSelectionMode,
+			Steps:                  len(info.Steps),
+			Completed:              completed,
+			Skipped:                skipped,
+			Failed:                 failed,
+			NotRun:                 notRun,
+			Warnings:               len(info.Warnings),
+			TimeoutSeconds:         info.TimeoutSeconds,
+			SnapshotEnabled:        info.SnapshotEnabled,
+			NoStart:                info.NoStart,
+			SkipHTTPProbe:          info.SkipHTTPProbe,
+			StartedDBTemporarily:   info.StartedDBTemporarily,
+			ServicesReady:          append([]string(nil), info.ServicesReady...),
+			Recovery:               recoveryResultDetails(info.Recovery),
 		},
 		Artifacts: result.RollbackArtifacts{
 			ProjectDir:            info.ProjectDir,
@@ -271,6 +367,8 @@ func rollbackResult(info rollbackusecase.ExecuteInfo) result.Result {
 			ComposeProject:        info.ComposeProject,
 			BackupRoot:            info.BackupRoot,
 			SiteURL:               info.SiteURL,
+			RequestedDBBackup:     info.RequestedDBBackup,
+			RequestedFilesBackup:  info.RequestedFilesBackup,
 			SelectedPrefix:        info.SelectedPrefix,
 			SelectedStamp:         info.SelectedStamp,
 			ManifestTXT:           info.ManifestTXTPath,
@@ -367,6 +465,10 @@ func renderRollbackText(w io.Writer, res result.Result) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Warnings:     %d\n", details.Warnings); err != nil {
+		return err
+	}
+
+	if err := renderRecoveryAttemptSection(w, details.Recovery); err != nil {
 		return err
 	}
 

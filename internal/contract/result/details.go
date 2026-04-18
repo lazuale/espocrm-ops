@@ -172,19 +172,20 @@ type UpdateRuntimeArtifacts struct {
 }
 
 type UpdatePlanDetails struct {
-	Scope          string `json:"scope"`
-	Ready          bool   `json:"ready"`
-	Steps          int    `json:"steps"`
-	WouldRun       int    `json:"would_run"`
-	Skipped        int    `json:"skipped"`
-	Blocked        int    `json:"blocked"`
-	Unknown        int    `json:"unknown"`
-	Warnings       int    `json:"warnings"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
-	SkipDoctor     bool   `json:"skip_doctor"`
-	SkipBackup     bool   `json:"skip_backup"`
-	SkipPull       bool   `json:"skip_pull"`
-	SkipHTTPProbe  bool   `json:"skip_http_probe"`
+	Scope          string           `json:"scope"`
+	Ready          bool             `json:"ready"`
+	Steps          int              `json:"steps"`
+	WouldRun       int              `json:"would_run"`
+	Skipped        int              `json:"skipped"`
+	Blocked        int              `json:"blocked"`
+	Unknown        int              `json:"unknown"`
+	Warnings       int              `json:"warnings"`
+	TimeoutSeconds int              `json:"timeout_seconds"`
+	SkipDoctor     bool             `json:"skip_doctor"`
+	SkipBackup     bool             `json:"skip_backup"`
+	SkipPull       bool             `json:"skip_pull"`
+	SkipHTTPProbe  bool             `json:"skip_http_probe"`
+	Recovery       *RecoveryDetails `json:"recovery,omitempty"`
 }
 
 type UpdatePlanArtifacts struct {
@@ -205,18 +206,19 @@ type UpdatePlanItem struct {
 }
 
 type UpdateDetails struct {
-	Scope          string `json:"scope"`
-	Ready          bool   `json:"ready"`
-	Steps          int    `json:"steps"`
-	Completed      int    `json:"completed"`
-	Skipped        int    `json:"skipped"`
-	Failed         int    `json:"failed"`
-	NotRun         int    `json:"not_run"`
-	TimeoutSeconds int    `json:"timeout_seconds"`
-	SkipDoctor     bool   `json:"skip_doctor"`
-	SkipBackup     bool   `json:"skip_backup"`
-	SkipPull       bool   `json:"skip_pull"`
-	SkipHTTPProbe  bool   `json:"skip_http_probe"`
+	Scope          string           `json:"scope"`
+	Ready          bool             `json:"ready"`
+	Steps          int              `json:"steps"`
+	Completed      int              `json:"completed"`
+	Skipped        int              `json:"skipped"`
+	Failed         int              `json:"failed"`
+	NotRun         int              `json:"not_run"`
+	TimeoutSeconds int              `json:"timeout_seconds"`
+	SkipDoctor     bool             `json:"skip_doctor"`
+	SkipBackup     bool             `json:"skip_backup"`
+	SkipPull       bool             `json:"skip_pull"`
+	SkipHTTPProbe  bool             `json:"skip_http_probe"`
+	Recovery       *RecoveryDetails `json:"recovery,omitempty"`
 }
 
 type UpdateArtifacts struct {
@@ -243,21 +245,23 @@ type UpdateItem struct {
 }
 
 type RollbackDetails struct {
-	Scope                string   `json:"scope"`
-	Ready                bool     `json:"ready"`
-	SelectionMode        string   `json:"selection_mode,omitempty"`
-	Steps                int      `json:"steps"`
-	Completed            int      `json:"completed"`
-	Skipped              int      `json:"skipped"`
-	Failed               int      `json:"failed"`
-	NotRun               int      `json:"not_run"`
-	Warnings             int      `json:"warnings"`
-	TimeoutSeconds       int      `json:"timeout_seconds"`
-	SnapshotEnabled      bool     `json:"snapshot_enabled"`
-	NoStart              bool     `json:"no_start"`
-	SkipHTTPProbe        bool     `json:"skip_http_probe"`
-	StartedDBTemporarily bool     `json:"started_db_temporarily"`
-	ServicesReady        []string `json:"services_ready,omitempty"`
+	Scope                  string           `json:"scope"`
+	Ready                  bool             `json:"ready"`
+	SelectionMode          string           `json:"selection_mode,omitempty"`
+	RequestedSelectionMode string           `json:"requested_selection_mode,omitempty"`
+	Steps                  int              `json:"steps"`
+	Completed              int              `json:"completed"`
+	Skipped                int              `json:"skipped"`
+	Failed                 int              `json:"failed"`
+	NotRun                 int              `json:"not_run"`
+	Warnings               int              `json:"warnings"`
+	TimeoutSeconds         int              `json:"timeout_seconds"`
+	SnapshotEnabled        bool             `json:"snapshot_enabled"`
+	NoStart                bool             `json:"no_start"`
+	SkipHTTPProbe          bool             `json:"skip_http_probe"`
+	StartedDBTemporarily   bool             `json:"started_db_temporarily"`
+	ServicesReady          []string         `json:"services_ready,omitempty"`
+	Recovery               *RecoveryDetails `json:"recovery,omitempty"`
 }
 
 type RollbackArtifacts struct {
@@ -267,6 +271,8 @@ type RollbackArtifacts struct {
 	ComposeProject        string `json:"compose_project,omitempty"`
 	BackupRoot            string `json:"backup_root,omitempty"`
 	SiteURL               string `json:"site_url,omitempty"`
+	RequestedDBBackup     string `json:"requested_db_backup,omitempty"`
+	RequestedFilesBackup  string `json:"requested_files_backup,omitempty"`
 	SelectedPrefix        string `json:"selected_prefix,omitempty"`
 	SelectedStamp         string `json:"selected_stamp,omitempty"`
 	ManifestTXT           string `json:"manifest_txt,omitempty"`
@@ -290,19 +296,28 @@ type RollbackItem struct {
 }
 
 type RollbackPlanDetails struct {
-	Scope           string `json:"scope"`
-	Ready           bool   `json:"ready"`
-	SelectionMode   string `json:"selection_mode,omitempty"`
-	Steps           int    `json:"steps"`
-	WouldRun        int    `json:"would_run"`
-	Skipped         int    `json:"skipped"`
-	Blocked         int    `json:"blocked"`
-	Unknown         int    `json:"unknown"`
-	Warnings        int    `json:"warnings"`
-	TimeoutSeconds  int    `json:"timeout_seconds"`
-	SnapshotEnabled bool   `json:"snapshot_enabled"`
-	NoStart         bool   `json:"no_start"`
-	SkipHTTPProbe   bool   `json:"skip_http_probe"`
+	Scope           string           `json:"scope"`
+	Ready           bool             `json:"ready"`
+	SelectionMode   string           `json:"selection_mode,omitempty"`
+	Steps           int              `json:"steps"`
+	WouldRun        int              `json:"would_run"`
+	Skipped         int              `json:"skipped"`
+	Blocked         int              `json:"blocked"`
+	Unknown         int              `json:"unknown"`
+	Warnings        int              `json:"warnings"`
+	TimeoutSeconds  int              `json:"timeout_seconds"`
+	SnapshotEnabled bool             `json:"snapshot_enabled"`
+	NoStart         bool             `json:"no_start"`
+	SkipHTTPProbe   bool             `json:"skip_http_probe"`
+	Recovery        *RecoveryDetails `json:"recovery,omitempty"`
+}
+
+type RecoveryDetails struct {
+	SourceOperationID string `json:"source_operation_id"`
+	RequestedMode     string `json:"requested_mode"`
+	AppliedMode       string `json:"applied_mode"`
+	Decision          string `json:"decision"`
+	ResumeStep        string `json:"resume_step,omitempty"`
 }
 
 type RollbackPlanArtifacts struct {

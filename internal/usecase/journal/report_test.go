@@ -65,4 +65,98 @@ func TestExplainBuildsRollbackReport(t *testing.T) {
 	if report.Failure.StepCode != "target_selection" {
 		t.Fatalf("unexpected failure attribution: %#v", report.Failure)
 	}
+	if report.Recovery == nil {
+		t.Fatal("expected recovery evaluation")
+	}
+	if report.Recovery.Decision != RecoveryDecisionRetryFromStart {
+		t.Fatalf("expected retry-from-start recovery, got %#v", report.Recovery)
+	}
+}
+
+func TestExplainBuildsUpdateRecoveryResume(t *testing.T) {
+	entry := Entry{
+		OperationID:  "op-update-2",
+		Command:      "update",
+		StartedAt:    "2026-04-19T08:00:00Z",
+		FinishedAt:   "2026-04-19T08:00:05Z",
+		OK:           false,
+		ErrorCode:    "update_failed",
+		ErrorMessage: "http probe failed",
+		Details: map[string]any{
+			"scope": "prod",
+		},
+		Items: []any{
+			map[string]any{
+				"code":    "runtime_apply",
+				"status":  "completed",
+				"summary": "Runtime apply completed",
+			},
+			map[string]any{
+				"code":    "runtime_readiness",
+				"status":  "failed",
+				"summary": "Runtime readiness checks failed",
+			},
+		},
+	}
+
+	report := Explain(entry)
+
+	if report.Recovery == nil {
+		t.Fatal("expected recovery evaluation")
+	}
+	if report.Recovery.Decision != RecoveryDecisionResumeFromCheckpoint {
+		t.Fatalf("expected resume decision, got %#v", report.Recovery)
+	}
+	if report.Recovery.ResumeStep != "runtime_readiness" {
+		t.Fatalf("unexpected resume step: %#v", report.Recovery)
+	}
+	if !report.Recovery.Retryable || !report.Recovery.Resumable {
+		t.Fatalf("expected retryable+resumable recovery, got %#v", report.Recovery)
+	}
+}
+
+func TestExplainBuildsRollbackRecoveryRefusalAfterFilesRestoreFailure(t *testing.T) {
+	entry := Entry{
+		OperationID:  "op-rollback-2",
+		Command:      "rollback",
+		StartedAt:    "2026-04-19T09:00:00Z",
+		FinishedAt:   "2026-04-19T09:00:05Z",
+		OK:           false,
+		ErrorCode:    "rollback_failed",
+		ErrorMessage: "files restore failed",
+		Details: map[string]any{
+			"scope":                    "prod",
+			"requested_selection_mode": "explicit",
+		},
+		Artifacts: map[string]any{
+			"requested_db_backup":    "/tmp/db.sql.gz",
+			"requested_files_backup": "/tmp/files.tar.gz",
+			"db_backup":              "/tmp/db.sql.gz",
+			"files_backup":           "/tmp/files.tar.gz",
+		},
+		Items: []any{
+			map[string]any{
+				"code":    "files_restore",
+				"status":  "failed",
+				"summary": "Files restore failed",
+			},
+			map[string]any{
+				"code":    "runtime_return",
+				"status":  "not_run",
+				"summary": "Contour return did not run because the files restore failed",
+			},
+		},
+	}
+
+	report := Explain(entry)
+
+	if report.Recovery == nil {
+		t.Fatal("expected recovery evaluation")
+	}
+	if report.Recovery.Decision != RecoveryDecisionRefused {
+		t.Fatalf("expected refused recovery, got %#v", report.Recovery)
+	}
+	if report.Recovery.Retryable || report.Recovery.Resumable {
+		t.Fatalf("expected non-retryable refused recovery, got %#v", report.Recovery)
+	}
 }

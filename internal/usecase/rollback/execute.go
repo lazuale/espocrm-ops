@@ -16,6 +16,7 @@ import (
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/usecase/restore"
 	updateusecase "github.com/lazuale/espocrm-ops/internal/usecase/update"
 )
@@ -53,6 +54,7 @@ type ExecuteRequest struct {
 	SkipHTTPProbe   bool
 	TimeoutSeconds  int
 	LogWriter       io.Writer
+	Recovery        *ExecuteRecovery
 }
 
 type ExecuteStep struct {
@@ -64,34 +66,38 @@ type ExecuteStep struct {
 }
 
 type ExecuteInfo struct {
-	Scope                 string
-	ProjectDir            string
-	ComposeFile           string
-	EnvFile               string
-	ComposeProject        string
-	BackupRoot            string
-	SiteURL               string
-	SelectionMode         string
-	SelectedPrefix        string
-	SelectedStamp         string
-	ManifestTXTPath       string
-	ManifestJSONPath      string
-	DBBackupPath          string
-	FilesBackupPath       string
-	TimeoutSeconds        int
-	SnapshotEnabled       bool
-	NoStart               bool
-	SkipHTTPProbe         bool
-	Warnings              []string
-	Steps                 []ExecuteStep
-	StartedDBTemporarily  bool
-	SnapshotManifestTXT   string
-	SnapshotManifestJSON  string
-	SnapshotDBBackup      string
-	SnapshotFilesBackup   string
-	SnapshotDBChecksum    string
-	SnapshotFilesChecksum string
-	ServicesReady         []string
+	Scope                  string
+	ProjectDir             string
+	ComposeFile            string
+	EnvFile                string
+	ComposeProject         string
+	BackupRoot             string
+	SiteURL                string
+	RequestedSelectionMode string
+	RequestedDBBackup      string
+	RequestedFilesBackup   string
+	SelectionMode          string
+	SelectedPrefix         string
+	SelectedStamp          string
+	ManifestTXTPath        string
+	ManifestJSONPath       string
+	DBBackupPath           string
+	FilesBackupPath        string
+	TimeoutSeconds         int
+	SnapshotEnabled        bool
+	NoStart                bool
+	SkipHTTPProbe          bool
+	Warnings               []string
+	Steps                  []ExecuteStep
+	StartedDBTemporarily   bool
+	SnapshotManifestTXT    string
+	SnapshotManifestJSON   string
+	SnapshotDBBackup       string
+	SnapshotFilesBackup    string
+	SnapshotDBChecksum     string
+	SnapshotFilesChecksum  string
+	ServicesReady          []string
+	Recovery               operationusecase.RecoveryInfo
 }
 
 type runtimePrepareInfo struct {
@@ -105,14 +111,21 @@ type runtimeReturnInfo struct {
 
 func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	info := ExecuteInfo{
-		Scope:           strings.TrimSpace(req.Scope),
-		ProjectDir:      filepath.Clean(req.ProjectDir),
-		ComposeFile:     filepath.Clean(req.ComposeFile),
-		TimeoutSeconds:  req.TimeoutSeconds,
-		SnapshotEnabled: !req.NoSnapshot,
-		NoStart:         req.NoStart,
-		SkipHTTPProbe:   req.SkipHTTPProbe,
-		Warnings:        flagWarnings(req),
+		Scope:                  strings.TrimSpace(req.Scope),
+		ProjectDir:             filepath.Clean(req.ProjectDir),
+		ComposeFile:            filepath.Clean(req.ComposeFile),
+		RequestedSelectionMode: requestedSelectionMode(req),
+		RequestedDBBackup:      strings.TrimSpace(req.DBBackup),
+		RequestedFilesBackup:   strings.TrimSpace(req.FilesBackup),
+		TimeoutSeconds:         req.TimeoutSeconds,
+		SnapshotEnabled:        !req.NoSnapshot,
+		NoStart:                req.NoStart,
+		SkipHTTPProbe:          req.SkipHTTPProbe,
+		Warnings:               flagWarnings(req),
+	}
+	if req.Recovery != nil {
+		info.Recovery = req.Recovery.Info
+		info.StartedDBTemporarily = req.Recovery.StartedDBTemporarily
 	}
 	readinessBudget := req.TimeoutSeconds
 
@@ -159,129 +172,159 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: fmt.Sprintf("Using %s for contour %s.", info.EnvFile, info.Scope),
 	})
 
-	logRollback(req.LogWriter, "Running the canonical rollback doctor checks")
-	report, err := doctorusecase.Diagnose(doctorusecase.Request{
-		Scope:                  info.Scope,
-		ProjectDir:             info.ProjectDir,
-		ComposeFile:            info.ComposeFile,
-		EnvFileOverride:        info.EnvFile,
-		EnvContourHint:         strings.TrimSpace(req.EnvContourHint),
-		PathCheckMode:          doctorusecase.PathCheckModeReadOnly,
-		InheritedOperationLock: true,
-		InheritedMaintenance:   true,
-	})
-	if err != nil {
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "doctor",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Doctor execution failed",
-				Details: err.Error(),
-				Action:  "Inspect Docker and env resolution, then rerun rollback.",
-			},
-			notRunRollbackStep("target_selection", "Rollback target selection did not run because doctor failed"),
-			notRunRollbackStep("runtime_prepare", "Runtime preparation did not run because doctor failed"),
-			notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because doctor failed"),
-			notRunRollbackStep("db_restore", "Database restore did not run because doctor failed"),
-			notRunRollbackStep("files_restore", "Files restore did not run because doctor failed"),
-			notRunRollbackStep("runtime_return", "Contour return did not run because doctor failed"),
-		)
-		return info, apperr.Wrap(apperr.KindInternal, "rollback_failed", err)
+	if req.Recovery != nil && req.Recovery.shouldSkip("doctor") {
+		logRollback(req.LogWriter, "Doctor skipped because recovery is resuming after a completed source step")
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("doctor"))
+	} else {
+		logRollback(req.LogWriter, "Running the canonical rollback doctor checks")
+		report, err := doctorusecase.Diagnose(doctorusecase.Request{
+			Scope:                  info.Scope,
+			ProjectDir:             info.ProjectDir,
+			ComposeFile:            info.ComposeFile,
+			EnvFileOverride:        info.EnvFile,
+			EnvContourHint:         strings.TrimSpace(req.EnvContourHint),
+			PathCheckMode:          doctorusecase.PathCheckModeReadOnly,
+			InheritedOperationLock: true,
+			InheritedMaintenance:   true,
+		})
+		if err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "doctor",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Doctor execution failed",
+					Details: err.Error(),
+					Action:  "Inspect Docker and env resolution, then rerun rollback.",
+				},
+				notRunRollbackStep("target_selection", "Rollback target selection did not run because doctor failed"),
+				notRunRollbackStep("runtime_prepare", "Runtime preparation did not run because doctor failed"),
+				notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because doctor failed"),
+				notRunRollbackStep("db_restore", "Database restore did not run because doctor failed"),
+				notRunRollbackStep("files_restore", "Files restore did not run because doctor failed"),
+				notRunRollbackStep("runtime_return", "Contour return did not run because doctor failed"),
+			)
+			return info, apperr.Wrap(apperr.KindInternal, "rollback_failed", err)
+		}
+
+		info.Warnings = append(info.Warnings, collectDoctorWarnings(report.Checks)...)
+		failures := blockingDoctorChecks(report.Checks)
+		if len(failures) != 0 {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "doctor",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Doctor stopped the rollback",
+					Details: formatDoctorChecks(failures),
+					Action:  firstDoctorAction(failures, "Resolve the reported doctor failures before rerunning rollback."),
+				},
+				notRunRollbackStep("target_selection", "Rollback target selection did not run because doctor failed"),
+				notRunRollbackStep("runtime_prepare", "Runtime preparation did not run because doctor failed"),
+				notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because doctor failed"),
+				notRunRollbackStep("db_restore", "Database restore did not run because doctor failed"),
+				notRunRollbackStep("files_restore", "Files restore did not run because doctor failed"),
+				notRunRollbackStep("runtime_return", "Contour return did not run because doctor failed"),
+			)
+			return info, apperr.Wrap(apperr.KindValidation, "rollback_failed", errors.New("doctor found blocking rollback failures"))
+		}
+
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "doctor",
+			Status:  RollbackStepStatusCompleted,
+			Summary: "Doctor completed",
+			Details: "The canonical rollback doctor checks passed.",
+		})
 	}
 
-	info.Warnings = append(info.Warnings, collectDoctorWarnings(report.Checks)...)
-	failures := blockingDoctorChecks(report.Checks)
-	if len(failures) != 0 {
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "doctor",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Doctor stopped the rollback",
-				Details: formatDoctorChecks(failures),
-				Action:  firstDoctorAction(failures, "Resolve the reported doctor failures before rerunning rollback."),
-			},
-			notRunRollbackStep("target_selection", "Rollback target selection did not run because doctor failed"),
-			notRunRollbackStep("runtime_prepare", "Runtime preparation did not run because doctor failed"),
-			notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because doctor failed"),
-			notRunRollbackStep("db_restore", "Database restore did not run because doctor failed"),
-			notRunRollbackStep("files_restore", "Files restore did not run because doctor failed"),
-			notRunRollbackStep("runtime_return", "Contour return did not run because doctor failed"),
-		)
-		return info, apperr.Wrap(apperr.KindValidation, "rollback_failed", errors.New("doctor found blocking rollback failures"))
+	if req.Recovery != nil && req.Recovery.shouldSkip("target_selection") {
+		logRollback(req.LogWriter, "Rollback target selection skipped because recovery is reusing the source target")
+		info.SelectionMode = req.Recovery.SelectedTarget.SelectionMode
+		info.SelectedPrefix = req.Recovery.SelectedTarget.Prefix
+		info.SelectedStamp = req.Recovery.SelectedTarget.Stamp
+		info.ManifestJSONPath = req.Recovery.SelectedTarget.ManifestJSON
+		info.DBBackupPath = req.Recovery.SelectedTarget.DBBackup
+		info.FilesBackupPath = req.Recovery.SelectedTarget.FilesBackup
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("target_selection"))
+	} else {
+		logRollback(req.LogWriter, "Selecting the rollback target")
+		target, issues, selectionWarnings := resolveTarget(ctx.BackupRoot, nil, PlanRequest{
+			DBBackup:    strings.TrimSpace(req.DBBackup),
+			FilesBackup: strings.TrimSpace(req.FilesBackup),
+		})
+		info.Warnings = append(info.Warnings, selectionWarnings...)
+		if len(issues) != 0 {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "target_selection",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Rollback target selection failed",
+					Details: formatIssues(issues),
+					Action:  firstIssueAction(issues, "Resolve the rollback target selection error before rerunning rollback."),
+				},
+				notRunRollbackStep("runtime_prepare", "Runtime preparation did not run because rollback target selection failed"),
+				notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because rollback target selection failed"),
+				notRunRollbackStep("db_restore", "Database restore did not run because rollback target selection failed"),
+				notRunRollbackStep("files_restore", "Files restore did not run because rollback target selection failed"),
+				notRunRollbackStep("runtime_return", "Contour return did not run because rollback target selection failed"),
+			)
+			return info, apperr.Wrap(apperr.KindValidation, "rollback_failed", errors.New("rollback target selection failed"))
+		}
+
+		info.SelectionMode = target.SelectionMode
+		info.SelectedPrefix = target.Prefix
+		info.SelectedStamp = target.Stamp
+		info.ManifestTXTPath = target.ManifestTXT
+		info.ManifestJSONPath = target.ManifestJSON
+		info.DBBackupPath = target.DBBackup
+		info.FilesBackupPath = target.FilesBackup
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "target_selection",
+			Status:  RollbackStepStatusCompleted,
+			Summary: targetSelectionSummary(info.SelectionMode),
+			Details: targetSelectionDetails(info),
+		})
 	}
 
-	info.Steps = append(info.Steps, ExecuteStep{
-		Code:    "doctor",
-		Status:  RollbackStepStatusCompleted,
-		Summary: "Doctor completed",
-		Details: "The canonical rollback doctor checks passed.",
-	})
-
-	logRollback(req.LogWriter, "Selecting the rollback target")
-	target, issues, selectionWarnings := resolveTarget(ctx.BackupRoot, nil, PlanRequest{
-		DBBackup:    strings.TrimSpace(req.DBBackup),
-		FilesBackup: strings.TrimSpace(req.FilesBackup),
-	})
-	info.Warnings = append(info.Warnings, selectionWarnings...)
-	if len(issues) != 0 {
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "target_selection",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Rollback target selection failed",
-				Details: formatIssues(issues),
-				Action:  firstIssueAction(issues, "Resolve the rollback target selection error before rerunning rollback."),
-			},
-			notRunRollbackStep("runtime_prepare", "Runtime preparation did not run because rollback target selection failed"),
-			notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because rollback target selection failed"),
-			notRunRollbackStep("db_restore", "Database restore did not run because rollback target selection failed"),
-			notRunRollbackStep("files_restore", "Files restore did not run because rollback target selection failed"),
-			notRunRollbackStep("runtime_return", "Contour return did not run because rollback target selection failed"),
-		)
-		return info, apperr.Wrap(apperr.KindValidation, "rollback_failed", errors.New("rollback target selection failed"))
+	if req.Recovery != nil && req.Recovery.shouldSkip("runtime_prepare") {
+		logRollback(req.LogWriter, "Runtime preparation skipped because recovery is resuming after a completed source step")
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("runtime_prepare"))
+	} else {
+		logRollback(req.LogWriter, "Preparing the runtime for rollback")
+		runtimePrep, err := prepareRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, &readinessBudget)
+		if err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "runtime_prepare",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Runtime preparation failed",
+					Details: err.Error(),
+					Action:  "Resolve the runtime preparation failure before rerunning rollback.",
+				},
+				notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because runtime preparation failed"),
+				notRunRollbackStep("db_restore", "Database restore did not run because runtime preparation failed"),
+				notRunRollbackStep("files_restore", "Files restore did not run because runtime preparation failed"),
+				notRunRollbackStep("runtime_return", "Contour return did not run because runtime preparation failed"),
+			)
+			return info, wrapExecuteError(err)
+		}
+		info.StartedDBTemporarily = info.StartedDBTemporarily || runtimePrep.StartedDBTemporarily
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_prepare",
+			Status:  RollbackStepStatusCompleted,
+			Summary: "Runtime preparation completed",
+			Details: runtimePrepareDetails(runtimePrep, req.TimeoutSeconds),
+		})
 	}
 
-	info.SelectionMode = target.SelectionMode
-	info.SelectedPrefix = target.Prefix
-	info.SelectedStamp = target.Stamp
-	info.ManifestTXTPath = target.ManifestTXT
-	info.ManifestJSONPath = target.ManifestJSON
-	info.DBBackupPath = target.DBBackup
-	info.FilesBackupPath = target.FilesBackup
-	info.Steps = append(info.Steps, ExecuteStep{
-		Code:    "target_selection",
-		Status:  RollbackStepStatusCompleted,
-		Summary: targetSelectionSummary(info.SelectionMode),
-		Details: targetSelectionDetails(info),
-	})
-
-	logRollback(req.LogWriter, "Preparing the runtime for rollback")
-	runtimePrep, err := prepareRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, &readinessBudget)
-	if err != nil {
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "runtime_prepare",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Runtime preparation failed",
-				Details: err.Error(),
-				Action:  "Resolve the runtime preparation failure before rerunning rollback.",
-			},
-			notRunRollbackStep("snapshot_recovery_point", "Emergency recovery-point creation did not run because runtime preparation failed"),
-			notRunRollbackStep("db_restore", "Database restore did not run because runtime preparation failed"),
-			notRunRollbackStep("files_restore", "Files restore did not run because runtime preparation failed"),
-			notRunRollbackStep("runtime_return", "Contour return did not run because runtime preparation failed"),
-		)
-		return info, wrapExecuteError(err)
-	}
-	info.StartedDBTemporarily = runtimePrep.StartedDBTemporarily
-	info.Steps = append(info.Steps, ExecuteStep{
-		Code:    "runtime_prepare",
-		Status:  RollbackStepStatusCompleted,
-		Summary: "Runtime preparation completed",
-		Details: runtimePrepareDetails(runtimePrep, req.TimeoutSeconds),
-	})
-
-	if req.NoSnapshot {
+	if req.Recovery != nil && req.Recovery.shouldSkip("snapshot_recovery_point") {
+		logRollback(req.LogWriter, "Emergency recovery-point creation skipped because recovery is reusing the source snapshot state")
+		info.SnapshotManifestTXT = req.Recovery.Snapshot.ManifestTXT
+		info.SnapshotManifestJSON = req.Recovery.Snapshot.ManifestJSON
+		info.SnapshotDBBackup = req.Recovery.Snapshot.DBBackup
+		info.SnapshotFilesBackup = req.Recovery.Snapshot.FilesBackup
+		info.SnapshotDBChecksum = req.Recovery.Snapshot.DBChecksum
+		info.SnapshotFilesChecksum = req.Recovery.Snapshot.FilesChecksum
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("snapshot_recovery_point"))
+	} else if req.NoSnapshot {
 		logRollback(req.LogWriter, "Emergency recovery-point creation skipped because of --no-snapshot")
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "snapshot_recovery_point",
@@ -322,84 +365,94 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		})
 	}
 
-	cfg := platformdocker.ComposeConfig{
-		ProjectDir:  info.ProjectDir,
-		ComposeFile: info.ComposeFile,
-		EnvFile:     info.EnvFile,
-	}
-	dbContainer, err := platformdocker.ComposeServiceContainerID(cfg, "db")
-	if err != nil {
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "db_restore",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Database restore failed",
-				Details: err.Error(),
-				Action:  "Resolve the db container inspection failure before rerunning rollback.",
-			},
-			notRunRollbackStep("files_restore", "Files restore did not run because the database restore failed"),
-			notRunRollbackStep("runtime_return", "Contour return did not run because the database restore failed"),
-		)
-		return info, wrapExecuteError(err)
-	}
-	if strings.TrimSpace(dbContainer) == "" {
-		err = apperr.Wrap(apperr.KindExternal, "rollback_failed", errors.New("could not resolve the db container for rollback"))
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "db_restore",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Database restore failed",
-				Details: err.Error(),
-				Action:  "Start the db service for this contour and rerun rollback.",
-			},
-			notRunRollbackStep("files_restore", "Files restore did not run because the database restore failed"),
-			notRunRollbackStep("runtime_return", "Contour return did not run because the database restore failed"),
-		)
-		return info, err
+	if req.Recovery != nil && req.Recovery.shouldSkip("db_restore") {
+		logRollback(req.LogWriter, "Database restore skipped because recovery is resuming after a completed source step")
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("db_restore"))
+	} else {
+		cfg := platformdocker.ComposeConfig{
+			ProjectDir:  info.ProjectDir,
+			ComposeFile: info.ComposeFile,
+			EnvFile:     info.EnvFile,
+		}
+		dbContainer, err := platformdocker.ComposeServiceContainerID(cfg, "db")
+		if err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "db_restore",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Database restore failed",
+					Details: err.Error(),
+					Action:  "Resolve the db container inspection failure before rerunning rollback.",
+				},
+				notRunRollbackStep("files_restore", "Files restore did not run because the database restore failed"),
+				notRunRollbackStep("runtime_return", "Contour return did not run because the database restore failed"),
+			)
+			return info, wrapExecuteError(err)
+		}
+		if strings.TrimSpace(dbContainer) == "" {
+			err = apperr.Wrap(apperr.KindExternal, "rollback_failed", errors.New("could not resolve the db container for rollback"))
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "db_restore",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Database restore failed",
+					Details: err.Error(),
+					Action:  "Start the db service for this contour and rerun rollback.",
+				},
+				notRunRollbackStep("files_restore", "Files restore did not run because the database restore failed"),
+				notRunRollbackStep("runtime_return", "Contour return did not run because the database restore failed"),
+			)
+			return info, err
+		}
+
+		logRollback(req.LogWriter, "Restoring the selected database backup")
+		if _, err := restoreusecase.RestoreDB(buildDBRestoreRequest(ctx, info, dbContainer)); err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "db_restore",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Database restore failed",
+					Details: err.Error(),
+					Action:  "Resolve the database restore failure before rerunning rollback.",
+				},
+				notRunRollbackStep("files_restore", "Files restore did not run because the database restore failed"),
+				notRunRollbackStep("runtime_return", "Contour return did not run because the database restore failed"),
+			)
+			return info, wrapExecuteError(err)
+		}
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "db_restore",
+			Status:  RollbackStepStatusCompleted,
+			Summary: "Database restore completed",
+			Details: dbRestoreDetails(ctx, info),
+		})
 	}
 
-	logRollback(req.LogWriter, "Restoring the selected database backup")
-	if _, err := restoreusecase.RestoreDB(buildDBRestoreRequest(ctx, info, dbContainer)); err != nil {
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "db_restore",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Database restore failed",
-				Details: err.Error(),
-				Action:  "Resolve the database restore failure before rerunning rollback.",
-			},
-			notRunRollbackStep("files_restore", "Files restore did not run because the database restore failed"),
-			notRunRollbackStep("runtime_return", "Contour return did not run because the database restore failed"),
-		)
-		return info, wrapExecuteError(err)
+	if req.Recovery != nil && req.Recovery.shouldSkip("files_restore") {
+		logRollback(req.LogWriter, "Files restore skipped because recovery is resuming after a completed source step")
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("files_restore"))
+	} else {
+		logRollback(req.LogWriter, "Restoring the selected files backup")
+		if _, err := restoreusecase.RestoreFiles(buildFilesRestoreRequest(ctx, info)); err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "files_restore",
+					Status:  RollbackStepStatusFailed,
+					Summary: "Files restore failed",
+					Details: err.Error(),
+					Action:  "Resolve the files restore failure before rerunning rollback.",
+				},
+				notRunRollbackStep("runtime_return", "Contour return did not run because the files restore failed"),
+			)
+			return info, wrapExecuteError(err)
+		}
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "files_restore",
+			Status:  RollbackStepStatusCompleted,
+			Summary: "Files restore completed",
+			Details: filesRestoreDetails(ctx, info),
+		})
 	}
-	info.Steps = append(info.Steps, ExecuteStep{
-		Code:    "db_restore",
-		Status:  RollbackStepStatusCompleted,
-		Summary: "Database restore completed",
-		Details: dbRestoreDetails(ctx, info),
-	})
-
-	logRollback(req.LogWriter, "Restoring the selected files backup")
-	if _, err := restoreusecase.RestoreFiles(buildFilesRestoreRequest(ctx, info)); err != nil {
-		info.Steps = append(info.Steps,
-			ExecuteStep{
-				Code:    "files_restore",
-				Status:  RollbackStepStatusFailed,
-				Summary: "Files restore failed",
-				Details: err.Error(),
-				Action:  "Resolve the files restore failure before rerunning rollback.",
-			},
-			notRunRollbackStep("runtime_return", "Contour return did not run because the files restore failed"),
-		)
-		return info, wrapExecuteError(err)
-	}
-	info.Steps = append(info.Steps, ExecuteStep{
-		Code:    "files_restore",
-		Status:  RollbackStepStatusCompleted,
-		Summary: "Files restore completed",
-		Details: filesRestoreDetails(ctx, info),
-	})
 
 	if req.NoStart {
 		logRollback(req.LogWriter, "Contour return skipped because of --no-start")
@@ -667,6 +720,13 @@ func buildFilesRestoreRequest(ctx maintenanceusecase.OperationContext, info Exec
 
 	req.FilesBackup = info.FilesBackupPath
 	return req
+}
+
+func requestedSelectionMode(req ExecuteRequest) string {
+	if strings.TrimSpace(req.DBBackup) != "" || strings.TrimSpace(req.FilesBackup) != "" {
+		return "explicit"
+	}
+	return "auto_latest_valid"
 }
 
 func collectDoctorWarnings(checks []doctorusecase.Check) []string {

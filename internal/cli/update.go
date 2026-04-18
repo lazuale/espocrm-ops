@@ -9,6 +9,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 	updateusecase "github.com/lazuale/espocrm-ops/internal/usecase/update"
 	"github.com/spf13/cobra"
@@ -25,6 +26,8 @@ func newUpdateCmd() *cobra.Command {
 	var skipPull bool
 	var skipHTTPProbe bool
 	var dryRun bool
+	var recoverOperation string
+	var recoverMode string
 
 	cmd := &cobra.Command{
 		Use:   "update",
@@ -42,6 +45,8 @@ func newUpdateCmd() *cobra.Command {
 				skipPull:       skipPull,
 				skipHTTPProbe:  skipHTTPProbe,
 				dryRun:         dryRun,
+				recoverID:      recoverOperation,
+				recoverMode:    recoverMode,
 			}
 			if err := validateUpdateInput(cmd, &in); err != nil {
 				return err
@@ -65,6 +70,8 @@ func newUpdateCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&skipPull, "skip-pull", false, "skip image pull in the runtime apply step")
 	cmd.Flags().BoolVar(&skipHTTPProbe, "skip-http-probe", false, "skip the final HTTP probe in the runtime readiness step")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what update would do without making changes")
+	cmd.Flags().StringVar(&recoverOperation, "recover-operation", "", "recover a failed or blocked update operation by id")
+	cmd.Flags().StringVar(&recoverMode, "recover-mode", journalusecase.RecoveryModeAuto, "recovery mode: auto, retry, or resume")
 
 	return cmd
 }
@@ -80,9 +87,35 @@ type updateInput struct {
 	skipPull       bool
 	skipHTTPProbe  bool
 	dryRun         bool
+	recoverID      string
+	recoverMode    string
 }
 
 func validateUpdateInput(cmd *cobra.Command, in *updateInput) error {
+	in.recoverID = strings.TrimSpace(in.recoverID)
+	if cmd.Flags().Changed("recover-operation") && in.recoverID == "" {
+		return requiredFlagError("--recover-operation")
+	}
+	if in.recoverID != "" {
+		if err := normalizeRecoveryModeFlag(cmd, "recover-mode", &in.recoverMode); err != nil {
+			return err
+		}
+		if err := rejectRecoveryOverrides(cmd, "--recover-operation",
+			"scope",
+			"project-dir",
+			"compose-file",
+			"env-file",
+			"timeout",
+			"skip-doctor",
+			"skip-backup",
+			"skip-pull",
+			"skip-http-probe",
+		); err != nil {
+			return err
+		}
+		return nil
+	}
+
 	planIn := updatePlanInput{
 		scope:          in.scope,
 		projectDir:     in.projectDir,
@@ -120,18 +153,33 @@ func runUpdateDryRun(cmd *cobra.Command, in updateInput) error {
 		spec.Name,
 	)
 
-	plan, err := updateusecase.BuildPlan(updateusecase.PlanRequest{
-		Scope:           in.scope,
-		ProjectDir:      in.projectDir,
-		ComposeFile:     in.composeFile,
-		EnvFileOverride: in.envFile,
-		EnvContourHint:  envFileContourHint(),
-		TimeoutSeconds:  in.timeoutSeconds,
-		SkipDoctor:      in.skipDoctor,
-		SkipBackup:      in.skipBackup,
-		SkipPull:        in.skipPull,
-		SkipHTTPProbe:   in.skipHTTPProbe,
-	})
+	var (
+		plan updateusecase.UpdatePlan
+		err  error
+	)
+	if in.recoverID != "" {
+		report, selection, err := loadUpdateRecovery(cmd, in)
+		if err != nil {
+			return commandFailure(cmd, appForCommand(cmd), spec, commandRunModeWithJournal, exec, result.Result{}, err)
+		}
+		plan, err = updateusecase.RecoverPlan(report, selection)
+		if err != nil {
+			return commandFailure(cmd, appForCommand(cmd), spec, commandRunModeWithJournal, exec, result.Result{}, err)
+		}
+	} else {
+		plan, err = updateusecase.BuildPlan(updateusecase.PlanRequest{
+			Scope:           in.scope,
+			ProjectDir:      in.projectDir,
+			ComposeFile:     in.composeFile,
+			EnvFileOverride: in.envFile,
+			EnvContourHint:  envFileContourHint(),
+			TimeoutSeconds:  in.timeoutSeconds,
+			SkipDoctor:      in.skipDoctor,
+			SkipBackup:      in.skipBackup,
+			SkipPull:        in.skipPull,
+			SkipHTTPProbe:   in.skipHTTPProbe,
+		})
+	}
 	if err != nil {
 		return commandFailure(cmd, appForCommand(cmd), spec, commandRunModeWithJournal, exec, result.Result{}, err)
 	}
@@ -169,18 +217,30 @@ func runUpdateExecute(cmd *cobra.Command, in updateInput) error {
 		spec.Name,
 	)
 
-	info, err := updateusecase.Execute(updateusecase.ExecuteRequest{
-		Scope:           in.scope,
-		ProjectDir:      in.projectDir,
-		ComposeFile:     in.composeFile,
-		EnvFileOverride: in.envFile,
-		EnvContourHint:  envFileContourHint(),
-		TimeoutSeconds:  in.timeoutSeconds,
-		SkipDoctor:      in.skipDoctor,
-		SkipBackup:      in.skipBackup,
-		SkipPull:        in.skipPull,
-		SkipHTTPProbe:   in.skipHTTPProbe,
-	})
+	var (
+		info updateusecase.ExecuteInfo
+		err  error
+	)
+	if in.recoverID != "" {
+		report, selection, recoveryErr := loadUpdateRecovery(cmd, in)
+		if recoveryErr != nil {
+			return commandFailure(cmd, appForCommand(cmd), spec, commandRunModeWithJournal, exec, result.Result{}, recoveryErr)
+		}
+		info, err = updateusecase.RecoverExecute(report, selection, cmd.ErrOrStderr())
+	} else {
+		info, err = updateusecase.Execute(updateusecase.ExecuteRequest{
+			Scope:           in.scope,
+			ProjectDir:      in.projectDir,
+			ComposeFile:     in.composeFile,
+			EnvFileOverride: in.envFile,
+			EnvContourHint:  envFileContourHint(),
+			TimeoutSeconds:  in.timeoutSeconds,
+			SkipDoctor:      in.skipDoctor,
+			SkipBackup:      in.skipBackup,
+			SkipPull:        in.skipPull,
+			SkipHTTPProbe:   in.skipHTTPProbe,
+		})
+	}
 
 	res := updateResult(info)
 	res.Command = spec.Name
@@ -192,11 +252,37 @@ func runUpdateExecute(cmd *cobra.Command, in updateInput) error {
 	return finishJournaledCommandSuccess(cmd, spec, exec, res)
 }
 
+func loadUpdateRecovery(cmd *cobra.Command, in updateInput) (journalusecase.OperationReport, journalusecase.RecoverySelection, error) {
+	app := appForCommand(cmd)
+
+	operation, err := journalusecase.ShowOperation(journalusecase.ShowOperationInput{
+		JournalDir: app.options.JournalDir,
+		ID:         in.recoverID,
+	})
+	if err != nil {
+		return journalusecase.OperationReport{}, journalusecase.RecoverySelection{}, err
+	}
+
+	report := journalusecase.Explain(operation.Entry)
+	selection, err := journalusecase.ResolveRecoverySelection(report, in.recoverMode)
+	if err != nil {
+		return journalusecase.OperationReport{}, journalusecase.RecoverySelection{}, apperr.Wrap(apperr.KindValidation, "update_recovery_refused", err)
+	}
+
+	return report, selection, nil
+}
+
 func updateResult(info updateusecase.ExecuteInfo) result.Result {
 	completed, skipped, failed, notRun := info.Counts()
 	message := "update completed"
+	if info.Recovery.Active() {
+		message = "update recovery completed"
+	}
 	if !info.Ready() {
 		message = "update failed"
+		if info.Recovery.Active() {
+			message = "update recovery failed"
+		}
 	}
 
 	items := make([]any, 0, len(info.Steps))
@@ -228,6 +314,7 @@ func updateResult(info updateusecase.ExecuteInfo) result.Result {
 			SkipBackup:     info.SkipBackup,
 			SkipPull:       info.SkipPull,
 			SkipHTTPProbe:  info.SkipHTTPProbe,
+			Recovery:       recoveryResultDetails(info.Recovery),
 		},
 		Artifacts: result.UpdateArtifacts{
 			ProjectDir:     info.ProjectDir,
@@ -308,6 +395,10 @@ func renderUpdateText(w io.Writer, res result.Result) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Not run:      %d\n", details.NotRun); err != nil {
+		return err
+	}
+
+	if err := renderRecoveryAttemptSection(w, details.Recovery); err != nil {
 		return err
 	}
 

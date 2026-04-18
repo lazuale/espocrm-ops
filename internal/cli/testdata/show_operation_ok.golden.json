@@ -17,6 +17,14 @@
       "ok": true,
       "message": "rollback completed",
       "scope": "prod",
+      "recovery": {
+        "decision": "refused",
+        "summary": "This rollback already completed",
+        "details": "Retry and resume are only available for failed or blocked rollback runs.",
+        "action": "Use show-operation for audit detail, or run a new rollback intentionally if you need another recovery window.",
+        "retryable": false,
+        "resumable": false
+      },
       "counts": {
         "steps": 3,
         "completed": 2,

@@ -128,6 +128,10 @@ func renderOperationReportText(w io.Writer, report journalusecase.OperationRepor
 		}
 	}
 
+	if err := renderOperationRecoverySection(w, report.Recovery); err != nil {
+		return err
+	}
+
 	if len(report.Warnings) != 0 {
 		if _, err := fmt.Fprintln(w, "\nWarnings:"); err != nil {
 			return err

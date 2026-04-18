@@ -190,8 +190,14 @@ func rollbackPlanResult(plan rollbackusecase.RollbackPlan) result.Result {
 	wouldRun, skipped, blocked, unknown := plan.Counts()
 
 	message := "rollback dry-run plan completed"
+	if plan.Recovery.Active() {
+		message = "rollback recovery plan completed"
+	}
 	if !plan.Ready() {
 		message = "rollback dry-run plan found blocking conditions"
+		if plan.Recovery.Active() {
+			message = "rollback recovery plan found blocking conditions"
+		}
 	}
 
 	items := make([]any, 0, len(plan.Steps))
@@ -225,6 +231,7 @@ func rollbackPlanResult(plan rollbackusecase.RollbackPlan) result.Result {
 			SnapshotEnabled: plan.SnapshotEnabled,
 			NoStart:         plan.NoStart,
 			SkipHTTPProbe:   plan.SkipHTTPProbe,
+			Recovery:        recoveryResultDetails(plan.Recovery),
 		},
 		Artifacts: result.RollbackPlanArtifacts{
 			ProjectDir:     plan.ProjectDir,
@@ -334,6 +341,10 @@ func renderRollbackPlanText(w io.Writer, res result.Result) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Warnings:     %d\n", details.Warnings); err != nil {
+		return err
+	}
+
+	if err := renderRecoveryAttemptSection(w, details.Recovery); err != nil {
 		return err
 	}
 

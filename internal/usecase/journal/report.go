@@ -33,6 +33,7 @@ type OperationReport struct {
 	ErrorCode    string                `json:"error_code,omitempty"`
 	ErrorMessage string                `json:"error_message,omitempty"`
 	Failure      *OperationFailure     `json:"failure,omitempty"`
+	Recovery     *OperationRecovery    `json:"recovery,omitempty"`
 }
 
 type OperationReportCounts struct {
@@ -93,6 +94,7 @@ func Explain(entry Entry) OperationReport {
 		ErrorMessage: entry.ErrorMessage,
 	}
 	report.Failure = explainFailure(report)
+	report.Recovery = explainRecovery(report)
 
 	return report
 }

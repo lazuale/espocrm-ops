@@ -13,6 +13,7 @@ import (
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 )
 
 const (
@@ -34,6 +35,7 @@ type ExecuteRequest struct {
 	SkipPull        bool
 	SkipHTTPProbe   bool
 	LogWriter       io.Writer
+	Recovery        *ExecuteRecovery
 }
 
 type ExecuteStep struct {
@@ -70,6 +72,7 @@ type ExecuteInfo struct {
 	DBSidecarPath          string
 	FilesSidecarPath       string
 	ServicesReady          []string
+	Recovery               operationusecase.RecoveryInfo
 }
 
 func Execute(req ExecuteRequest) (ExecuteInfo, error) {
@@ -82,6 +85,9 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		SkipBackup:     req.SkipBackup,
 		SkipPull:       req.SkipPull,
 		SkipHTTPProbe:  req.SkipHTTPProbe,
+	}
+	if req.Recovery != nil {
+		info.Recovery = req.Recovery.Info
 	}
 
 	ctx, err := maintenanceusecase.PrepareOperation(maintenanceusecase.OperationContextRequest{
@@ -124,7 +130,10 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: fmt.Sprintf("Using %s for contour %s.", info.EnvFile, info.Scope),
 	})
 
-	if req.SkipDoctor {
+	if req.Recovery != nil && req.Recovery.shouldSkip("doctor") {
+		logUpdate(req.LogWriter, "Doctor skipped because recovery is resuming after a completed source step")
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("doctor"))
+	} else if req.SkipDoctor {
 		logUpdate(req.LogWriter, "Doctor skipped because of --skip-doctor")
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "doctor",
@@ -185,7 +194,10 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		})
 	}
 
-	if req.SkipBackup {
+	if req.Recovery != nil && req.Recovery.shouldSkip("backup_recovery_point") {
+		logUpdate(req.LogWriter, "Recovery-point creation skipped because recovery is resuming after a completed source step")
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("backup_recovery_point"))
+	} else if req.SkipBackup {
 		logUpdate(req.LogWriter, "Recovery-point creation skipped because of --skip-backup")
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "backup_recovery_point",
@@ -232,6 +244,40 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Summary: "Recovery-point creation completed",
 			Details: details,
 		})
+	}
+
+	if req.Recovery != nil && req.Recovery.shouldSkip("runtime_apply") {
+		logUpdate(req.LogWriter, "Runtime apply skipped because recovery is resuming after a completed source step")
+		info.Steps = append(info.Steps, req.Recovery.skippedExecuteStep("runtime_apply"))
+
+		runtimeInfo, err := ApplyRuntimeReadiness(RuntimeReadinessRequest{
+			ProjectDir:     info.ProjectDir,
+			ComposeFile:    info.ComposeFile,
+			EnvFile:        info.EnvFile,
+			SiteURL:        info.SiteURL,
+			TimeoutSeconds: req.TimeoutSeconds,
+			SkipHTTPProbe:  req.SkipHTTPProbe,
+		})
+		if err != nil {
+			info.ServicesReady = append([]string(nil), runtimeInfo.ServicesReady...)
+			info.Steps = append(info.Steps, ExecuteStep{
+				Code:    "runtime_readiness",
+				Status:  UpdateStepStatusFailed,
+				Summary: "Runtime readiness checks failed",
+				Details: err.Error(),
+				Action:  "Resolve the runtime readiness failure before rerunning update.",
+			})
+			return info, wrapExecuteError(err)
+		}
+
+		info.ServicesReady = append([]string(nil), runtimeInfo.ServicesReady...)
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_readiness",
+			Status:  UpdateStepStatusCompleted,
+			Summary: "Runtime readiness checks completed",
+			Details: runtimeReadinessDetails(runtimeInfo, info.SiteURL),
+		})
+		return info, nil
 	}
 
 	runtimeInfo, err := ApplyRuntime(RuntimeApplyRequest{

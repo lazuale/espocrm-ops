@@ -55,6 +55,8 @@ func TestText_ShowOperation_Report(t *testing.T) {
 		"EspoCRM update report",
 		"Outcome:",
 		"Failure:",
+		"Recovery:",
+		"retry_from_start",
 		"[FAILED] Doctor stopped the update",
 		"[BLOCKED] Runtime apply did not run because doctor failed",
 	} {

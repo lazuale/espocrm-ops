@@ -179,6 +179,10 @@ func TestSchema_LastOperation_JSON_Report(t *testing.T) {
 	if failure["step_code"] != "doctor" {
 		t.Fatalf("unexpected failure attribution: %#v", failure)
 	}
+	recovery := requireJSONPath(t, report, "recovery").(map[string]any)
+	if recovery["decision"] != "retry_from_start" {
+		t.Fatalf("unexpected recovery decision: %#v", recovery)
+	}
 	steps := requireJSONPath(t, report, "steps").([]any)
 	if second := steps[1].(map[string]any); second["status"] != "blocked" {
 		t.Fatalf("expected blocked downstream step, got %#v", second)

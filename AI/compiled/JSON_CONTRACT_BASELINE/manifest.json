@@ -1,9 +1,9 @@
 {
   "doctor_ok.golden.json": "dbb5eb3dca35900a94a88828702605487f4dc7f8ac9a50425d4bb8d03ce0daf8",
   "history_ok.golden.json": "d8d32099ef5090d1c43d620ca2589cda2dbeb334c064242f90dc4a7de7262359",
-  "rollback_ok.golden.json": "5017ba7c6122b14f05be7e262f76b17a8668c00c62d08acf52c7e08517a34afa",
+  "rollback_ok.golden.json": "6cd2df8289d7622407a56ca733e149b561c43c6bb0b8d876b7a22bec5d664984",
   "rollback_plan_ok.golden.json": "6f6d2e994587b78c36ef310753add184a281d95489c89a14bdc515bde798ef76",
-  "show_operation_ok.golden.json": "3d4cf2403b893e8338fe3a6dce47d8defc2932a0eead875faa235f0a986ce6ed",
+  "show_operation_ok.golden.json": "1c64f523ddce07f94965a2d6be5b4bf6d7013b9ebe183b86e0ae11f5a6a4684b",
   "update_ok.golden.json": "4d7d9cb83ba92ca58ba4f1744fb13f109c29b93bb9eb0bf2d347044e458ce978",
   "update_plan_ok.golden.json": "99515e88d20343d7d6d801ac8c89456e137b5fc9b2d8e6914a35317c2fa7ed61",
   "verify_backup_ok.golden.json": "2d80de214db5d380d34410b30fc3c83fc70e8ff296bfd93d75edb501cf86e22a"
