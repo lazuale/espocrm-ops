@@ -1439,8 +1439,11 @@ test_doctor_json_reports_missing_env_files() {
 
   [[ $status -ne 0 ]] || fail_test "Regression case failed"
   assert_file_contains "$output_file" "\"target_scope\": \"all\"" "runtime output"
-  assert_file_contains "$output_file" "[prod] Env file for contour not found" "runtime output"
-  assert_file_contains "$output_file" "[dev] Env file for contour not found" "runtime output"
+  assert_file_contains "$output_file" "\"code\": \"env_resolution\"" "runtime output"
+  assert_file_contains "$output_file" "\"summary\": \"Could not resolve the prod env file\"" "runtime output"
+  assert_file_contains "$output_file" "\"details\": \"missing $ROOT_DIR/.env.prod\"" "runtime output"
+  assert_file_contains "$output_file" "\"summary\": \"Could not resolve the dev env file\"" "runtime output"
+  assert_file_contains "$output_file" "\"details\": \"missing $ROOT_DIR/.env.dev\"" "runtime output"
   restore_repo_env_files
   pass_test "Regression case passed"
 }
