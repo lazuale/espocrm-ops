@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	domainjournal "github.com/lazuale/espocrm-ops/internal/domain/journal"
 	platformclock "github.com/lazuale/espocrm-ops/internal/platform/clock"
@@ -13,18 +14,40 @@ import (
 
 type PruneRequest struct {
 	KeepDays int
-	Keep     int
+	KeepLast int
 	DryRun   bool
 }
 
+const (
+	PruneDecisionRemove  = "remove"
+	PruneDecisionKeep    = "keep"
+	PruneDecisionProtect = "protect"
+
+	PruneReasonOlderThanKeepDays = "older_than_keep_days"
+	PruneReasonOutsideKeepLast   = "outside_keep_last"
+	PruneReasonLatestOperation   = "latest_operation"
+	PruneReasonUnfinished        = "unfinished_operation"
+)
+
+type PruneDecision struct {
+	Entry    domainjournal.Entry
+	Path     string
+	Decision string
+	Reasons  []string
+}
+
 type PruneResult struct {
-	ReadStats    domainjournal.ReadStats `json:"read"`
-	Checked      int                     `json:"checked"`
-	Deleted      int                     `json:"deleted"`
-	RemovedDirs  int                     `json:"removed_dirs"`
-	Paths        []string                `json:"paths,omitempty"`
-	RemovedPaths []string                `json:"removed_paths,omitempty"`
-	FailedPath   string                  `json:"failed_path,omitempty"`
+	ReadStats         domainjournal.ReadStats `json:"read"`
+	Checked           int                     `json:"checked"`
+	Retained          int                     `json:"retained"`
+	Protected         int                     `json:"protected"`
+	Deleted           int                     `json:"deleted"`
+	RemovedDirs       int                     `json:"removed_dirs"`
+	LatestOperationID string                  `json:"latest_operation_id,omitempty"`
+	Decisions         []PruneDecision         `json:"decisions,omitempty"`
+	Paths             []string                `json:"paths,omitempty"`
+	RemovedPaths      []string                `json:"removed_paths,omitempty"`
+	FailedPath        string                  `json:"failed_path,omitempty"`
 }
 
 type PruneRemovalError struct {
@@ -50,11 +73,11 @@ func Prune(dir string, req PruneRequest) (result PruneResult, err error) {
 	if req.KeepDays < 0 {
 		return PruneResult{}, fmt.Errorf("keep-days must be non-negative")
 	}
-	if req.Keep < 0 {
-		return PruneResult{}, fmt.Errorf("keep must be non-negative")
+	if req.KeepLast < 0 {
+		return PruneResult{}, fmt.Errorf("keep-last must be non-negative")
 	}
-	if req.KeepDays == 0 && req.Keep == 0 {
-		return PruneResult{}, fmt.Errorf("keep-days or keep is required")
+	if req.KeepDays == 0 && req.KeepLast == 0 {
+		return PruneResult{}, fmt.Errorf("keep-days or keep-last is required")
 	}
 
 	lock, err := locks.AcquireJournalPruneLock(dir)
@@ -80,31 +103,20 @@ func Prune(dir string, req PruneRequest) (result PruneResult, err error) {
 	result = PruneResult{
 		ReadStats: stats,
 		Checked:   len(items),
-		Paths:     []string{},
+		Decisions: planPrune(items, req),
 	}
-	toDelete := make(map[string]struct{})
-
-	if req.KeepDays > 0 {
-		cutoff := platformclock.Now().AddDate(0, 0, -req.KeepDays)
-		for _, item := range items {
-			startedAt := parseStartedAt(item.Entry.StartedAt)
-			if startedAt.IsZero() {
-				continue
-			}
-			if startedAt.Before(cutoff) {
-				toDelete[item.Path] = struct{}{}
-			}
-		}
+	if len(items) > 0 {
+		result.LatestOperationID = items[0].Entry.OperationID
 	}
 
-	if req.Keep > 0 && len(items) > req.Keep {
-		for _, item := range items[req.Keep:] {
-			toDelete[item.Path] = struct{}{}
-		}
-	}
-
-	for _, item := range items {
-		if _, ok := toDelete[item.Path]; !ok {
+	for _, item := range result.Decisions {
+		switch item.Decision {
+		case PruneDecisionProtect:
+			result.Protected++
+			result.Retained++
+			continue
+		case PruneDecisionKeep:
+			result.Retained++
 			continue
 		}
 
@@ -132,6 +144,63 @@ func Prune(dir string, req PruneRequest) (result PruneResult, err error) {
 	}
 
 	return result, nil
+}
+
+func planPrune(items []EntryWithPath, req PruneRequest) []PruneDecision {
+	decisions := make([]PruneDecision, 0, len(items))
+
+	cutoff := platformclock.Now().AddDate(0, 0, -req.KeepDays)
+	for idx, item := range items {
+		reasons := []string{}
+		protect := false
+		remove := false
+
+		if idx == 0 {
+			protect = true
+			reasons = appendUniquePruneReason(reasons, PruneReasonLatestOperation)
+			if strings.TrimSpace(item.Entry.FinishedAt) == "" {
+				reasons = appendUniquePruneReason(reasons, PruneReasonUnfinished)
+			}
+		}
+		if req.KeepDays > 0 {
+			startedAt := parseStartedAt(item.Entry.StartedAt)
+			if !startedAt.IsZero() && startedAt.Before(cutoff) {
+				remove = true
+				reasons = appendUniquePruneReason(reasons, PruneReasonOlderThanKeepDays)
+			}
+		}
+		if req.KeepLast > 0 && idx >= req.KeepLast {
+			remove = true
+			reasons = appendUniquePruneReason(reasons, PruneReasonOutsideKeepLast)
+		}
+
+		decision := PruneDecisionKeep
+		if remove {
+			decision = PruneDecisionRemove
+		}
+		if protect {
+			decision = PruneDecisionProtect
+		}
+
+		decisions = append(decisions, PruneDecision{
+			Entry:    item.Entry,
+			Path:     item.Path,
+			Decision: decision,
+			Reasons:  reasons,
+		})
+	}
+
+	return decisions
+}
+
+func appendUniquePruneReason(reasons []string, value string) []string {
+	for _, current := range reasons {
+		if current == value {
+			return reasons
+		}
+	}
+
+	return append(reasons, value)
 }
 
 func removeEmptyDirs(root string) (int, []string, error) {

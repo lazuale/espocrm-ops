@@ -40,7 +40,7 @@ func TestSmoke_JournalPrune_EndToEnd(t *testing.T) {
 		"--journal-dir", journalDir,
 		"--json",
 		"journal-prune",
-		"--keep", "10",
+		"--keep-last", "10",
 	)
 	if deleted := requireJSONPath(t, empty, "details", "deleted"); deleted != float64(0) {
 		t.Fatalf("expected empty journal prune to delete 0 entries, got %v", deleted)

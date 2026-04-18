@@ -30,12 +30,15 @@ type OperationLookupDetails struct {
 
 type PruneDetails struct {
 	JournalReadDetails
-	Checked     int  `json:"checked"`
-	Deleted     int  `json:"deleted"`
-	RemovedDirs int  `json:"removed_dirs"`
-	KeepDays    int  `json:"keep_days"`
-	Keep        int  `json:"keep"`
-	DryRun      bool `json:"dry_run"`
+	Checked           int    `json:"checked"`
+	Retained          int    `json:"retained"`
+	Protected         int    `json:"protected"`
+	Deleted           int    `json:"deleted"`
+	RemovedDirs       int    `json:"removed_dirs"`
+	KeepDays          int    `json:"keep_days"`
+	KeepLast          int    `json:"keep_last"`
+	LatestOperationID string `json:"latest_operation_id,omitempty"`
+	DryRun            bool   `json:"dry_run"`
 }
 
 type VerifyBackupDetails struct {
@@ -390,9 +393,4 @@ type RunOperationArtifacts struct {
 	ProjectDir string `json:"project_dir"`
 	EnvFile    string `json:"env_file,omitempty"`
 	BackupRoot string `json:"backup_root,omitempty"`
-}
-
-type PruneItem struct {
-	Type string `json:"type"`
-	Path string `json:"path"`
 }

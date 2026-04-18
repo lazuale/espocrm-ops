@@ -34,14 +34,17 @@ func OperationLookupDetailsFromReadStats(stats ReadStats) result.OperationLookup
 	}
 }
 
-func PruneDetailsFromStats(stats ReadStats, checked, deleted, removedDirs, keepDays, keep int, dryRun bool) result.PruneDetails {
+func PruneDetailsFromStats(stats ReadStats, checked, retained, protected, deleted, removedDirs, keepDays, keepLast int, latestOperationID string, dryRun bool) result.PruneDetails {
 	return result.PruneDetails{
 		JournalReadDetails: ReadDetailsFromStats(stats),
 		Checked:            checked,
+		Retained:           retained,
+		Protected:          protected,
 		Deleted:            deleted,
 		RemovedDirs:        removedDirs,
 		KeepDays:           keepDays,
-		Keep:               keep,
+		KeepLast:           keepLast,
+		LatestOperationID:  latestOperationID,
 		DryRun:             dryRun,
 	}
 }

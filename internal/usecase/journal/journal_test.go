@@ -234,14 +234,29 @@ func TestPruneDryRunMapsResultWithoutDeletingFiles(t *testing.T) {
 
 	out, err := Prune(PruneInput{
 		JournalDir: dir,
-		Keep:       1,
+		KeepLast:   2,
 		DryRun:     true,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if out.Checked != 3 || out.Deleted != 2 || len(out.Paths) != 2 {
+	if out.Checked != 3 || out.Retained != 2 || out.Protected != 1 || out.Deleted != 1 || len(out.Paths) != 1 {
 		t.Fatalf("unexpected prune output: %#v", out)
+	}
+	if out.LatestOperationID != "op-3" {
+		t.Fatalf("expected latest operation id op-3, got %q", out.LatestOperationID)
+	}
+	if len(out.Items) != 3 {
+		t.Fatalf("expected prune items for all loaded operations, got %#v", out.Items)
+	}
+	if out.Items[0].Decision != "protect" || out.Items[0].Operation == nil || out.Items[0].Operation.OperationID != "op-3" {
+		t.Fatalf("expected newest operation to be protected, got %#v", out.Items[0])
+	}
+	if out.Items[1].Decision != "keep" || out.Items[1].Operation == nil || out.Items[1].Operation.OperationID != "op-2" {
+		t.Fatalf("expected middle operation to be kept, got %#v", out.Items[1])
+	}
+	if out.Items[2].Decision != "remove" || out.Items[2].Operation == nil || out.Items[2].Operation.OperationID != "op-1" {
+		t.Fatalf("expected oldest operation to be removed, got %#v", out.Items[2])
 	}
 	for _, id := range []string{"op-1", "op-2", "op-3"} {
 		if _, err := os.Stat(filepath.Join(dir, id+".json")); err != nil {

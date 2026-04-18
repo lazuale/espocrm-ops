@@ -23,7 +23,7 @@ func TestSchema_JournalPrune_JSON_Error_MissingRetentionPolicy(t *testing.T) {
 		"journal-prune",
 	)
 
-	assertUsageErrorOutput(t, outcome, "provide --keep-days or --keep")
+	assertUsageErrorOutput(t, outcome, "provide --keep-days or --keep-last")
 	if _, err := os.Stat(emptyDir); err != nil {
 		t.Fatalf("invalid prune request should not remove directories: %v", err)
 	}
@@ -41,9 +41,9 @@ func TestSchema_JournalPrune_JSON_Error_NegativeRetention(t *testing.T) {
 			messagePart: "--keep-days must be non-negative",
 		},
 		{
-			name:        "keep",
-			args:        []string{"--keep", "-1"},
-			messagePart: "--keep must be non-negative",
+			name:        "keep-last",
+			args:        []string{"--keep-last", "-1"},
+			messagePart: "--keep-last must be non-negative",
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
@@ -95,4 +95,22 @@ func TestSchema_JournalPrune_JSON_Error_LockHeld(t *testing.T) {
 	)
 
 	assertCLIErrorOutput(t, outcome, exitcode.RestoreError, "lock_acquire_failed", "journal prune lock failed")
+}
+
+func TestSchema_JournalPrune_JSON_Error_ConflictingKeepFlags(t *testing.T) {
+	tmp := t.TempDir()
+	journalDir := filepath.Join(tmp, "journal")
+	if err := os.MkdirAll(journalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome := executeCLI(
+		"--journal-dir", journalDir,
+		"--json",
+		"journal-prune",
+		"--keep-last", "2",
+		"--keep", "1",
+	)
+
+	assertUsageErrorOutput(t, outcome, "use either --keep-last or --keep, not both")
 }

@@ -79,18 +79,22 @@ type ShowOperationOutput struct {
 type PruneInput struct {
 	JournalDir string
 	KeepDays   int
-	Keep       int
+	KeepLast   int
 	DryRun     bool
 }
 
 type PruneOutput struct {
-	ReadStats    ReadStats
-	Checked      int
-	Deleted      int
-	RemovedDirs  int
-	Paths        []string
-	RemovedPaths []string
-	FailedPath   string
+	ReadStats         ReadStats
+	Checked           int
+	Retained          int
+	Protected         int
+	Deleted           int
+	RemovedDirs       int
+	LatestOperationID string
+	Items             []PruneItem
+	Paths             []string
+	RemovedPaths      []string
+	FailedPath        string
 }
 
 type LockError struct {
@@ -183,7 +187,7 @@ func ShowOperation(in ShowOperationInput) (ShowOperationOutput, error) {
 func Prune(in PruneInput) (PruneOutput, error) {
 	pruneResult, err := journalstore.Prune(in.JournalDir, journalstore.PruneRequest{
 		KeepDays: in.KeepDays,
-		Keep:     in.Keep,
+		KeepLast: in.KeepLast,
 		DryRun:   in.DryRun,
 	})
 	if err != nil {
@@ -193,24 +197,32 @@ func Prune(in PruneInput) (PruneOutput, error) {
 		}
 
 		return PruneOutput{
-			ReadStats:    readStatsFromDomain(pruneResult.ReadStats),
-			Checked:      pruneResult.Checked,
-			Deleted:      pruneResult.Deleted,
-			RemovedDirs:  pruneResult.RemovedDirs,
-			Paths:        pruneResult.Paths,
-			RemovedPaths: pruneResult.RemovedPaths,
-			FailedPath:   pruneResult.FailedPath,
+			ReadStats:         readStatsFromDomain(pruneResult.ReadStats),
+			Checked:           pruneResult.Checked,
+			Retained:          pruneResult.Retained,
+			Protected:         pruneResult.Protected,
+			Deleted:           pruneResult.Deleted,
+			RemovedDirs:       pruneResult.RemovedDirs,
+			LatestOperationID: pruneResult.LatestOperationID,
+			Items:             pruneItemsFromStore(pruneResult),
+			Paths:             pruneResult.Paths,
+			RemovedPaths:      pruneResult.RemovedPaths,
+			FailedPath:        pruneResult.FailedPath,
 		}, err
 	}
 
 	return PruneOutput{
-		ReadStats:    readStatsFromDomain(pruneResult.ReadStats),
-		Checked:      pruneResult.Checked,
-		Deleted:      pruneResult.Deleted,
-		RemovedDirs:  pruneResult.RemovedDirs,
-		Paths:        pruneResult.Paths,
-		RemovedPaths: pruneResult.RemovedPaths,
-		FailedPath:   pruneResult.FailedPath,
+		ReadStats:         readStatsFromDomain(pruneResult.ReadStats),
+		Checked:           pruneResult.Checked,
+		Retained:          pruneResult.Retained,
+		Protected:         pruneResult.Protected,
+		Deleted:           pruneResult.Deleted,
+		RemovedDirs:       pruneResult.RemovedDirs,
+		LatestOperationID: pruneResult.LatestOperationID,
+		Items:             pruneItemsFromStore(pruneResult),
+		Paths:             pruneResult.Paths,
+		RemovedPaths:      pruneResult.RemovedPaths,
+		FailedPath:        pruneResult.FailedPath,
 	}, nil
 }
 

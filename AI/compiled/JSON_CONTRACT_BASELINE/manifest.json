@@ -1,6 +1,7 @@
 {
   "doctor_ok.golden.json": "dbb5eb3dca35900a94a88828702605487f4dc7f8ac9a50425d4bb8d03ce0daf8",
   "history_ok.golden.json": "23de6d78c3de5f4f55dd6f93deee655c83be1d25dcfb78aed3441f9a4544bc8a",
+  "journal_prune_ok.golden.json": "4111f7770261a039b9c9acbf2004da5fde537a14c2bb29bf14448cf9aa53002e",
   "rollback_ok.golden.json": "6cd2df8289d7622407a56ca733e149b561c43c6bb0b8d876b7a22bec5d664984",
   "rollback_plan_ok.golden.json": "6f6d2e994587b78c36ef310753add184a281d95489c89a14bdc515bde798ef76",
   "show_operation_ok.golden.json": "1c64f523ddce07f94965a2d6be5b4bf6d7013b9ebe183b86e0ae11f5a6a4684b",

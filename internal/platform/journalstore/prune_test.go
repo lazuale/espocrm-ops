@@ -8,8 +8,17 @@ import (
 	"time"
 
 	domainjournal "github.com/lazuale/espocrm-ops/internal/domain/journal"
+	platformclock "github.com/lazuale/espocrm-ops/internal/platform/clock"
 	"github.com/lazuale/espocrm-ops/internal/platform/locks"
 )
+
+type pruneTestClock struct {
+	now time.Time
+}
+
+func (c pruneTestClock) Now() time.Time {
+	return c.now
+}
 
 func TestPrune_KeepMostRecentByStartedAt(t *testing.T) {
 	tmp := t.TempDir()
@@ -41,25 +50,40 @@ func TestPrune_KeepMostRecentByStartedAt(t *testing.T) {
 		}
 	}
 
-	res, err := Prune(tmp, PruneRequest{Keep: 2, DryRun: true})
+	res, err := Prune(tmp, PruneRequest{KeepLast: 2, DryRun: true})
 	if err != nil {
 		t.Fatalf("Prune dry-run failed: %v", err)
 	}
-	if res.Checked != 3 || res.Deleted != 1 {
+	if res.Checked != 3 || res.Retained != 2 || res.Protected != 1 || res.Deleted != 1 {
 		t.Fatalf("unexpected dry-run result: %+v", res)
 	}
 	if res.ReadStats.TotalFilesSeen != 3 || res.ReadStats.LoadedEntries != 3 || res.ReadStats.SkippedCorrupt != 0 {
 		t.Fatalf("unexpected read stats: %+v", res.ReadStats)
 	}
+	if res.LatestOperationID != entries[2].OperationID {
+		t.Fatalf("expected latest operation id %s, got %s", entries[2].OperationID, res.LatestOperationID)
+	}
 	if len(res.Paths) != 1 || filepath.Base(res.Paths[0]) != entries[0].OperationID+".json" {
 		t.Fatalf("expected oldest entry to be selected, got: %+v", res.Paths)
+	}
+	if len(res.Decisions) != 3 {
+		t.Fatalf("expected a decision for each entry, got %+v", res.Decisions)
+	}
+	if res.Decisions[0].Decision != PruneDecisionProtect || !hasPruneReason(res.Decisions[0].Reasons, PruneReasonLatestOperation) {
+		t.Fatalf("expected newest entry to be protected, got %+v", res.Decisions[0])
+	}
+	if res.Decisions[1].Decision != PruneDecisionKeep {
+		t.Fatalf("expected middle entry to be kept, got %+v", res.Decisions[1])
+	}
+	if res.Decisions[2].Decision != PruneDecisionRemove || !hasPruneReason(res.Decisions[2].Reasons, PruneReasonOutsideKeepLast) {
+		t.Fatalf("expected oldest entry to be removed outside keep-last, got %+v", res.Decisions[2])
 	}
 
 	if _, err := os.Stat(filepath.Join(tmp, entries[0].OperationID+".json")); err != nil {
 		t.Fatalf("dry-run should not delete file: %v", err)
 	}
 
-	res, err = Prune(tmp, PruneRequest{Keep: 2})
+	res, err = Prune(tmp, PruneRequest{KeepLast: 2})
 	if err != nil {
 		t.Fatalf("Prune failed: %v", err)
 	}
@@ -119,7 +143,7 @@ func TestPrune_RejectsConcurrentHolder(t *testing.T) {
 		}
 	}()
 
-	if _, err := Prune(tmp, PruneRequest{Keep: 1}); err == nil {
+	if _, err := Prune(tmp, PruneRequest{KeepLast: 1}); err == nil {
 		t.Fatal("expected concurrent prune to fail")
 	} else {
 		var lockErr locks.LockError
@@ -139,7 +163,7 @@ func TestPrune_RejectsConcurrentHolder(t *testing.T) {
 func TestPrune_ReleasesLockAfterRun(t *testing.T) {
 	tmp := t.TempDir()
 
-	if _, err := Prune(tmp, PruneRequest{Keep: 10}); err != nil {
+	if _, err := Prune(tmp, PruneRequest{KeepLast: 10}); err != nil {
 		t.Fatalf("prune failed: %v", err)
 	}
 
@@ -197,7 +221,7 @@ func TestPrune_PartialFileRemovalFailureIsRepeatable(t *testing.T) {
 		removeJournalFile = oldRemove
 	})
 
-	res, err := Prune(tmp, PruneRequest{Keep: 1})
+	res, err := Prune(tmp, PruneRequest{KeepLast: 1})
 	if err == nil {
 		t.Fatal("expected partial prune failure")
 	}
@@ -230,7 +254,7 @@ func TestPrune_PartialFileRemovalFailureIsRepeatable(t *testing.T) {
 	}
 
 	removeJournalFile = oldRemove
-	retry, err := Prune(tmp, PruneRequest{Keep: 1})
+	retry, err := Prune(tmp, PruneRequest{KeepLast: 1})
 	if err != nil {
 		t.Fatalf("retry prune failed: %v", err)
 	}
@@ -263,6 +287,16 @@ func TestPrune_KeepDaysUsesStartedAtNotMtime(t *testing.T) {
 	if err := os.Chtimes(filepath.Join(tmp, oldEntry.OperationID+".json"), newMtime, newMtime); err != nil {
 		t.Fatal(err)
 	}
+	newEntry := domainjournal.Entry{
+		OperationID: "op-new-started-at",
+		Command:     "verify-backup",
+		StartedAt:   time.Now().UTC().Format(time.RFC3339),
+		FinishedAt:  time.Now().UTC().Add(time.Second).Format(time.RFC3339),
+		OK:          true,
+	}
+	if err := writer.Write(newEntry); err != nil {
+		t.Fatal(err)
+	}
 
 	badPath := filepath.Join(tmp, "op-invalid.json")
 	if err := os.WriteFile(badPath, []byte("{bad"), 0o644); err != nil {
@@ -277,10 +311,10 @@ func TestPrune_KeepDaysUsesStartedAtNotMtime(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Prune failed: %v", err)
 	}
-	if res.Checked != 1 || res.Deleted != 1 {
-		t.Fatalf("expected only readable old StartedAt entry to be selected, got: %+v", res)
+	if res.Checked != 2 || res.Retained != 1 || res.Protected != 1 || res.Deleted != 1 {
+		t.Fatalf("expected old StartedAt entry to be selected while keeping the newest entry, got: %+v", res)
 	}
-	if res.ReadStats.TotalFilesSeen != 2 || res.ReadStats.LoadedEntries != 1 || res.ReadStats.SkippedCorrupt != 1 {
+	if res.ReadStats.TotalFilesSeen != 3 || res.ReadStats.LoadedEntries != 2 || res.ReadStats.SkippedCorrupt != 1 {
 		t.Fatalf("unexpected read stats: %+v", res.ReadStats)
 	}
 	if len(res.Paths) != 1 || filepath.Base(res.Paths[0]) != oldEntry.OperationID+".json" {
@@ -288,20 +322,87 @@ func TestPrune_KeepDaysUsesStartedAtNotMtime(t *testing.T) {
 	}
 }
 
+func TestPrune_ProtectsLatestOperationWhenAgePolicyWouldDeleteIt(t *testing.T) {
+	restoreClock := platformclock.SetForTest(pruneTestClock{now: time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC)})
+	t.Cleanup(restoreClock)
+
+	tmp := t.TempDir()
+	writer := FSWriter{Dir: tmp}
+
+	entries := []domainjournal.Entry{
+		{
+			OperationID: "op-oldest",
+			Command:     "verify-backup",
+			StartedAt:   "2026-02-01T12:00:00Z",
+			FinishedAt:  "2026-02-01T12:00:01Z",
+			OK:          true,
+		},
+		{
+			OperationID: "op-latest-but-old",
+			Command:     "verify-backup",
+			StartedAt:   "2026-03-01T12:00:00Z",
+			FinishedAt:  "2026-03-01T12:00:01Z",
+			OK:          true,
+		},
+	}
+	for _, entry := range entries {
+		if err := writer.Write(entry); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	res, err := Prune(tmp, PruneRequest{KeepDays: 30, DryRun: true})
+	if err != nil {
+		t.Fatalf("Prune failed: %v", err)
+	}
+	if res.Checked != 2 || res.Retained != 1 || res.Protected != 1 || res.Deleted != 1 {
+		t.Fatalf("unexpected prune result: %+v", res)
+	}
+	if res.LatestOperationID != "op-latest-but-old" {
+		t.Fatalf("expected latest operation id op-latest-but-old, got %s", res.LatestOperationID)
+	}
+	if len(res.Decisions) != 2 {
+		t.Fatalf("expected two prune decisions, got %+v", res.Decisions)
+	}
+	if res.Decisions[0].Decision != PruneDecisionProtect ||
+		!hasPruneReason(res.Decisions[0].Reasons, PruneReasonLatestOperation) ||
+		!hasPruneReason(res.Decisions[0].Reasons, PruneReasonOlderThanKeepDays) {
+		t.Fatalf("expected latest old operation to be protected explicitly, got %+v", res.Decisions[0])
+	}
+	if res.Decisions[1].Decision != PruneDecisionRemove || !hasPruneReason(res.Decisions[1].Reasons, PruneReasonOlderThanKeepDays) {
+		t.Fatalf("expected oldest operation to be removed by keep-days, got %+v", res.Decisions[1])
+	}
+}
+
 func TestPrune_RemovesEmptyDirs(t *testing.T) {
 	tmp := t.TempDir()
-	dayDir := filepath.Join(tmp, "2026-04-01")
-	if err := os.MkdirAll(dayDir, 0o755); err != nil {
+	oldDayDir := filepath.Join(tmp, "2026-04-01")
+	newDayDir := filepath.Join(tmp, "2026-04-15")
+	if err := os.MkdirAll(oldDayDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(newDayDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	entry := domainjournal.Entry{
+	oldEntry := domainjournal.Entry{
 		OperationID: "op-20260401T120000Z-old",
 		Command:     "verify-backup",
 		StartedAt:   time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339),
+		FinishedAt:  time.Now().UTC().AddDate(0, 0, -10).Add(time.Second).Format(time.RFC3339),
 		OK:          true,
 	}
-	if err := (FSWriter{Dir: dayDir}).Write(entry); err != nil {
+	newEntry := domainjournal.Entry{
+		OperationID: "op-20260415T120000Z-new",
+		Command:     "verify-backup",
+		StartedAt:   time.Now().UTC().Format(time.RFC3339),
+		FinishedAt:  time.Now().UTC().Add(time.Second).Format(time.RFC3339),
+		OK:          true,
+	}
+	if err := (FSWriter{Dir: oldDayDir}).Write(oldEntry); err != nil {
+		t.Fatal(err)
+	}
+	if err := (FSWriter{Dir: newDayDir}).Write(newEntry); err != nil {
 		t.Fatal(err)
 	}
 
@@ -312,10 +413,23 @@ func TestPrune_RemovesEmptyDirs(t *testing.T) {
 	if res.Deleted != 1 || res.RemovedDirs != 1 {
 		t.Fatalf("unexpected prune result: %+v", res)
 	}
-	if len(res.RemovedPaths) != 1 || res.RemovedPaths[0] != dayDir {
+	if len(res.RemovedPaths) != 1 || res.RemovedPaths[0] != oldDayDir {
 		t.Fatalf("unexpected removed paths: %+v", res.RemovedPaths)
 	}
-	if _, err := os.Stat(dayDir); !os.IsNotExist(err) {
+	if _, err := os.Stat(oldDayDir); !os.IsNotExist(err) {
 		t.Fatalf("expected empty day dir to be removed, got: %v", err)
 	}
+	if _, err := os.Stat(newDayDir); err != nil {
+		t.Fatalf("expected newest day dir to remain, got: %v", err)
+	}
+}
+
+func hasPruneReason(reasons []string, want string) bool {
+	for _, reason := range reasons {
+		if reason == want {
+			return true
+		}
+	}
+
+	return false
 }
