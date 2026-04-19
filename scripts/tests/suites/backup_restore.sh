@@ -562,10 +562,10 @@ test_backup_catalog_ready_only_selects_verified_set() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "Total sets:        3" "runtime output"
-  assert_file_contains "$output_file" "Shown sets:        1" "runtime output"
-  assert_file_contains "$output_file" "[1] 2026-04-07_01-00-00 | prefix=espocrm-dev | readiness=ready, checksums verified" "runtime output"
-  assert_file_not_contains "$output_file" "2026-04-07_03-00-00 | prefix=espocrm-dev | readiness=corrupted" "runtime output"
+  assert_file_contains "$output_file" "Total sets:              3" "runtime output"
+  assert_file_contains "$output_file" "Shown sets:              1" "runtime output"
+  assert_file_contains "$output_file" "[1] espocrm-dev_2026-04-07_01-00-00 | source=unknown | readiness=ready, checksums verified" "runtime output"
+  assert_file_not_contains "$output_file" "espocrm-dev_2026-04-07_03-00-00 | source=unknown | readiness=corrupted" "runtime output"
   pass_test "Regression case passed"
 }
 
