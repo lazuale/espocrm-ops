@@ -116,6 +116,33 @@ type StatusReportArtifacts struct {
 	SupportDir  string `json:"support_dir,omitempty"`
 }
 
+type MaintenanceDetails struct {
+	Scope            string   `json:"scope"`
+	GeneratedAt      string   `json:"generated_at"`
+	Sections         int      `json:"sections"`
+	Included         int      `json:"included"`
+	Omitted          int      `json:"omitted"`
+	Failed           int      `json:"failed"`
+	Warnings         int      `json:"warnings"`
+	DryRun           bool     `json:"dry_run"`
+	IncludedSections []string `json:"included_sections"`
+	OmittedSections  []string `json:"omitted_sections,omitempty"`
+	FailedSections   []string `json:"failed_sections,omitempty"`
+}
+
+type MaintenanceArtifacts struct {
+	ProjectDir             string `json:"project_dir"`
+	ComposeFile            string `json:"compose_file"`
+	EnvFile                string `json:"env_file,omitempty"`
+	JournalDir             string `json:"journal_dir,omitempty"`
+	BackupRoot             string `json:"backup_root,omitempty"`
+	ReportsDir             string `json:"reports_dir,omitempty"`
+	SupportDir             string `json:"support_dir,omitempty"`
+	RestoreDrillEnvDir     string `json:"restore_drill_env_dir,omitempty"`
+	RestoreDrillStorageDir string `json:"restore_drill_storage_dir,omitempty"`
+	RestoreDrillBackupDir  string `json:"restore_drill_backup_dir,omitempty"`
+}
+
 type PruneDetails struct {
 	JournalReadDetails
 	Checked           int    `json:"checked"`

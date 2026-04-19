@@ -51,3 +51,21 @@ func TestRootExposesSingleDashboardCommand(t *testing.T) {
 		}
 	}
 }
+
+func TestRootExposesSingleHousekeepingCommand(t *testing.T) {
+	root := newTestRootCmd()
+
+	commands := map[string]struct{}{}
+	for _, cmd := range root.Commands() {
+		commands[cmd.Name()] = struct{}{}
+	}
+
+	if _, ok := commands["maintenance"]; !ok {
+		t.Fatalf("expected maintenance command to be present")
+	}
+	for _, forbidden := range []string{"cleanup", "housekeeping"} {
+		if _, ok := commands[forbidden]; ok {
+			t.Fatalf("expected no duplicate housekeeping command %q", forbidden)
+		}
+	}
+}
