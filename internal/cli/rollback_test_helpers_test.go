@@ -152,6 +152,10 @@ if [[ "${1:-}" == "compose" ]]; then
 	done
 fi
 
+if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
+  exit 0
+fi
+
 if [[ "${1:-}" == "inspect" && "${2:-}" == "--format" && "${3:-}" == "{{.State.Running}}" ]]; then
   container="${4:-}"
   service="${container#mock-}"
@@ -223,6 +227,33 @@ if [[ "${1:-}" == "exec" ]]; then
     cat >/dev/null
     exit 0
   fi
+fi
+
+if [[ "${1:-}" == "run" ]]; then
+  storage_host=""
+  for arg in "$@"; do
+    if [[ "$arg" == *":/espo-storage" ]]; then
+      storage_host="${arg%%:/espo-storage}"
+      break
+    fi
+  done
+
+  if [[ -n "$storage_host" ]]; then
+    chown -R "${ESPO_RUNTIME_UID}:${ESPO_RUNTIME_GID}" "$storage_host"
+    find "$storage_host" -type d -exec chmod 0755 {} +
+
+    for relative in data custom client/custom upload; do
+      path="$storage_host/$relative"
+      if [[ -d "$path" ]]; then
+        find "$path" -type d -exec chmod 0775 {} +
+        find "$path" -type f -exec chmod 0664 {} +
+      fi
+    done
+    exit 0
+  fi
+
+  printf '%s:%s\n' "${DOCKER_MOCK_RESTORE_RUNTIME_UID:-$(id -u)}" "${DOCKER_MOCK_RESTORE_RUNTIME_GID:-$(id -g)}"
+  exit 0
 fi
 
 echo "unexpected docker invocation: $*" >&2

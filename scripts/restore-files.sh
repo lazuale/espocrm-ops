@@ -1,17 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
-# Shell owns operator guardrails and app-service orchestration.
-# Go owns manifest/direct archive preflight, tar validation and tree replacement.
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck disable=SC1091
 source "$SCRIPT_DIR/lib/common.sh"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/locks.sh"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/compose.sh"
-# shellcheck disable=SC1091
-source "$SCRIPT_DIR/lib/fs.sh"
 
 usage() {
   cat <<'EOF'
@@ -23,93 +15,26 @@ Usage:
 Examples:
   ./scripts/restore-files.sh /opt/espocrm-data/backups/prod/manifests/espocrm-prod_YYYY-MM-DD_HH-MM-SS.manifest.json /var/lib/espocrm/storage
   ./scripts/restore-files.sh dev /opt/espocrm-data/backups/dev/files/espocrm-dev_files_YYYY-MM-DD_HH-MM-SS.tar.gz --force
-  ./scripts/restore-files.sh prod /opt/espocrm-data/backups/prod/files/espocrm-prod_files_YYYY-MM-DD_HH-MM-SS.tar.gz --force --confirm-prod prod
-  ./scripts/restore-files.sh prod /opt/espocrm-data/backups/prod/files/espocrm-prod_files_YYYY-MM-DD_HH-MM-SS.tar.gz --force --confirm-prod prod --no-snapshot
-  ./scripts/restore-files.sh prod /opt/espocrm-data/backups/prod/files/espocrm-prod_files_YYYY-MM-DD_HH-MM-SS.tar.gz --force --confirm-prod prod --no-start
+  ./scripts/restore-files.sh prod --manifest /opt/espocrm-data/backups/prod/manifests/espocrm-prod_YYYY-MM-DD_HH-MM-SS.manifest.json --force --confirm-prod prod --no-start
+
+This compatibility wrapper delegates immediately to:
+  espops restore --scope <dev|prod> --project-dir <repo> --compose-file <repo>/compose.yaml --skip-db ...
 EOF
 }
 
-run_go_restore_files() {
-  local args=(restore-files --target-dir "$TARGET_STORAGE")
+if [[ $# -eq 0 ]]; then
+  usage >&2
+  exit 1
+fi
 
-  if [[ -n "${MANIFEST_JSON:-}" ]]; then
-    args+=(--manifest "$MANIFEST_JSON")
-  else
-    args+=(--files-backup "$BACKUP_FILE")
-  fi
+case "${1:-}" in
+  -h|--help)
+    usage
+    exit 0
+    ;;
+esac
 
-  if [[ ${DRY_RUN:-0} -eq 1 ]]; then
-    args+=(--dry-run)
-  fi
-
-  run_espops "${args[@]}"
-}
-
-write_restore_files_plan_reports() {
-  local source_kind="direct_backup"
-  local next_step="After restore, verify the contour with status or overview"
-
-  if [[ -n "${MANIFEST_JSON:-}" ]]; then
-    source_kind="manifest"
-  fi
-
-  if [[ $DRY_RUN -eq 1 ]]; then
-    next_step="Run the same command without --dry-run to execute the files restore"
-  elif [[ $NO_START -eq 1 ]]; then
-    next_step="After restore, start the application services manually and verify the contour with status"
-  fi
-
-  cat > "$RESTORE_PLAN_TXT" <<EOF
-EspoCRM files restore plan
-created_at=$STAMP
-command=restore-files
-contour=$ESPO_ENV
-compose_project=$COMPOSE_PROJECT_NAME
-env_file=$(basename "$ENV_FILE")
-source_kind=$source_kind
-manifest_json=${MANIFEST_JSON:-}
-files_backup=${BACKUP_FILE:-}
-target_storage=$TARGET_STORAGE
-snapshot_enabled=$([[ $SNAPSHOT_BEFORE_RESTORE -eq 1 ]] && echo true || echo false)
-no_stop=$([[ $NO_STOP -eq 1 ]] && echo true || echo false)
-no_start=$([[ $NO_START -eq 1 ]] && echo true || echo false)
-dry_run=$([[ $DRY_RUN -eq 1 ]] && echo true || echo false)
-changes=replace target storage tree from selected backup
-non_changes=does not modify database contents
-next_step=$next_step
-EOF
-
-  {
-    printf '{\n'
-    printf '  "created_at": "%s",\n' "$(json_escape "$STAMP")"
-    printf '  "command": "restore-files",\n'
-    printf '  "contour": "%s",\n' "$(json_escape "$ESPO_ENV")"
-    printf '  "compose_project": "%s",\n' "$(json_escape "$COMPOSE_PROJECT_NAME")"
-    printf '  "env_file": "%s",\n' "$(json_escape "$(basename "$ENV_FILE")")"
-    printf '  "source_kind": "%s",\n' "$(json_escape "$source_kind")"
-    printf '  "manifest_json": %s,\n' "$(json_value_or_null "${MANIFEST_JSON:-}")"
-    printf '  "files_backup": %s,\n' "$(json_value_or_null "${BACKUP_FILE:-}")"
-    printf '  "target": {\n'
-    printf '    "storage_dir": "%s"\n' "$(json_escape "$TARGET_STORAGE")"
-    printf '  },\n'
-    printf '  "flags": {\n'
-    printf '    "snapshot_enabled": %s,\n' "$(json_bool "$SNAPSHOT_BEFORE_RESTORE")"
-    printf '    "no_stop": %s,\n' "$(json_bool "$NO_STOP")"
-    printf '    "no_start": %s,\n' "$(json_bool "$NO_START")"
-    printf '    "dry_run": %s\n' "$(json_bool "$DRY_RUN")"
-    printf '  },\n'
-    printf '  "changes": [\n'
-    printf '    "replace target storage tree from selected backup"\n'
-    printf '  ],\n'
-    printf '  "non_changes": [\n'
-    printf '    "does not modify database contents"\n'
-    printf '  ],\n'
-    printf '  "next_step": "%s"\n' "$(json_escape "$next_step")"
-    printf '}\n'
-  } > "$RESTORE_PLAN_JSON"
-}
-
-if [[ $# -gt 0 && "${1:-}" != "dev" && "${1:-}" != "prod" && "${1:-}" != "-h" && "${1:-}" != "--help" ]]; then
+if [[ "${1:-}" != "dev" && "${1:-}" != "prod" ]]; then
   DIRECT_DRY_RUN=0
   if [[ $# -eq 3 && "${3:-}" == "--dry-run" ]]; then
     DIRECT_DRY_RUN=1
@@ -118,62 +43,50 @@ if [[ $# -gt 0 && "${1:-}" != "dev" && "${1:-}" != "prod" && "${1:-}" != "-h" &&
     exit 2
   fi
 
-  MANIFEST_JSON="$(caller_path "$1")"
-  TARGET_STORAGE="$(caller_path "$2")"
-  DRY_RUN="$DIRECT_DRY_RUN"
+  args=(
+    restore-files
+    --manifest "$(caller_path "$1")"
+    --target-dir "$(caller_path "$2")"
+  )
+  if [[ $DIRECT_DRY_RUN -eq 1 ]]; then
+    args+=(--dry-run)
+  fi
 
-  [[ -f "$MANIFEST_JSON" ]] || die "JSON manifest not found: $MANIFEST_JSON"
-  run_go_restore_files
+  run_espops "${args[@]}"
   exit $?
 fi
 
 parse_contour_arg "$@"
+require_explicit_contour
 
-FORCE=0
-CONFIRM_PROD=""
-NO_STOP=0
-NO_START=0
-SNAPSHOT_BEFORE_RESTORE=1
-BACKUP_ARG=""
-BACKUP_FILE=""
-MANIFEST_JSON=""
-DRY_RUN=0
+args=(
+  restore
+  --scope "$ESPO_ENV"
+  --project-dir "$ROOT_DIR"
+  --compose-file "$ROOT_DIR/compose.yaml"
+  --skip-db
+)
 
+if [[ -n "${ENV_FILE:-}" ]]; then
+  args+=(--env-file "$ENV_FILE")
+fi
+
+source_seen=0
 while [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; do
   case "${POSITIONAL_ARGS[0]}" in
-    --force)
-      FORCE=1
+    --force|--dry-run|--no-snapshot|--snapshot-before-restore|--no-stop|--no-start)
+      args+=("${POSITIONAL_ARGS[0]}")
       POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
       ;;
-    --confirm-prod)
-      [[ ${#POSITIONAL_ARGS[@]} -ge 2 ]] || die "--confirm-prod must be followed by prod"
-      [[ "${POSITIONAL_ARGS[1]}" == "prod" ]] || die "--confirm-prod accepts only the value prod"
-      CONFIRM_PROD="prod"
-      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:2}")
-      ;;
-    --no-snapshot)
-      SNAPSHOT_BEFORE_RESTORE=0
-      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
-      ;;
-    --snapshot-before-restore)
-      SNAPSHOT_BEFORE_RESTORE=1
-      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
-      ;;
-    --no-stop)
-      NO_STOP=1
-      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
-      ;;
-    --no-start)
-      NO_START=1
-      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
-      ;;
-    --dry-run)
-      DRY_RUN=1
-      POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
-      ;;
-    --manifest)
-      [[ ${#POSITIONAL_ARGS[@]} -ge 2 ]] || die "--manifest must be followed by a path"
-      MANIFEST_JSON="$(caller_path "${POSITIONAL_ARGS[1]}")"
+    --confirm-prod|--manifest)
+      [[ ${#POSITIONAL_ARGS[@]} -ge 2 ]] || die "${POSITIONAL_ARGS[0]} must be followed by a value"
+      if [[ "${POSITIONAL_ARGS[0]}" == "--manifest" ]]; then
+        [[ $source_seen -eq 0 ]] || die "Pass either a files backup path or --manifest, but not both"
+        source_seen=1
+        args+=(--manifest "$(caller_path "${POSITIONAL_ARGS[1]}")")
+      else
+        args+=("${POSITIONAL_ARGS[0]}" "${POSITIONAL_ARGS[1]}")
+      fi
       POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:2}")
       ;;
     -h|--help)
@@ -185,116 +98,12 @@ while [[ ${#POSITIONAL_ARGS[@]} -gt 0 ]]; do
       die "Unknown argument: ${POSITIONAL_ARGS[0]}"
       ;;
     *)
-      if [[ -n "$BACKUP_ARG" ]]; then
-        usage >&2
-        die "More than one backup-file path was provided"
-      fi
-      BACKUP_ARG="${POSITIONAL_ARGS[0]}"
+      [[ $source_seen -eq 0 ]] || die "Pass either a files backup path or --manifest, but not both"
+      source_seen=1
+      args+=(--files-backup "$(caller_path "${POSITIONAL_ARGS[0]}")")
       POSITIONAL_ARGS=("${POSITIONAL_ARGS[@]:1}")
       ;;
   esac
 done
 
-require_explicit_contour
-
-if [[ -z "$BACKUP_ARG" && -z "$MANIFEST_JSON" ]]; then
-  usage >&2
-  exit 1
-fi
-
-if [[ -n "$BACKUP_ARG" && -n "$MANIFEST_JSON" ]]; then
-  die "Pass either a files backup path or --manifest, but not both"
-fi
-
-if [[ -n "$BACKUP_ARG" ]]; then
-  BACKUP_FILE="$(caller_path "$BACKUP_ARG")"
-  [[ -f "$BACKUP_FILE" ]] || die "Backup file not found: $BACKUP_FILE"
-fi
-if [[ -n "$MANIFEST_JSON" ]]; then
-  [[ -f "$MANIFEST_JSON" ]] || die "JSON manifest not found: $MANIFEST_JSON"
-fi
-
-acquire_operation_lock restore-files
-resolve_env_file
-load_env
-ensure_runtime_dirs
-
-TARGET_STORAGE="$(root_path "$ESPO_STORAGE_DIR")"
-BACKUP_ROOT_ABS="$(root_path "$BACKUP_ROOT")"
-REPORTS_DIR="$BACKUP_ROOT_ABS/reports"
-NAME_PREFIX="${BACKUP_NAME_PREFIX:-$COMPOSE_PROJECT_NAME}"
-STAMP="$(next_unique_stamp \
-  "$REPORTS_DIR/${NAME_PREFIX}_restore-files-plan___STAMP__.txt" \
-  "$REPORTS_DIR/${NAME_PREFIX}_restore-files-plan___STAMP__.json")"
-RESTORE_PLAN_TXT="$REPORTS_DIR/${NAME_PREFIX}_restore-files-plan_${STAMP}.txt"
-RESTORE_PLAN_JSON="$REPORTS_DIR/${NAME_PREFIX}_restore-files-plan_${STAMP}.json"
-
-if [[ $DRY_RUN -eq 1 ]]; then
-  write_restore_files_plan_reports
-  print_context
-  if [[ -n "$MANIFEST_JSON" ]]; then
-    echo "JSON manifest for dry-run restore: $MANIFEST_JSON"
-  else
-    echo "Files backup for dry-run restore: $BACKUP_FILE"
-  fi
-  echo "Files restore plan: $RESTORE_PLAN_TXT"
-  echo "JSON files restore plan: $RESTORE_PLAN_JSON"
-  echo "Dry-run files restore via the Go backend"
-  run_go_restore_files || die "Dry-run files restore via the Go backend failed"
-  exit 0
-fi
-
-require_destructive_approval "restore-files" "$FORCE" "$CONFIRM_PROD"
-acquire_maintenance_lock restore-files
-write_restore_files_plan_reports
-
-SHOULD_RESTART_APP_SERVICES=0
-if [[ $NO_STOP -eq 0 ]]; then
-  require_compose
-  if app_services_running; then
-    echo "Stopping application services before the files restore"
-    stop_app_services
-    if [[ $NO_START -eq 0 ]]; then
-      SHOULD_RESTART_APP_SERVICES=1
-    fi
-  else
-    echo "Application services are not running, nothing to stop"
-  fi
-fi
-
-print_context
-echo "Files restore plan: $RESTORE_PLAN_TXT"
-echo "JSON files restore plan: $RESTORE_PLAN_JSON"
-if [[ -n "$MANIFEST_JSON" ]]; then
-  echo "JSON manifest for restore: $MANIFEST_JSON"
-else
-  echo "Files backup for restore: $BACKUP_FILE"
-fi
-
-if [[ $SNAPSHOT_BEFORE_RESTORE -eq 1 ]]; then
-  if [[ $NO_STOP -eq 1 ]]; then
-    warn "The pre-restore emergency snapshot will be created without stopping application services"
-  fi
-  echo "Creating an emergency snapshot before the files restore"
-  SNAPSHOT_ARGS=("$ESPO_ENV" "--skip-db")
-  if [[ $NO_STOP -eq 1 ]]; then
-    SNAPSHOT_ARGS+=("--no-stop")
-  fi
-  ESPO_SHELL_EXEC_CONTEXT=1 run_repo_script "$SCRIPT_DIR/backup.sh" "${SNAPSHOT_ARGS[@]}"
-fi
-
-echo "Files restore via the Go backend"
-run_go_restore_files || die "Could not restore files via the Go backend"
-
-echo "Aligning owner and mode of the restored tree with the image runtime contract"
-reconcile_espocrm_storage_permissions "$TARGET_STORAGE" \
-  || die "Could not align the restored tree permissions with runtime-image expectations"
-
-if [[ $SHOULD_RESTART_APP_SERVICES -eq 1 ]]; then
-  echo "Starting application services after the files restore"
-  start_app_services
-elif [[ $NO_START -eq 1 ]]; then
-  echo "Application services were left stopped because of --no-start"
-fi
-
-echo "Files restore completed"
+run_espops "${args[@]}"

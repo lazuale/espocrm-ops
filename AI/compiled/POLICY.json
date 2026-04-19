@@ -95,17 +95,11 @@
       "matching_db_backup_for_files",
       "matching_files_backup_for_db"
     ],
-    "scripts/restore-db.sh": [
-      "write_restore_db_plan_reports("
-    ],
     "scripts/restore-drill.sh": [
       "json_extract_string_field(",
       "latest_complete_backup_group_key",
       "matching_db_backup_for_files",
       "matching_files_backup_for_db"
-    ],
-    "scripts/restore-files.sh": [
-      "write_restore_files_plan_reports("
     ],
     "scripts/rollback.sh": [
       "json_extract_string_field(",

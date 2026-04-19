@@ -884,356 +884,148 @@ test_backup_files_fallbacks_to_docker_helper() {
   pass_test "Regression case passed"
 }
 
-test_restore_files_supports_absolute_storage_path() {
+test_restore_db_wrapper_delegates_to_go_restore() {
   announce_test "Regression case"
 
-  local env_file="$TEST_TMP_ROOT/env.restore-files"
-  local output_file="$TEST_TMP_ROOT/restore-files.out"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-restore-files-absolute-bin"
-  local storage_dir="$TEST_TMP_ROOT/absolute-espo-storage"
-  local source_parent="$TEST_TMP_ROOT/archive-src"
-  local archive_file="$TEST_TMP_ROOT/restore-files.tar.gz"
-  local storage_basename
+  local env_file="$TEST_TMP_ROOT/env.restore-db-wrapper"
+  local output_file="$TEST_TMP_ROOT/restore-db-wrapper.out"
+  local db_backup="$TEST_TMP_ROOT/restore-db-wrapper.sql.gz"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-db-wrapper.sh"
 
-  storage_basename="$(basename "$storage_dir")"
-  mkdir -p "$source_parent/$storage_basename"
-  printf 'restored\n' > "$source_parent/$storage_basename/file.txt"
-  tar -C "$source_parent" -czf "$archive_file" "$storage_basename"
-  write_sha256_sidecar "$archive_file" "$(sha256_file "$archive_file")"
-
-  copy_example_env dev "$env_file"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$storage_dir"
-  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/restore-files-backups"
-
-  create_mock_docker_fs_helper "$mock_bin_dir"
-
-  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-files.sh" dev "$archive_file" --force --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  [[ -f "$storage_dir/file.txt" ]] || fail_test "Regression case failed"
-  pass_test "Regression case passed"
-}
-
-test_restore_files_reconciles_permissions_after_replace() {
-  announce_test "Regression case"
-
-  local env_file="$TEST_TMP_ROOT/env.restore-files-permissions"
-  local output_file="$TEST_TMP_ROOT/restore-files-permissions.out"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-restore-files-permissions-bin"
-  local mock_state_dir="$TEST_TMP_ROOT/mock-restore-files-permissions-state"
-  local storage_dir="$TEST_TMP_ROOT/restore-files-permissions-storage/espo"
-  local source_parent="$TEST_TMP_ROOT/restore-files-permissions-source"
-  local archive_file="$TEST_TMP_ROOT/restore-files-permissions.tar.gz"
-  local storage_basename
-  local current_uid current_gid
-
-  current_uid="$(id -u)"
-  current_gid="$(id -g)"
-  storage_basename="$(basename "$storage_dir")"
-
-  mkdir -p \
-    "$source_parent/$storage_basename/data/nested" \
-    "$source_parent/$storage_basename/custom/modules" \
-    "$source_parent/$storage_basename/client/custom" \
-    "$source_parent/$storage_basename/upload/tmp"
-  printf 'restored-data\n' > "$source_parent/$storage_basename/data/nested/file.txt"
-  printf 'restored-custom\n' > "$source_parent/$storage_basename/custom/modules/module.txt"
-  printf 'restored-client-custom\n' > "$source_parent/$storage_basename/client/custom/app.js"
-  printf 'restored-upload\n' > "$source_parent/$storage_basename/upload/tmp/blob.txt"
-
-  tar --mode='u=rw,g=rw,o=r' -C "$source_parent" -czf "$archive_file" "$storage_basename"
-  write_sha256_sidecar "$archive_file" "$(sha256_file "$archive_file")"
-
-  copy_example_env dev "$env_file"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$storage_dir"
-  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/restore-files-permissions-backups"
-
-  create_mock_docker_fs_helper "$mock_bin_dir"
-
-  if ! run_command_capture "$output_file" env \
-    PATH="$mock_bin_dir:$PATH" \
-    MOCK_DOCKER_STATE_DIR="$mock_state_dir" \
-    MOCK_ESPO_RUNTIME_UID="$current_uid" \
-    MOCK_ESPO_RUNTIME_GID="$current_gid" \
-    ENV_FILE="$env_file" \
-    bash "$SCRIPT_DIR/restore-files.sh" dev "$archive_file" --force --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "Aligning owner and mode of the restored tree with the image runtime contract" "runtime output"
-  [[ -f "$storage_dir/data/nested/file.txt" ]] || fail_test "Regression case failed"
-  [[ -f "$storage_dir/client/custom/app.js" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir")" == "755" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/client")" == "755" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/data")" == "775" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/custom")" == "775" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/client/custom")" == "775" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/upload")" == "775" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/data/nested/file.txt")" == "664" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/custom/modules/module.txt")" == "664" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/client/custom/app.js")" == "664" ]] || fail_test "Regression case failed"
-  [[ "$(stat -c '%a' "$storage_dir/upload/tmp/blob.txt")" == "664" ]] || fail_test "Regression case failed"
-  [[ -x "$storage_dir/data" ]] || fail_test "Regression case failed"
-  [[ -x "$storage_dir/client/custom" ]] || fail_test "Regression case failed"
-  [[ -f "$mock_state_dir/reconcile-owner" ]] || fail_test "Regression case failed"
-  [[ "$(cat "$mock_state_dir/reconcile-owner")" == "$current_uid:$current_gid" ]] || fail_test "Regression case failed"
-  pass_test "Regression case passed"
-}
-
-test_restore_files_fails_when_permission_reconcile_fails() {
-  announce_test "Regression case"
-
-  local env_file="$TEST_TMP_ROOT/env.restore-files-reconcile-fail"
-  local output_file="$TEST_TMP_ROOT/restore-files-reconcile-fail.out"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-restore-files-reconcile-fail-bin"
-  local storage_dir="$TEST_TMP_ROOT/restore-files-reconcile-fail-storage/espo"
-  local source_parent="$TEST_TMP_ROOT/restore-files-reconcile-fail-source"
-  local archive_file="$TEST_TMP_ROOT/restore-files-reconcile-fail.tar.gz"
-  local storage_basename
-
-  storage_basename="$(basename "$storage_dir")"
-  mkdir -p "$source_parent/$storage_basename/data"
-  printf 'restored\n' > "$source_parent/$storage_basename/data/file.txt"
-  tar -C "$source_parent" -czf "$archive_file" "$storage_basename"
-  write_sha256_sidecar "$archive_file" "$(sha256_file "$archive_file")"
-
-  copy_example_env dev "$env_file"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$storage_dir"
-  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/restore-files-reconcile-fail-backups"
-
-  create_mock_docker_fs_helper "$mock_bin_dir"
-
-  if run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" MOCK_DOCKER_FAIL_RECONCILE=1 ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-files.sh" dev "$archive_file" --force --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "Could not align the restored tree permissions with runtime-image expectations" "runtime output"
-  assert_file_not_contains "$output_file" "Files restore completed" "runtime output"
-  pass_test "Regression case passed"
-}
-
-test_restore_files_fallbacks_to_docker_helper() {
-  announce_test "Regression case"
-
-  local env_file="$TEST_TMP_ROOT/env.restore-files-fallback"
-  local output_file="$TEST_TMP_ROOT/restore-files-fallback.out"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-restore-fallback-bin"
-  local storage_dir="$TEST_TMP_ROOT/restore-fallback-storage/espo"
-  local source_parent="$TEST_TMP_ROOT/restore-fallback-archive-src"
-  local archive_file="$TEST_TMP_ROOT/restore-files-fallback.tar.gz"
-  local storage_basename
-
-  storage_basename="$(basename "$storage_dir")"
-  mkdir -p "$source_parent/$storage_basename" "$(dirname "$storage_dir")"
-  printf 'restored-via-docker-fallback\n' > "$source_parent/$storage_basename/file.txt"
-
-  tar -C "$source_parent" -czf "$archive_file" "$storage_basename"
-  write_sha256_sidecar "$archive_file" "$(sha256_file "$archive_file")"
-
-  copy_example_env dev "$env_file"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$storage_dir"
-  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/restore-files-fallback-backups"
-
-  create_mock_docker_fs_helper "$mock_bin_dir"
-  create_mock_tar_extract_failure "$mock_bin_dir"
-
-  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-files.sh" dev "$archive_file" --force --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "Files restore via the Go backend" "runtime output"
-  assert_file_not_contains "$output_file" "runtime output" "runtime output"
-  [[ -f "$storage_dir/file.txt" ]] || fail_test "Regression case failed"
-  if [[ "$(cat "$storage_dir/file.txt")" != "restored-via-docker-fallback" ]]; then
-    fail_test "Regression case failed"
-  fi
-
-  pass_test "Regression case passed"
-}
-
-test_restore_files_rejects_unsafe_archive_layout() {
-  announce_test "Regression case"
-
-  local env_file="$TEST_TMP_ROOT/env.restore-files-unsafe"
-  local output_file="$TEST_TMP_ROOT/restore-files-unsafe.out"
-  local target_root="$TEST_TMP_ROOT/unsafe-target/storage"
-  local payload_dir="$TEST_TMP_ROOT/unsafe-payload"
-  local escaped_dir="$TEST_TMP_ROOT/escaped-parent"
-  local archive_file="$TEST_TMP_ROOT/unsafe-restore-files.tar.gz"
-
-  mkdir -p "$payload_dir" "$escaped_dir"
-  printf 'unsafe\n' > "$escaped_dir/owned.txt"
-  tar -C "$payload_dir" -czf "$archive_file" ../escaped-parent/owned.txt
-  write_sha256_sidecar "$archive_file" "$(sha256_file "$archive_file")"
-
-  copy_example_env dev "$env_file"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$target_root"
-  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/restore-files-unsafe-backups"
-
-  if run_command_capture "$output_file" env ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-files.sh" dev "$archive_file" --force --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "archive root must be exactly" "runtime output"
-  [[ ! -e "$(dirname "$target_root")/escaped-parent/owned.txt" ]] || fail_test "Regression case failed"
-  pass_test "Regression case passed"
-}
-
-test_restore_db_takes_snapshot_by_default() {
-  announce_test "Regression case"
-
-  local env_file="$TEST_TMP_ROOT/env.restore-db-snapshot"
-  local output_file="$TEST_TMP_ROOT/restore-db-snapshot.out"
-  local backup_root="$TEST_TMP_ROOT/restore-db-snapshot-backups"
-  local db_backup="$TEST_TMP_ROOT/restore-db-snapshot.sql.gz"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-restore-db-snapshot"
-  local backup_mock="$TEST_TMP_ROOT/mock.backup.restore-db.sh"
-  local plan_file=""
-
-  restore_replaced_repo_files
-  copy_example_env dev "$env_file"
-  set_env_value "$env_file" DB_STORAGE_DIR "$TEST_TMP_ROOT/restore-db-snapshot-storage/db"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$TEST_TMP_ROOT/restore-db-snapshot-storage/espo"
-  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
-
-  printf 'restore-db-snapshot\n' > "$db_backup"
+  copy_example_env prod "$env_file"
+  printf 'restore-db-wrapper\n' > "$db_backup"
   write_sha256_sidecar "$db_backup" "$(sha256_file "$db_backup")"
 
-  cat > "$backup_mock" <<'EOF'
+  cat > "$mock_espops" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-echo "mock backup args: $*"
+echo "mock restore args: $*"
 EOF
-  chmod +x "$backup_mock"
-  replace_repo_file_temporarily "$backup_mock" "$SCRIPT_DIR/backup.sh"
+  chmod +x "$mock_espops"
 
-  create_mock_docker_restore_db_snapshot "$mock_bin_dir"
-
-  if run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-db.sh" dev "$db_backup" --force --no-stop --no-start; then
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-db.sh" prod "$db_backup" --force --confirm-prod prod --no-snapshot --no-start; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "The pre-restore emergency snapshot will be created without stopping application services" "runtime output"
-  assert_file_contains "$output_file" "Creating an emergency snapshot before the database restore" "runtime output"
-  assert_file_contains "$output_file" "mock backup args: dev --skip-files --no-stop" "runtime output"
-  plan_file="$(find "$backup_root/reports" -maxdepth 1 -type f -name '*_restore-db-plan_*.txt' | sort | tail -n 1)"
-  [[ -n "$plan_file" && -f "$plan_file" ]] || fail_test "Regression case failed"
-  assert_file_contains "$plan_file" "snapshot_enabled=true" "runtime output"
-  assert_file_contains "$plan_file" "no_stop=true" "runtime output"
-  assert_file_contains "$plan_file" "no_start=true" "runtime output"
-  assert_file_contains "$plan_file" "db_backup=$db_backup" "runtime output"
-  assert_file_contains "$output_file" "Database restore via the Go backend" "runtime output"
-  assert_file_contains "$output_file" "db backup gzip validation failed" "runtime output"
-  restore_replaced_repo_files
+  assert_file_contains "$output_file" "mock restore args: restore --scope prod --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --skip-files --env-file $env_file --db-backup $db_backup --force --confirm-prod prod --no-snapshot --no-start" "runtime output"
   pass_test "Regression case passed"
 }
 
-test_restore_files_takes_snapshot_by_default() {
+test_restore_db_wrapper_delegates_direct_manifest_to_go_restore_db() {
   announce_test "Regression case"
 
-  local env_file="$TEST_TMP_ROOT/env.restore-files-snapshot"
-  local output_file="$TEST_TMP_ROOT/restore-files-snapshot.out"
-  local storage_dir="$TEST_TMP_ROOT/restore-files-snapshot-storage/espo"
-  local restore_source_root="$TEST_TMP_ROOT/restore-files-snapshot-source"
-  local backup_root="$TEST_TMP_ROOT/restore-files-snapshot-backups"
-  local archive_file="$TEST_TMP_ROOT/restore-files-snapshot.tar.gz"
-  local backup_mock="$TEST_TMP_ROOT/mock.backup.restore-files.sh"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-restore-files-snapshot"
-  local plan_file=""
+  local output_file="$TEST_TMP_ROOT/restore-db-direct-manifest.out"
+  local manifest_json="$TEST_TMP_ROOT/restore-db-direct.manifest.json"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-db-direct.sh"
 
-  restore_replaced_repo_files
+  printf '{"version":1}\n' > "$manifest_json"
+
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock restore-db args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-db.sh" "$manifest_json" --dry-run; then
+    fail_test "Regression case failed"
+  fi
+
+  assert_file_contains "$output_file" "mock restore-db args: restore-db --manifest $manifest_json --dry-run" "runtime output"
+  pass_test "Regression case passed"
+}
+
+test_restore_files_wrapper_delegates_to_go_restore() {
+  announce_test "Regression case"
+
+  local env_file="$TEST_TMP_ROOT/env.restore-files-wrapper"
+  local output_file="$TEST_TMP_ROOT/restore-files-wrapper.out"
+  local files_backup="$TEST_TMP_ROOT/restore-files-wrapper.tar.gz"
+  local source_root="$TEST_TMP_ROOT/restore-files-wrapper-source"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-files-wrapper.sh"
+
   copy_example_env dev "$env_file"
-  set_env_value "$env_file" DB_STORAGE_DIR "$TEST_TMP_ROOT/restore-files-snapshot-storage/db"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$storage_dir"
-  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
-
-  mkdir -p "$restore_source_root/$(basename "$storage_dir")" "$(dirname "$storage_dir")"
-  printf 'restored-file\n' > "$restore_source_root/$(basename "$storage_dir")/file.txt"
-  tar -C "$restore_source_root" -czf "$archive_file" "$(basename "$storage_dir")"
-  write_sha256_sidecar "$archive_file" "$(sha256_file "$archive_file")"
-
-  cat > "$backup_mock" <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-echo "mock backup args: $*"
-EOF
-  chmod +x "$backup_mock"
-  replace_repo_file_temporarily "$backup_mock" "$SCRIPT_DIR/backup.sh"
-
-  create_mock_docker_fs_helper "$mock_bin_dir"
-
-  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-files.sh" dev "$archive_file" --force --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "The pre-restore emergency snapshot will be created without stopping application services" "runtime output"
-  assert_file_contains "$output_file" "mock backup args: dev --skip-db --no-stop" "runtime output"
-  plan_file="$(find "$backup_root/reports" -maxdepth 1 -type f -name '*_restore-files-plan_*.txt' | sort | tail -n 1)"
-  [[ -n "$plan_file" && -f "$plan_file" ]] || fail_test "Regression case failed"
-  assert_file_contains "$plan_file" "snapshot_enabled=true" "runtime output"
-  assert_file_contains "$plan_file" "no_stop=true" "runtime output"
-  assert_file_contains "$plan_file" "no_start=true" "runtime output"
-  assert_file_contains "$plan_file" "files_backup=$archive_file" "runtime output"
-  assert_file_not_contains "$output_file" "unexpected docker invocation" "runtime output"
-  [[ -f "$storage_dir/file.txt" ]] || fail_test "Regression case failed"
-  restore_replaced_repo_files
-  pass_test "Regression case passed"
-}
-
-test_restore_db_requires_force_and_prod_confirmation() {
-  announce_test "Regression case"
-  local dev_env_file="$TEST_TMP_ROOT/env.restore-db-guard.dev"
-  local prod_env_file="$TEST_TMP_ROOT/env.restore-db-guard.prod"
-  local output_file="$TEST_TMP_ROOT/restore-db-guard.out"
-  local db_backup="$TEST_TMP_ROOT/restore-db-guard.sql.gz"
-
-  copy_example_env dev "$dev_env_file"
-  copy_example_env prod "$prod_env_file"
-  printf 'restore-db-guard\n' > "$db_backup"
-  write_sha256_sidecar "$db_backup" "$(sha256_file "$db_backup")"
-
-  if run_command_capture "$output_file" env ENV_FILE="$dev_env_file" bash "$SCRIPT_DIR/restore-db.sh" dev "$db_backup" --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "requires an explicit --force flag" "runtime output"
-
-  if run_command_capture "$output_file" env ENV_FILE="$prod_env_file" bash "$SCRIPT_DIR/restore-db.sh" prod "$db_backup" --force --no-stop --no-start; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "--confirm-prod prod" "runtime output"
-  pass_test "Regression case passed"
-}
-
-test_restore_files_requires_force_and_prod_confirmation() {
-  announce_test "Regression case"
-
-  local dev_env_file="$TEST_TMP_ROOT/env.restore-files-guard.dev"
-  local prod_env_file="$TEST_TMP_ROOT/env.restore-files-guard.prod"
-  local output_file="$TEST_TMP_ROOT/restore-files-guard.out"
-  local source_root="$TEST_TMP_ROOT/restore-files-guard-source"
-  local archive_file="$TEST_TMP_ROOT/restore-files-guard.tar.gz"
-
-  copy_example_env dev "$dev_env_file"
-  copy_example_env prod "$prod_env_file"
   mkdir -p "$source_root/espo"
-  printf 'restore-files-guard\n' > "$source_root/espo/file.txt"
-  tar -C "$source_root" -czf "$archive_file" espo
-  write_sha256_sidecar "$archive_file" "$(sha256_file "$archive_file")"
+  printf 'restore-files-wrapper\n' > "$source_root/espo/file.txt"
+  tar -C "$source_root" -czf "$files_backup" espo
+  write_sha256_sidecar "$files_backup" "$(sha256_file "$files_backup")"
 
-  if run_command_capture "$output_file" env ENV_FILE="$dev_env_file" bash "$SCRIPT_DIR/restore-files.sh" dev "$archive_file" --no-stop --no-start; then
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock restore args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-files.sh" dev "$files_backup" --force --no-stop --no-start; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "requires an explicit --force flag" "runtime output"
+  assert_file_contains "$output_file" "mock restore args: restore --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --skip-db --env-file $env_file --files-backup $files_backup --force --no-stop --no-start" "runtime output"
+  pass_test "Regression case passed"
+}
 
-  if run_command_capture "$output_file" env ENV_FILE="$prod_env_file" bash "$SCRIPT_DIR/restore-files.sh" prod "$archive_file" --force --no-stop --no-start; then
+test_restore_files_wrapper_delegates_direct_manifest_to_go_restore_files() {
+  announce_test "Regression case"
+
+  local output_file="$TEST_TMP_ROOT/restore-files-direct-manifest.out"
+  local manifest_json="$TEST_TMP_ROOT/restore-files-direct.manifest.json"
+  local target_dir="$TEST_TMP_ROOT/restore-files-target"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-files-direct.sh"
+
+  printf '{"version":1}\n' > "$manifest_json"
+  mkdir -p "$target_dir"
+
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock restore-files args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-files.sh" "$manifest_json" "$target_dir" --dry-run; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "--confirm-prod prod" "runtime output"
+  assert_file_contains "$output_file" "mock restore-files args: restore-files --manifest $manifest_json --target-dir $target_dir --dry-run" "runtime output"
+  pass_test "Regression case passed"
+}
+
+test_restore_wrappers_defer_destructive_confirmation_to_go() {
+  announce_test "Regression case"
+
+  local env_file="$TEST_TMP_ROOT/env.restore-wrapper-guard"
+  local output_file="$TEST_TMP_ROOT/restore-wrapper-guard.out"
+  local db_backup="$TEST_TMP_ROOT/restore-wrapper-guard.sql.gz"
+  local files_backup="$TEST_TMP_ROOT/restore-wrapper-guard.tar.gz"
+  local source_root="$TEST_TMP_ROOT/restore-wrapper-guard-source"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-wrapper-guard.sh"
+
+  copy_example_env dev "$env_file"
+  printf 'restore-wrapper-guard\n' > "$db_backup"
+  write_sha256_sidecar "$db_backup" "$(sha256_file "$db_backup")"
+  mkdir -p "$source_root/espo"
+  printf 'restore-wrapper-guard\n' > "$source_root/espo/file.txt"
+  tar -C "$source_root" -czf "$files_backup" espo
+  write_sha256_sidecar "$files_backup" "$(sha256_file "$files_backup")"
+
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock delegated args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-db.sh" dev "$db_backup" --no-start; then
+    fail_test "Regression case failed"
+  fi
+  assert_file_contains "$output_file" "mock delegated args: restore --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --skip-files --env-file $env_file --db-backup $db_backup --no-start" "runtime output"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-files.sh" dev "$files_backup" --no-start; then
+    fail_test "Regression case failed"
+  fi
+  assert_file_contains "$output_file" "mock delegated args: restore --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --skip-db --env-file $env_file --files-backup $files_backup --no-start" "runtime output"
+
   pass_test "Regression case passed"
 }
 

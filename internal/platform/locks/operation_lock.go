@@ -51,6 +51,11 @@ func (e MaintenanceConflictError) Error() string {
 }
 
 func AcquireSharedOperationLock(rootDir, scope string, log io.Writer) (*OperationLock, error) {
+	if inheritedLockEnabled("ESPO_OPERATION_LOCK") {
+		lockInfo(log, "Using the inherited shared operations lock for scope '%s'", scope)
+		return nil, nil
+	}
+
 	metadataPath, handlePath, err := sharedOperationLockPaths(rootDir)
 	if err != nil {
 		return nil, err
@@ -119,6 +124,11 @@ func (l *OperationLock) Release() error {
 }
 
 func AcquireMaintenanceLock(backupRoot, contour, scope string, log io.Writer) (*MaintenanceLock, error) {
+	if inheritedLockEnabled("ESPO_MAINTENANCE_LOCK") {
+		lockInfo(log, "Using the inherited maintenance lock for contour '%s'", contour)
+		return nil, nil
+	}
+
 	locksDir := filepath.Join(backupRoot, "locks")
 	if err := os.MkdirAll(locksDir, 0o755); err != nil {
 		return nil, fmt.Errorf("create locks directory %s: %w", locksDir, err)
@@ -216,6 +226,10 @@ func metadataLockHandlePath(metadataPath string) string {
 	dir := filepath.Dir(metadataPath)
 	base := filepath.Base(metadataPath)
 	return filepath.Join(dir, "."+base+".flock")
+}
+
+func inheritedLockEnabled(key string) bool {
+	return strings.TrimSpace(os.Getenv(key)) == "1"
 }
 
 func legacyMetadataOnlyLock(metadataPath, handlePath string) (bool, string, error) {

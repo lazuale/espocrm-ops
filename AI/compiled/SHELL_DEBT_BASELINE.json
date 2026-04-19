@@ -43,15 +43,6 @@
       "line_count": 486,
       "sha256": "0afa6e9e5878a390a7b1dfcd0edede6666a288fa87a73a71d9a95922bade49a4"
     },
-    "scripts/restore-db.sh": {
-      "function_names": [
-        "run_go_restore_db",
-        "usage",
-        "write_restore_db_plan_reports"
-      ],
-      "line_count": 284,
-      "sha256": "0a5485b83ba682afb203dd7e103091b01267594acf30ecfd527c2097a77076bb"
-    },
     "scripts/restore-drill.sh": {
       "function_names": [
         "assert_go_backend_ready",
@@ -68,15 +59,6 @@
       ],
       "line_count": 407,
       "sha256": "890f41ad17cf88a3a1b329b6a1f158b88f1ceacc27e0fca5d7b7549077afb50e"
-    },
-    "scripts/restore-files.sh": {
-      "function_names": [
-        "run_go_restore_files",
-        "usage",
-        "write_restore_files_plan_reports"
-      ],
-      "line_count": 300,
-      "sha256": "7870fac60a5f2bffd4a4436bc7c5e3125d9f35f33bc74dabdbb46587df84bc09"
     },
     "scripts/rollback.sh": {
       "function_names": [
