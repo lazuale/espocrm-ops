@@ -155,6 +155,57 @@ type HealthSummaryArtifacts struct {
 	SupportDir  string `json:"support_dir,omitempty"`
 }
 
+type OperationGateSection struct {
+	Code          string `json:"code"`
+	Status        string `json:"status"`
+	Decision      string `json:"decision"`
+	SourceCommand string `json:"source_command"`
+	Summary       string `json:"summary"`
+	Details       string `json:"details,omitempty"`
+	CauseCode     string `json:"cause_code,omitempty"`
+	NextAction    string `json:"next_action,omitempty"`
+}
+
+type OperationGateDetails struct {
+	Action              string                 `json:"action"`
+	Scope               string                 `json:"scope,omitempty"`
+	SourceScope         string                 `json:"source_scope,omitempty"`
+	TargetScope         string                 `json:"target_scope,omitempty"`
+	GeneratedAt         string                 `json:"generated_at"`
+	Decision            string                 `json:"decision"`
+	NextAction          string                 `json:"next_action,omitempty"`
+	HealthVerdict       string                 `json:"health_verdict,omitempty"`
+	SourceHealthVerdict string                 `json:"source_health_verdict,omitempty"`
+	TargetHealthVerdict string                 `json:"target_health_verdict,omitempty"`
+	WarningAlerts       int                    `json:"warning_alerts"`
+	BlockingAlerts      int                    `json:"blocking_alerts"`
+	FailureAlerts       int                    `json:"failure_alerts"`
+	Reasons             []string               `json:"reasons,omitempty"`
+	SectionResults      []OperationGateSection `json:"section_results"`
+	SectionSummary
+}
+
+type OperationGateArtifacts struct {
+	ProjectDir       string `json:"project_dir"`
+	ComposeFile      string `json:"compose_file"`
+	EnvFile          string `json:"env_file,omitempty"`
+	BackupRoot       string `json:"backup_root,omitempty"`
+	SourceEnvFile    string `json:"source_env_file,omitempty"`
+	SourceBackupRoot string `json:"source_backup_root,omitempty"`
+	TargetEnvFile    string `json:"target_env_file,omitempty"`
+	TargetBackupRoot string `json:"target_backup_root,omitempty"`
+}
+
+type OperationGateItem struct {
+	Code          string `json:"code"`
+	Severity      string `json:"severity"`
+	Section       string `json:"section"`
+	SourceCommand string `json:"source_command"`
+	Summary       string `json:"summary"`
+	Cause         string `json:"cause,omitempty"`
+	NextAction    string `json:"next_action,omitempty"`
+}
+
 type MaintenanceDetails struct {
 	Scope          string `json:"scope"`
 	GeneratedAt    string `json:"generated_at"`

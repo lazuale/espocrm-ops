@@ -88,6 +88,24 @@ func TestRootExposesSingleHealthSummaryCommand(t *testing.T) {
 	}
 }
 
+func TestRootExposesSingleOperationGateCommand(t *testing.T) {
+	root := newTestRootCmd()
+
+	commands := map[string]struct{}{}
+	for _, cmd := range root.Commands() {
+		commands[cmd.Name()] = struct{}{}
+	}
+
+	if _, ok := commands["operation-gate"]; !ok {
+		t.Fatalf("expected operation-gate command to be present")
+	}
+	for _, forbidden := range []string{"can-run", "readiness", "operation-readiness"} {
+		if _, ok := commands[forbidden]; ok {
+			t.Fatalf("expected no duplicate operation gate command %q", forbidden)
+		}
+	}
+}
+
 func TestMaintenanceCommandExposesUnattendedFlags(t *testing.T) {
 	root := newTestRootCmd()
 	maintenance, _, err := root.Find([]string{"maintenance"})

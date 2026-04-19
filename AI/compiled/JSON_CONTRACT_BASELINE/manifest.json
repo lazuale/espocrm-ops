@@ -9,6 +9,7 @@
   "journal_prune_ok.golden.json": "4111f7770261a039b9c9acbf2004da5fde537a14c2bb29bf14448cf9aa53002e",
   "maintenance_ok.golden.json": "7b5efab61484fc668fe21ac72e21ecddf4d24f06a16ed33ad2cc569338c3bce8",
   "migrate_backup_ok.golden.json": "9d044ae5e8366399139bb4ba359e37807c748bc6413e439c874694f83847ebac",
+  "operation_gate_ok.golden.json": "26535fb9776d43328734ec304e422dda9d0125fe40092d59dbb2ee4410e198a1",
   "overview_ok.golden.json": "b1614266c2dea85c0b58d97cdfaa0829b51707368725c05b64461f4e56137d68",
   "restore_drill_ok.golden.json": "a95d0f2b657fb048cbc8a5b4c2443451e8bb589ce5a362a8d6a524e4293b11e3",
   "restore_ok.golden.json": "b3698837f5078926b21ffec43cd901c3e984dd8d141629ee0c2e37828d719603",

@@ -1,0 +1,79 @@
+{
+  "artifacts": {
+    "backup_root": "REPLACE_BACKUP_ROOT",
+    "compose_file": "REPLACE_COMPOSE_FILE",
+    "env_file": "REPLACE_ENV_FILE",
+    "project_dir": "REPLACE_PROJECT_DIR"
+  },
+  "command": "operation-gate",
+  "details": {
+    "action": "restore-drill",
+    "blocking_alerts": 0,
+    "decision": "risky",
+    "failed": 0,
+    "failure_alerts": 0,
+    "generated_at": "2026-04-19T09:00:00Z",
+    "health_verdict": "degraded",
+    "included": 2,
+    "included_sections": [
+      "health",
+      "action_readiness"
+    ],
+    "next_action": "The update preflight would create REPLACE_DB_STORAGE_DIR if REPLACE_PROJECT_DIR/runtime/dev stays writable.",
+    "omitted": 0,
+    "reasons": [
+      "Contour latest operation restore op-restore-1 should be reviewed",
+      "Contour health requires operator review",
+      "Contour health is degraded"
+    ],
+    "scope": "dev",
+    "section_results": [
+      {
+        "code": "health",
+        "decision": "risky",
+        "details": "verdict=degraded, doctor=degraded, runtime=healthy, backup=healthy, latest_operation=degraded, maintenance=healthy",
+        "next_action": "The update preflight would create REPLACE_DB_STORAGE_DIR if REPLACE_PROJECT_DIR/runtime/dev stays writable.",
+        "source_command": "health-summary",
+        "status": "included",
+        "summary": "Contour health is degraded"
+      },
+      {
+        "code": "action_readiness",
+        "decision": "allowed",
+        "details": "selection_mode=auto_latest_valid, manifest=REPLACE_MANIFEST_JSON, db_backup=REPLACE_DB_BACKUP, files_backup=REPLACE_FILES_BACKUP, app_port=38080, ws_port=38081",
+        "next_action": "Run restore-drill when ready.",
+        "source_command": "restore-drill",
+        "status": "included",
+        "summary": "Restore-drill preflight is ready"
+      }
+    ],
+    "sections": 2,
+    "warning_alerts": 2,
+    "warnings": 1
+  },
+  "items": [
+    {
+      "cause": "verdict=degraded, doctor=degraded, runtime=healthy, backup=healthy, latest_operation=degraded, maintenance=healthy",
+      "code": "health_latest_operation_review",
+      "next_action": "The update preflight would create REPLACE_DB_STORAGE_DIR if REPLACE_PROJECT_DIR/runtime/dev stays writable.",
+      "section": "health",
+      "severity": "warning",
+      "source_command": "health-summary",
+      "summary": "Contour latest operation restore op-restore-1 should be reviewed"
+    },
+    {
+      "cause": "verdict=degraded, doctor=degraded, runtime=healthy, backup=healthy, latest_operation=degraded, maintenance=healthy",
+      "code": "health_health_risky",
+      "next_action": "The update preflight would create REPLACE_DB_STORAGE_DIR if REPLACE_PROJECT_DIR/runtime/dev stays writable.",
+      "section": "health",
+      "severity": "warning",
+      "source_command": "health-summary",
+      "summary": "Contour health requires operator review"
+    }
+  ],
+  "message": "operation gate restore-drill risky",
+  "ok": true,
+  "warnings": [
+    "dev: DB_STORAGE_DIR does not exist yet"
+  ]
+}
