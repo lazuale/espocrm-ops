@@ -1,5 +1,6 @@
 {
   "backup_catalog_ok.golden.json": "61929eda41989b524f3f53b26572aedc1b9e0016e3730dd3263b24ddeac68a56",
+  "backup_health_ok.golden.json": "63ec389a4a9ec26b08412eed806ffe56aff3359fb7f1a3d3b12567adc524b7d8",
   "doctor_ok.golden.json": "dbb5eb3dca35900a94a88828702605487f4dc7f8ac9a50425d4bb8d03ce0daf8",
   "export_operation_bundle_ok.golden.json": "847be1036f260ad94ac49294947fe1672bd01fdbf2dd13a38d93c1b7fb5f4c60",
   "export_operation_ok.golden.json": "73d1cf4150dcecdf7d230960adaf0182a3d09ca7eb3cb1dae77f4fa656353a74",

@@ -106,24 +106,7 @@ func normalizeBackupInventoryJSON(t *testing.T, raw []byte) []byte {
 			if !ok {
 				continue
 			}
-			if db, ok := item["db"].(map[string]any); ok {
-				db["file"] = "REPLACE_DB_BACKUP"
-				if _, exists := db["sidecar"]; exists {
-					db["sidecar"] = "REPLACE_DB_CHECKSUM"
-				}
-			}
-			if files, ok := item["files"].(map[string]any); ok {
-				files["file"] = "REPLACE_FILES_BACKUP"
-				if _, exists := files["sidecar"]; exists {
-					files["sidecar"] = "REPLACE_FILES_CHECKSUM"
-				}
-			}
-			if manifestTXT, ok := item["manifest_txt"].(map[string]any); ok {
-				manifestTXT["file"] = "REPLACE_MANIFEST_TXT"
-			}
-			if manifestJSON, ok := item["manifest_json"].(map[string]any); ok {
-				manifestJSON["file"] = "REPLACE_MANIFEST_JSON"
-			}
+			normalizeBackupInventoryItem(item)
 		}
 	}
 
@@ -131,5 +114,57 @@ func normalizeBackupInventoryJSON(t *testing.T, raw []byte) []byte {
 	if err != nil {
 		t.Fatal(err)
 	}
+	return out
+}
+
+func normalizeBackupInventoryItem(item map[string]any) {
+	if db, ok := item["db"].(map[string]any); ok {
+		db["file"] = "REPLACE_DB_BACKUP"
+		if _, exists := db["sidecar"]; exists {
+			db["sidecar"] = "REPLACE_DB_CHECKSUM"
+		}
+	}
+	if files, ok := item["files"].(map[string]any); ok {
+		files["file"] = "REPLACE_FILES_BACKUP"
+		if _, exists := files["sidecar"]; exists {
+			files["sidecar"] = "REPLACE_FILES_CHECKSUM"
+		}
+	}
+	if manifestTXT, ok := item["manifest_txt"].(map[string]any); ok {
+		manifestTXT["file"] = "REPLACE_MANIFEST_TXT"
+	}
+	if manifestJSON, ok := item["manifest_json"].(map[string]any); ok {
+		manifestJSON["file"] = "REPLACE_MANIFEST_JSON"
+	}
+}
+
+func normalizeBackupHealthJSON(t *testing.T, raw []byte) []byte {
+	t.Helper()
+
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
+	}
+
+	if details, ok := obj["details"].(map[string]any); ok {
+		if _, exists := details["backup_root"]; exists {
+			details["backup_root"] = "REPLACE_BACKUP_ROOT"
+		}
+	}
+
+	if artifacts, ok := obj["artifacts"].(map[string]any); ok {
+		if latestSet, ok := artifacts["latest_set"].(map[string]any); ok {
+			normalizeBackupInventoryItem(latestSet)
+		}
+		if latestReadySet, ok := artifacts["latest_ready_set"].(map[string]any); ok {
+			normalizeBackupInventoryItem(latestReadySet)
+		}
+	}
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
 	return out
 }

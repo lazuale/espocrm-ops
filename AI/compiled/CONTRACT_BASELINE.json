@@ -4,6 +4,7 @@
     "backup-audit",
     "backup-catalog",
     "backup-exec",
+    "backup-health",
     "doctor",
     "espops",
     "export-operation",
@@ -58,6 +59,11 @@
       "file": "internal/cli/backup_execute.go",
       "name": "backup-exec",
       "use": "backup-exec"
+    },
+    {
+      "file": "internal/cli/backup_health.go",
+      "name": "backup-health",
+      "use": "backup-health"
     },
     {
       "exit_code": "exitcode.ValidationError",
@@ -231,6 +237,7 @@
     "internal/cli/backup_audit.go": "bb7655571f89708d680f242a59919f78b782ac3e05da57f75ec2dbd0fb5e3e39",
     "internal/cli/backup_catalog.go": "de7b46d6bd11fce86556be08e232da6a6ce5dee517e5a637b13b4eddc582e87b",
     "internal/cli/backup_execute.go": "6d5e24c0f0fcd37fb80a7331c54fabb1869612c5c1952f902e747b6ff8725813",
+    "internal/cli/backup_health.go": "3f245b1928a44e898e198e967dc8f22dce9030aff11c46279ce4bbbba932601a",
     "internal/cli/deps.go": "0d4f908a5792645fa0531c56998bc41b46495daf1728d781a0752f091f4d5be2",
     "internal/cli/doctor.go": "b80a6dfa46d44e16699f6b02d85293abc5da8051ce1129310aa83c3800b030f5",
     "internal/cli/env.go": "43e7d521dc2c82af7d6f89f927e2561a051bde4ea23b584e50918abe40123885",
@@ -260,7 +267,7 @@
     "internal/cli/result_error.go": "c059a699c0ded832df09c5795afbc8ae163d419f07caf4075a7e65a533e93a42",
     "internal/cli/rollback.go": "89f73d9a25eaab0d79b3aab9622046a30a72238edbe68809fea16972ac5da9a2",
     "internal/cli/rollback_plan.go": "d436efc8c2f9f816d7f7fb12cf443c40aa2b25602ea59c1f2775fc2347767f76",
-    "internal/cli/root.go": "be5d267ee5f58bac38849e48077e0e01ef37e1f537e28fb3d77f4af3bf6c4e53",
+    "internal/cli/root.go": "34e594ddc0907490c11e540147ab3e6a6a89c294b4e8a830c4b72d8ddc32041c",
     "internal/cli/run_operation.go": "e203af3c06e71c1bc5a8f9880f7f0a7fd41d74f0b1c142609f706c601d4d0a04",
     "internal/cli/runner.go": "acb9cec5a8c60a4572022477ec58d7d2cd0f5ca0b6188a3c16b3363f0b9eb5a9",
     "internal/cli/show_backup.go": "d491f5033f5fd28730f813a57baa41fc26dbcde8236b9caca1128891b3725a47",
@@ -274,7 +281,7 @@
     "internal/cli/verify_backup.go": "750c4a058077aeafcc5cc419fc4fce797bd74fdbd1fd18d2128fb11625eed4f5",
     "internal/contract/apperr/error.go": "5d0383f6170f98dc395d707a717f1f4a056d898c6ffa8c5fcd203d848ac8ab34",
     "internal/contract/exitcode/exitcode.go": "a07aff80b60303009b03ae43a458a8637765015c0cc3e689cdb22c546dbbe79b",
-    "internal/contract/result/details.go": "d2eb957173dd018ead24306b10b80fb4fc0ed43e27536e0a015dabb4c1836617",
+    "internal/contract/result/details.go": "9750ac7833e9695ac739ce09270ddc29a9b3810c4077f223ada865604d8e2256",
     "internal/contract/result/operator_details.go": "152d98ad99b13d1ff9df7a8f5ab90a2c72e392b5ee30fb89174b428602dfeb57",
     "internal/contract/result/render.go": "4cdf2fab0ef92964dd4795500d4773ab5d540fb60b1d6e70909a953ffdadc4c5",
     "internal/contract/result/result.go": "0d228e3a82bae79c3f322358e887615c436962352a815f6a2a90a1194a1900fc"

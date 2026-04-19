@@ -93,6 +93,27 @@ type BackupAuditDetails struct {
 	NonFailureFindings  int    `json:"non_failure_findings"`
 }
 
+type BackupHealthDetails struct {
+	JournalReadDetails
+	BackupRoot            string `json:"backup_root"`
+	Verdict               string `json:"verdict"`
+	VerifyChecksum        bool   `json:"verify_checksum"`
+	MaxAgeHours           int    `json:"max_age_hours"`
+	TotalSets             int    `json:"total_sets"`
+	ReadySets             int    `json:"ready_sets"`
+	RestoreReady          bool   `json:"restore_ready"`
+	FreshnessSatisfied    bool   `json:"freshness_satisfied"`
+	VerificationSatisfied bool   `json:"verification_satisfied"`
+	WarningAlerts         int    `json:"warning_alerts"`
+	BreachAlerts          int    `json:"breach_alerts"`
+	LatestSetID           string `json:"latest_set_id,omitempty"`
+	LatestSetReadiness    string `json:"latest_set_readiness,omitempty"`
+	LatestReadySetID      string `json:"latest_ready_set_id,omitempty"`
+	LatestReadyReadiness  string `json:"latest_ready_readiness,omitempty"`
+	LatestReadyAgeHours   *int   `json:"latest_ready_age_hours,omitempty"`
+	NextAction            string `json:"next_action,omitempty"`
+}
+
 type RestorePlanCheck struct {
 	Name    string `json:"name"`
 	Status  string `json:"status"`

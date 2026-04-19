@@ -200,3 +200,16 @@ func writeCLICatalogSidecar(t *testing.T, filePath string) {
 		t.Fatal(err)
 	}
 }
+
+func writeCLICatalogDBOnly(t *testing.T, root, prefix, stamp string) string {
+	t.Helper()
+
+	dbPath := filepath.Join(root, "db", prefix+"_"+stamp+".sql.gz")
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeGzipFile(t, dbPath, []byte("select 1;"))
+	writeCLICatalogSidecar(t, dbPath)
+
+	return dbPath
+}

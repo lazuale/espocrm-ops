@@ -1,0 +1,113 @@
+{
+  "command": "backup-health",
+  "ok": true,
+  "message": "backup posture degraded",
+  "details": {
+    "total_files_seen": 0,
+    "loaded_entries": 0,
+    "skipped_corrupt": 0,
+    "backup_root": "REPLACE_BACKUP_ROOT",
+    "verdict": "degraded",
+    "verify_checksum": true,
+    "max_age_hours": 48,
+    "total_sets": 2,
+    "ready_sets": 1,
+    "restore_ready": true,
+    "freshness_satisfied": true,
+    "verification_satisfied": true,
+    "warning_alerts": 1,
+    "breach_alerts": 0,
+    "latest_set_id": "espocrm-dev_2026-04-15_10-00-00",
+    "latest_set_readiness": "incomplete",
+    "latest_ready_set_id": "espocrm-dev_2026-04-15_09-00-00",
+    "latest_ready_readiness": "ready_verified",
+    "latest_ready_age_hours": 0,
+    "next_action": "Inspect the newest backup set with show-backup and rerun or repair the latest backup so the newest set becomes restore-ready."
+  },
+  "artifacts": {
+    "latest_set": {
+      "id": "espocrm-dev_2026-04-15_10-00-00",
+      "prefix": "espocrm-dev",
+      "stamp": "2026-04-15_10-00-00",
+      "group_key": "espocrm-dev|2026-04-15_10-00-00",
+      "created_at": "2026-04-15T10:00:00Z",
+      "origin": {
+        "kind": "unknown",
+        "label": "unknown"
+      },
+      "restore_readiness": "incomplete",
+      "is_ready": false,
+      "db": {
+        "file": "REPLACE_DB_BACKUP",
+        "sidecar": "REPLACE_DB_CHECKSUM",
+        "age_hours": 0,
+        "size_bytes": 33,
+        "checksum_status": "verified"
+      },
+      "files": {
+        "file": "REPLACE_FILES_BACKUP",
+        "checksum_status": "missing"
+      },
+      "manifest_txt": {
+        "file": "REPLACE_MANIFEST_TXT",
+        "status": "missing"
+      },
+      "manifest_json": {
+        "file": "REPLACE_MANIFEST_JSON",
+        "status": "missing"
+      }
+    },
+    "latest_ready_set": {
+      "id": "espocrm-dev_2026-04-15_09-00-00",
+      "prefix": "espocrm-dev",
+      "stamp": "2026-04-15_09-00-00",
+      "group_key": "espocrm-dev|2026-04-15_09-00-00",
+      "scope": "dev",
+      "contour": "dev",
+      "created_at": "2026-04-07T01:00:00Z",
+      "origin": {
+        "kind": "unknown",
+        "label": "unknown"
+      },
+      "restore_readiness": "ready_verified",
+      "is_ready": true,
+      "db": {
+        "file": "REPLACE_DB_BACKUP",
+        "sidecar": "REPLACE_DB_CHECKSUM",
+        "age_hours": 0,
+        "size_bytes": 33,
+        "checksum_status": "verified"
+      },
+      "files": {
+        "file": "REPLACE_FILES_BACKUP",
+        "sidecar": "REPLACE_FILES_CHECKSUM",
+        "age_hours": 0,
+        "size_bytes": 110,
+        "checksum_status": "verified"
+      },
+      "manifest_txt": {
+        "file": "REPLACE_MANIFEST_TXT",
+        "age_hours": 0,
+        "status": "valid"
+      },
+      "manifest_json": {
+        "file": "REPLACE_MANIFEST_JSON",
+        "age_hours": 0,
+        "status": "valid",
+        "version": 1,
+        "scope": "dev",
+        "contour": "dev",
+        "created_at": "2026-04-07T01:00:00Z"
+      }
+    }
+  },
+  "items": [
+    {
+      "code": "latest_set_not_ready",
+      "level": "warning",
+      "summary": "Latest observed backup set is not restore-ready",
+      "details": "Latest observed set espocrm-dev_2026-04-15_10-00-00 is incomplete: files backup is missing; json manifest is missing; text manifest is missing. Latest restore-ready set remains espocrm-dev_2026-04-15_09-00-00.",
+      "action": "Inspect the newest backup set with show-backup and rerun or repair the latest backup so the newest set becomes restore-ready."
+    }
+  ]
+}
