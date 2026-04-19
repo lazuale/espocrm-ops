@@ -6,7 +6,7 @@
   "history_ok.golden.json": "23de6d78c3de5f4f55dd6f93deee655c83be1d25dcfb78aed3441f9a4544bc8a",
   "journal_prune_ok.golden.json": "4111f7770261a039b9c9acbf2004da5fde537a14c2bb29bf14448cf9aa53002e",
   "migrate_backup_ok.golden.json": "9d044ae5e8366399139bb4ba359e37807c748bc6413e439c874694f83847ebac",
-  "overview_ok.golden.json": "6b6f81f37ec73017d7cf0d1dc0e8ec05aae22d57c7b134e76b24c4b37db1ad9d",
+  "overview_ok.golden.json": "b1614266c2dea85c0b58d97cdfaa0829b51707368725c05b64461f4e56137d68",
   "restore_drill_ok.golden.json": "a95d0f2b657fb048cbc8a5b4c2443451e8bb589ce5a362a8d6a524e4293b11e3",
   "restore_ok.golden.json": "b3698837f5078926b21ffec43cd901c3e984dd8d141629ee0c2e37828d719603",
   "rollback_ok.golden.json": "6cd2df8289d7622407a56ca733e149b561c43c6bb0b8d876b7a22bec5d664984",

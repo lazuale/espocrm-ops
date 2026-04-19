@@ -22,15 +22,18 @@ func TestOverviewTextShowsCanonicalSectionSummary(t *testing.T) {
 	}
 
 	for _, fragment := range []string{
-		"EspoCRM contour overview",
-		"Included sections: doctor, runtime, backup, recent_operations",
+		"EspoCRM operator dashboard",
+		"Included sections: context, doctor, runtime, latest_operation, backup",
+		"Context:",
+		"Contour: dev",
 		"Doctor:",
 		"Runtime:",
+		"Latest Operation:",
 		"Backup:",
-		"Recent Operations:",
 		"Latest ready backup: espocrm-dev_2026-04-19_08-00-00",
-		"backup  COMPLETED",
 		"restore  FAILED",
+		"Action: Use show-operation --id op-restore-1",
+		"Action: Use backup-catalog for inventory detail",
 	} {
 		if !strings.Contains(out, fragment) {
 			t.Fatalf("expected output to contain %q\n%s", fragment, out)

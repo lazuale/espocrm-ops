@@ -22,7 +22,7 @@ func newOverviewCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "overview",
-		Short: "Show a canonical contour overview and current-state summary",
+		Short: "Show the canonical operator dashboard and contour summary",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			in := overviewInput{
@@ -134,9 +134,9 @@ func validateOverviewInput(cmd *cobra.Command, in *overviewInput) error {
 
 func overviewResult(info overviewusecase.Info) result.Result {
 	ok := len(info.FailedSections) == 0
-	message := "contour overview completed"
+	message := "operator dashboard completed"
 	if !ok {
-		message = "contour overview found issues"
+		message = "operator dashboard found issues"
 	}
 
 	return result.Result{
@@ -184,7 +184,7 @@ func renderOverviewText(w io.Writer, res result.Result) error {
 		return fmt.Errorf("unexpected overview artifacts type %T", res.Artifacts)
 	}
 
-	if _, err := fmt.Fprintln(w, "EspoCRM contour overview"); err != nil {
+	if _, err := fmt.Fprintln(w, "EspoCRM operator dashboard"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "Scope: %s\n", details.Scope); err != nil {
@@ -216,6 +216,9 @@ func renderOverviewText(w io.Writer, res result.Result) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Failed: %d\n", details.Failed); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Warnings: %d\n", details.Warnings); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Included sections: %s\n", sectionListText(details.IncludedSections)); err != nil {
@@ -263,17 +266,38 @@ func renderOverviewText(w io.Writer, res result.Result) error {
 
 func renderOverviewSectionBody(w io.Writer, section overviewusecase.Section) error {
 	switch {
+	case section.Context != nil:
+		return renderOverviewContextSection(w, *section.Context)
 	case section.Doctor != nil:
 		return renderOverviewDoctorSection(w, *section.Doctor)
 	case section.Runtime != nil:
 		return renderOverviewRuntimeSection(w, *section.Runtime)
+	case section.LatestOperation != nil:
+		return renderOverviewLatestOperationSection(w, *section.LatestOperation)
 	case section.Backup != nil:
 		return renderOverviewBackupSection(w, *section.Backup)
-	case section.RecentOperations != nil:
-		return renderOverviewRecentOperationsSection(w, *section.RecentOperations)
 	default:
 		return nil
 	}
+}
+
+func renderOverviewContextSection(w io.Writer, data overviewusecase.ContextData) error {
+	if _, err := fmt.Fprintf(w, "  Contour: %s\n", valueOrNA(data.Contour)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Compose project: %s\n", valueOrNA(data.ComposeProject)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Env file: %s\n", valueOrNA(data.EnvFile)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Site URL: %s\n", valueOrNA(data.SiteURL)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  WebSocket URL: %s\n", valueOrNA(data.WSPublicURL)); err != nil {
+		return err
+	}
+	return nil
 }
 
 func renderOverviewDoctorSection(w io.Writer, data overviewusecase.DoctorData) error {
@@ -377,7 +401,7 @@ func renderOverviewBackupSection(w io.Writer, data overviewusecase.BackupData) e
 	return nil
 }
 
-func renderOverviewRecentOperationsSection(w io.Writer, data overviewusecase.RecentOperationsData) error {
+func renderOverviewLatestOperationSection(w io.Writer, data overviewusecase.LatestOperationData) error {
 	if _, err := fmt.Fprintf(w, "  Returned: %d\n", data.Returned); err != nil {
 		return err
 	}
@@ -390,24 +414,27 @@ func renderOverviewRecentOperationsSection(w io.Writer, data overviewusecase.Rec
 	if _, err := fmt.Fprintf(w, "  Skipped corrupt: %d\n", data.SkippedCorrupt); err != nil {
 		return err
 	}
-	for _, operation := range data.Operations {
-		if _, err := fmt.Fprintf(w, "  %s\n", formatHistoryLine(operation)); err != nil {
-			return err
-		}
+	if data.Operation == nil {
+		return nil
+	}
+	if _, err := fmt.Fprintf(w, "  %s\n", formatHistoryLine(*data.Operation)); err != nil {
+		return err
 	}
 	return nil
 }
 
 func overviewSectionTitle(code string) string {
 	switch code {
+	case "context":
+		return "Context"
 	case "doctor":
 		return "Doctor"
 	case "runtime":
 		return "Runtime"
+	case "latest_operation":
+		return "Latest Operation"
 	case "backup":
 		return "Backup"
-	case "recent_operations":
-		return "Recent Operations"
 	default:
 		return strings.ReplaceAll(code, "_", " ")
 	}

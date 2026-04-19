@@ -9,11 +9,12 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/contour-overview.sh <dev|prod> [--json] [--output PATH]
 
-Show a canonical contour overview with:
+Show the canonical operator dashboard with:
+  contour identity and resolved env context
   doctor readiness summary
   runtime status summary
+  latest operation summary
   backup summary
-  recent operation summary
 
 Examples:
   ./scripts/contour-overview.sh prod

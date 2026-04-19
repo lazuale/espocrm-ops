@@ -50,8 +50,8 @@ func TestSchema_Overview_JSON_FailureIncludesFailedAndOmittedSections(t *testing
 	}
 
 	items := requireJSONPath(t, obj, "items").([]any)
-	if len(items) != 4 {
-		t.Fatalf("expected 4 overview sections, got %d", len(items))
+	if len(items) != 5 {
+		t.Fatalf("expected 5 overview sections, got %d", len(items))
 	}
 
 	statusByCode := map[string]string{}
@@ -61,16 +61,19 @@ func TestSchema_Overview_JSON_FailureIncludesFailedAndOmittedSections(t *testing
 		statusByCode[code] = item["status"].(string)
 	}
 
+	if statusByCode["context"] != "included" {
+		t.Fatalf("expected context included, got %q", statusByCode["context"])
+	}
 	if statusByCode["doctor"] != "failed" {
 		t.Fatalf("expected doctor failed, got %q", statusByCode["doctor"])
 	}
 	if statusByCode["runtime"] != "omitted" {
 		t.Fatalf("expected runtime omitted, got %q", statusByCode["runtime"])
 	}
+	if statusByCode["latest_operation"] != "included" {
+		t.Fatalf("expected latest_operation included, got %q", statusByCode["latest_operation"])
+	}
 	if statusByCode["backup"] != "included" {
 		t.Fatalf("expected backup included, got %q", statusByCode["backup"])
-	}
-	if statusByCode["recent_operations"] != "included" {
-		t.Fatalf("expected recent_operations included, got %q", statusByCode["recent_operations"])
 	}
 }

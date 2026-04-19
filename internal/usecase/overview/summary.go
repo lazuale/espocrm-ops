@@ -19,16 +19,15 @@ import (
 )
 
 const (
-	sectionDoctor           = "doctor"
-	sectionRuntime          = "runtime"
-	sectionBackup           = "backup"
-	sectionRecentOperations = "recent_operations"
+	sectionContext         = "context"
+	sectionDoctor          = "doctor"
+	sectionRuntime         = "runtime"
+	sectionLatestOperation = "latest_operation"
+	sectionBackup          = "backup"
 
 	sectionStatusIncluded = "included"
 	sectionStatusOmitted  = "omitted"
 	sectionStatusFailed   = "failed"
-
-	overviewHistoryLimit = 3
 )
 
 var runtimeServices = []string{
@@ -63,17 +62,26 @@ type Info struct {
 }
 
 type Section struct {
-	Code             string                `json:"code"`
-	Status           string                `json:"status"`
-	Summary          string                `json:"summary"`
-	Details          string                `json:"details,omitempty"`
-	Action           string                `json:"action,omitempty"`
-	FailureCode      string                `json:"failure_code,omitempty"`
-	Warnings         []string              `json:"warnings,omitempty"`
-	Doctor           *DoctorData           `json:"doctor,omitempty"`
-	Runtime          *RuntimeData          `json:"runtime,omitempty"`
-	Backup           *BackupData           `json:"backup,omitempty"`
-	RecentOperations *RecentOperationsData `json:"recent_operations,omitempty"`
+	Code            string               `json:"code"`
+	Status          string               `json:"status"`
+	Summary         string               `json:"summary"`
+	Details         string               `json:"details,omitempty"`
+	Action          string               `json:"action,omitempty"`
+	FailureCode     string               `json:"failure_code,omitempty"`
+	Warnings        []string             `json:"warnings,omitempty"`
+	Context         *ContextData         `json:"context,omitempty"`
+	Doctor          *DoctorData          `json:"doctor,omitempty"`
+	Runtime         *RuntimeData         `json:"runtime,omitempty"`
+	LatestOperation *LatestOperationData `json:"latest_operation,omitempty"`
+	Backup          *BackupData          `json:"backup,omitempty"`
+}
+
+type ContextData struct {
+	Contour        string `json:"contour"`
+	ComposeProject string `json:"compose_project,omitempty"`
+	EnvFile        string `json:"env_file"`
+	SiteURL        string `json:"site_url,omitempty"`
+	WSPublicURL    string `json:"ws_public_url,omitempty"`
 }
 
 type DoctorData struct {
@@ -121,12 +129,12 @@ type BackupData struct {
 	FailureFindings []backupusecase.AuditFinding `json:"failure_findings,omitempty"`
 }
 
-type RecentOperationsData struct {
-	Returned       int                               `json:"returned"`
-	TotalFilesSeen int                               `json:"total_files_seen"`
-	LoadedEntries  int                               `json:"loaded_entries"`
-	SkippedCorrupt int                               `json:"skipped_corrupt"`
-	Operations     []journalusecase.OperationSummary `json:"operations,omitempty"`
+type LatestOperationData struct {
+	Returned       int                              `json:"returned"`
+	TotalFilesSeen int                              `json:"total_files_seen"`
+	LoadedEntries  int                              `json:"loaded_entries"`
+	SkippedCorrupt int                              `json:"skipped_corrupt"`
+	Operation      *journalusecase.OperationSummary `json:"operation,omitempty"`
 }
 
 func Summarize(req Request) (Info, error) {
@@ -144,6 +152,23 @@ func Summarize(req Request) (Info, error) {
 
 	failedErrs := []error{}
 
+	env, envErr := config.LoadOperationEnv(
+		info.ProjectDir,
+		info.Scope,
+		strings.TrimSpace(req.EnvFileOverride),
+		strings.TrimSpace(req.EnvContourHint),
+	)
+	if envErr == nil {
+		info.EnvFile = env.FilePath
+		info.BackupRoot = config.ResolveProjectPath(info.ProjectDir, env.BackupRoot())
+	}
+
+	contextSection, contextErr := buildContextSection(env, envErr)
+	info.Sections = append(info.Sections, contextSection)
+	if contextErr != nil {
+		failedErrs = append(failedErrs, contextErr)
+	}
+
 	doctorSection, doctorErr := buildDoctorSection(doctorusecase.Diagnose(doctorusecase.Request{
 		Scope:           info.Scope,
 		ProjectDir:      info.ProjectDir,
@@ -157,28 +182,17 @@ func Summarize(req Request) (Info, error) {
 		failedErrs = append(failedErrs, doctorErr)
 	}
 
-	env, envErr := config.LoadOperationEnv(
-		info.ProjectDir,
-		info.Scope,
-		strings.TrimSpace(req.EnvFileOverride),
-		strings.TrimSpace(req.EnvContourHint),
-	)
-	if envErr == nil {
-		info.EnvFile = env.FilePath
-		info.BackupRoot = config.ResolveProjectPath(info.ProjectDir, env.BackupRoot())
-	}
-
 	runtimeSection := buildRuntimeSection(info.ProjectDir, info.ComposeFile, env, envErr)
 	info.Sections = append(info.Sections, runtimeSection)
+
+	latestOperationSection := buildLatestOperationSection(strings.TrimSpace(req.JournalDir), info.Scope)
+	info.Sections = append(info.Sections, latestOperationSection)
 
 	backupSection, backupErr := buildBackupSection(info.BackupRoot, env, envErr, strings.TrimSpace(req.JournalDir), now)
 	info.Sections = append(info.Sections, backupSection)
 	if backupErr != nil {
 		failedErrs = append(failedErrs, backupErr)
 	}
-
-	recentSection := buildRecentOperationsSection(strings.TrimSpace(req.JournalDir), info.Scope)
-	info.Sections = append(info.Sections, recentSection)
 
 	finalizeSectionLists(&info)
 	info.Warnings = dedupeStrings(info.Warnings)
@@ -188,6 +202,35 @@ func Summarize(req Request) (Info, error) {
 	}
 
 	return info, primaryOverviewFailure(failedErrs, info.FailedSections)
+}
+
+func buildContextSection(env config.OperationEnv, envErr error) (Section, error) {
+	section := Section{
+		Code:    sectionContext,
+		Status:  sectionStatusIncluded,
+		Summary: "Resolved contour identity and env context",
+		Action:  "Use status-report when you need storage, retention, and artifact detail for this contour.",
+	}
+
+	if envErr != nil {
+		section.Status = sectionStatusFailed
+		section.Summary = "Contour context unavailable"
+		section.Details = envErr.Error()
+		section.Action = "Resolve the contour env file before rerunning overview."
+		section.FailureCode = "context_env_resolution_failed"
+		return section, apperr.Wrap(apperr.KindValidation, "context_env_resolution_failed", envErr)
+	}
+
+	section.Context = &ContextData{
+		Contour:        env.ResolvedContour,
+		ComposeProject: env.ComposeProject(),
+		EnvFile:        env.FilePath,
+		SiteURL:        env.Value("SITE_URL"),
+		WSPublicURL:    env.Value("WS_PUBLIC_URL"),
+	}
+	section.Details = fmt.Sprintf("Using %s with compose project %s.", env.FilePath, env.ComposeProject())
+
+	return section, nil
 }
 
 func buildDoctorSection(report doctorusecase.Report, _ error) (Section, error) {
@@ -200,6 +243,7 @@ func buildDoctorSection(report doctorusecase.Report, _ error) (Section, error) {
 		Status:   sectionStatusIncluded,
 		Summary:  "Doctor checks passed",
 		Details:  fmt.Sprintf("Ready with %d checks: %d passed, %d warnings, %d failed.", len(report.Checks), passed, warnings, failed),
+		Action:   "Use doctor for the full readiness checklist for this contour.",
 		Warnings: doctorWarningMessages(warningChecks),
 		Doctor: &DoctorData{
 			Ready:         report.Ready(),
@@ -286,6 +330,7 @@ func buildRuntimeSection(projectDir, composeFile string, env config.OperationEnv
 	section.Details = runtimeDetails(services)
 	section.Warnings = append(section.Warnings, runtimeServiceWarnings(services)...)
 	section.Warnings = dedupeStrings(section.Warnings)
+	section.Action = "Use status-report when you need deeper runtime and storage detail."
 
 	return section
 }
@@ -359,10 +404,9 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		}
 	}
 
-	section.Warnings = dedupeStrings(section.Warnings)
-
 	switch {
 	case auditErr != nil:
+		section.Warnings = dedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "Backup summary unavailable"
 		section.Details = auditErr.Error()
@@ -370,6 +414,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "backup_audit_failed"
 		return section, apperr.Wrap(apperr.KindValidation, "backup_audit_failed", auditErr)
 	case !audit.Success:
+		section.Warnings = dedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "Backup summary found issues"
 		section.Details = backupFailureSummary(audit.Findings)
@@ -377,6 +422,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "backup_audit_failed"
 		return section, apperr.Wrap(apperr.KindValidation, "backup_audit_failed", errors.New("backup audit found failures"))
 	case catalogErr != nil:
+		section.Warnings = dedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "Latest ready backup lookup failed"
 		section.Details = catalogErr.Error()
@@ -384,6 +430,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "backup_catalog_failed"
 		return section, apperr.Wrap(apperr.KindValidation, "backup_catalog_failed", catalogErr)
 	case section.Backup.LatestReady == nil:
+		section.Warnings = dedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "No restore-ready backup set is currently available"
 		section.Details = "The backup catalog did not find a latest restore-ready backup set for this contour."
@@ -391,39 +438,37 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "latest_ready_backup_missing"
 		return section, apperr.Wrap(apperr.KindValidation, "latest_ready_backup_missing", errors.New("no restore-ready backup set is currently available"))
 	default:
+		section.Warnings = dedupeStrings(section.Warnings)
 		section.Status = sectionStatusIncluded
 		section.Summary = "Backup summary collected"
 		section.Details = backupSuccessDetails(audit, section.Backup.LatestReady)
+		section.Action = backupAction(section.Backup.LatestReady)
 		return section, nil
 	}
 }
 
-func buildRecentOperationsSection(journalDir, scope string) Section {
+func buildLatestOperationSection(journalDir, scope string) Section {
 	section := Section{
-		Code: sectionRecentOperations,
+		Code: sectionLatestOperation,
 	}
 
 	history, err := journalusecase.History(journalusecase.HistoryInput{
 		JournalDir: journalDir,
 		Filters: journalusecase.Filters{
 			Scope: scope,
-			Limit: overviewHistoryLimit,
+			Limit: 1,
 		},
 	})
 	if err != nil {
 		section.Status = sectionStatusOmitted
-		section.Summary = "Recent operations omitted"
+		section.Summary = "Latest operation omitted"
 		section.Details = err.Error()
-		section.Action = "Repair journal access before rerunning overview to inspect recent operations."
-		section.Warnings = []string{fmt.Sprintf("recent operations omitted: %v", err)}
+		section.Action = "Repair journal access before rerunning overview to inspect the latest operation."
+		section.Warnings = []string{fmt.Sprintf("latest operation omitted: %v", err)}
 		return section
 	}
 
 	section.Status = sectionStatusIncluded
-	section.Summary = fmt.Sprintf("Found %d recent operation(s)", len(history.Operations))
-	if len(history.Operations) == 0 {
-		section.Summary = "No recent operations recorded"
-	}
 	section.Details = fmt.Sprintf(
 		"Scanned %d journal file(s), loaded %d entries, and skipped %d corrupt entries.",
 		history.Stats.TotalFilesSeen,
@@ -431,13 +476,23 @@ func buildRecentOperationsSection(journalDir, scope string) Section {
 		history.Stats.SkippedCorrupt,
 	)
 	section.Warnings = journalusecase.WarningsFromReadStats(history.Stats)
-	section.RecentOperations = &RecentOperationsData{
+	section.LatestOperation = &LatestOperationData{
 		Returned:       len(history.Operations),
 		TotalFilesSeen: history.Stats.TotalFilesSeen,
 		LoadedEntries:  history.Stats.LoadedEntries,
 		SkippedCorrupt: history.Stats.SkippedCorrupt,
-		Operations:     append([]journalusecase.OperationSummary(nil), history.Operations...),
 	}
+	section.Action = "Use history for recent operation activity once this contour has journal entries."
+
+	if len(history.Operations) == 0 {
+		section.Summary = "No recorded operations"
+		return section
+	}
+
+	operation := history.Operations[0]
+	section.Summary = fmt.Sprintf("Latest operation: %s (%s)", operation.Command, operation.Status)
+	section.LatestOperation.Operation = &operation
+	section.Action = latestOperationAction(operation, scope)
 
 	return section
 }
@@ -650,6 +705,27 @@ func backupFindingWarnings(findings []backupusecase.AuditFinding) []string {
 		warnings = append(warnings, fmt.Sprintf("%s: %s", finding.Subject, finding.Message))
 	}
 	return warnings
+}
+
+func backupAction(item *backupusecase.CatalogItem) string {
+	if item == nil {
+		return "Use backup-catalog for the backup inventory once a restore-ready backup set exists."
+	}
+
+	return fmt.Sprintf("Use backup-catalog for inventory detail, or show-backup --id %s for artifact detail.", item.ID)
+}
+
+func latestOperationAction(operation journalusecase.OperationSummary, scope string) string {
+	scopeText := strings.TrimSpace(scope)
+	if scopeText == "" {
+		scopeText = "this contour"
+	}
+
+	return fmt.Sprintf(
+		"Use show-operation --id %s for audit detail, or history --scope %s for recent operations.",
+		operation.OperationID,
+		scopeText,
+	)
 }
 
 func backupJournalWarnings(stats backupusecase.JournalReadStats) []string {

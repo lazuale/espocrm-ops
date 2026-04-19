@@ -33,3 +33,21 @@ func TestSchema_Root_JSON_Error_UnknownFlag_NoJournal(t *testing.T) {
 	assertUsageErrorOutput(t, outcome, "unknown flag: --totally-unknown-flag")
 	assertNoJournalFiles(t, journalDir)
 }
+
+func TestRootExposesSingleDashboardCommand(t *testing.T) {
+	root := newTestRootCmd()
+
+	commands := map[string]struct{}{}
+	for _, cmd := range root.Commands() {
+		commands[cmd.Name()] = struct{}{}
+	}
+
+	if _, ok := commands["overview"]; !ok {
+		t.Fatalf("expected overview command to be present")
+	}
+	for _, forbidden := range []string{"summary", "dashboard"} {
+		if _, ok := commands[forbidden]; ok {
+			t.Fatalf("expected no duplicate dashboard command %q", forbidden)
+		}
+	}
+}
