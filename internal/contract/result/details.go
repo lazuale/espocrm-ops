@@ -119,12 +119,21 @@ type StatusReportArtifacts struct {
 type MaintenanceDetails struct {
 	Scope            string   `json:"scope"`
 	GeneratedAt      string   `json:"generated_at"`
+	Mode             string   `json:"mode"`
+	Unattended       bool     `json:"unattended"`
+	Outcome          string   `json:"outcome"`
 	Sections         int      `json:"sections"`
 	Included         int      `json:"included"`
 	Omitted          int      `json:"omitted"`
 	Failed           int      `json:"failed"`
 	Warnings         int      `json:"warnings"`
 	DryRun           bool     `json:"dry_run"`
+	CheckedItems     int      `json:"checked_items"`
+	CandidateItems   int      `json:"candidate_items"`
+	KeptItems        int      `json:"kept_items"`
+	ProtectedItems   int      `json:"protected_items"`
+	RemovedItems     int      `json:"removed_items"`
+	FailedItems      int      `json:"failed_items"`
 	IncludedSections []string `json:"included_sections"`
 	OmittedSections  []string `json:"omitted_sections,omitempty"`
 	FailedSections   []string `json:"failed_sections,omitempty"`

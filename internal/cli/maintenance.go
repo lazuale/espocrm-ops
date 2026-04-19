@@ -19,6 +19,8 @@ func newMaintenanceCmd() *cobra.Command {
 	var composeFile string
 	var envFile string
 	var apply bool
+	var unattended bool
+	var allowUnattendedApply bool
 	var journalKeepDays int
 	var journalKeepLast int
 	var reportRetentionDays int
@@ -36,6 +38,8 @@ func newMaintenanceCmd() *cobra.Command {
 				composeFile:               composeFile,
 				envFile:                   envFile,
 				apply:                     apply,
+				unattended:                unattended,
+				allowUnattendedApply:      allowUnattendedApply,
 				journalKeepDays:           journalKeepDays,
 				journalKeepLast:           journalKeepLast,
 				reportRetentionDays:       reportRetentionDays,
@@ -55,6 +59,8 @@ func newMaintenanceCmd() *cobra.Command {
 	cmd.Flags().StringVar(&composeFile, "compose-file", "", "compose file path (defaults to project-dir/compose.yaml)")
 	cmd.Flags().StringVar(&envFile, "env-file", "", "override env file path")
 	cmd.Flags().BoolVar(&apply, "apply", false, "perform cleanup instead of previewing it")
+	cmd.Flags().BoolVar(&unattended, "unattended", false, "run with scheduler-safe non-interactive maintenance semantics")
+	cmd.Flags().BoolVar(&allowUnattendedApply, "allow-unattended-apply", false, "allow destructive cleanup when --unattended and --apply are used together")
 	cmd.Flags().IntVar(&journalKeepDays, "journal-keep-days", 30, "keep journal entries newer than N days")
 	cmd.Flags().IntVar(&journalKeepLast, "journal-keep-last", 20, "always protect the most recent N journal entries")
 	cmd.Flags().IntVar(&reportRetentionDays, "report-retention-days", -1, "override report retention days for this run")
@@ -70,6 +76,8 @@ type maintenanceInput struct {
 	composeFile               string
 	envFile                   string
 	apply                     bool
+	unattended                bool
+	allowUnattendedApply      bool
 	journalKeepDays           int
 	journalKeepLast           int
 	reportRetentionDays       int
@@ -140,6 +148,9 @@ func validateMaintenanceInput(cmd *cobra.Command, in *maintenanceInput) error {
 	if in.restoreDrillOverride, err = optionalNonNegativeFlag(cmd, "restore-drill-retention-days", in.restoreDrillRetentionDays); err != nil {
 		return err
 	}
+	if in.allowUnattendedApply && !in.unattended {
+		return usageError(fmt.Errorf("--allow-unattended-apply requires --unattended"))
+	}
 
 	return nil
 }
@@ -176,6 +187,8 @@ func runMaintenance(cmd *cobra.Command, in maintenanceInput) error {
 		JournalDir:                appForCommand(cmd).options.JournalDir,
 		Now:                       appForCommand(cmd).runtime.Now(),
 		Apply:                     in.apply,
+		Unattended:                in.unattended,
+		AllowUnattendedApply:      in.allowUnattendedApply,
 		JournalKeepDays:           in.journalKeepDays,
 		JournalKeepLast:           in.journalKeepLast,
 		ReportRetentionDays:       in.reportRetentionOverride,
@@ -193,13 +206,7 @@ func runMaintenance(cmd *cobra.Command, in maintenanceInput) error {
 
 func maintenanceResult(info maintenanceusecase.Info) result.Result {
 	ok := len(info.FailedSections) == 0
-	message := "maintenance preview ready"
-	if !info.DryRun {
-		message = "maintenance run completed"
-	}
-	if !ok {
-		message = "maintenance run found issues"
-	}
+	message := maintenanceOutcomeMessage(info.Outcome)
 
 	items := make([]any, 0, len(info.Sections))
 	for _, section := range info.Sections {
@@ -215,12 +222,21 @@ func maintenanceResult(info maintenanceusecase.Info) result.Result {
 		Details: result.MaintenanceDetails{
 			Scope:            info.Scope,
 			GeneratedAt:      info.GeneratedAt,
+			Mode:             info.Mode,
+			Unattended:       info.Unattended,
+			Outcome:          info.Outcome,
 			Sections:         len(info.Sections),
 			Included:         len(info.IncludedSections),
 			Omitted:          len(info.OmittedSections),
 			Failed:           len(info.FailedSections),
 			Warnings:         len(info.Warnings),
 			DryRun:           info.DryRun,
+			CheckedItems:     info.CheckedItems,
+			CandidateItems:   info.CandidateItems,
+			KeptItems:        info.KeptItems,
+			ProtectedItems:   info.ProtectedItems,
+			RemovedItems:     info.RemovedItems,
+			FailedItems:      info.FailedItems,
 			IncludedSections: append([]string(nil), info.IncludedSections...),
 			OmittedSections:  append([]string(nil), info.OmittedSections...),
 			FailedSections:   append([]string(nil), info.FailedSections...),
@@ -257,7 +273,13 @@ func renderMaintenanceText(w io.Writer, res result.Result) error {
 	if _, err := fmt.Fprintf(w, "Scope: %s\n", details.Scope); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "Mode: %s\n", maintenanceModeText(details.DryRun)); err != nil {
+	if _, err := fmt.Fprintf(w, "Mode: %s\n", details.Mode); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Unattended: %s\n", yesNo(details.Unattended)); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "Outcome: %s\n", details.Outcome); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "Generated at: %s\n", details.GeneratedAt); err != nil {
@@ -307,6 +329,24 @@ func renderMaintenanceText(w io.Writer, res result.Result) error {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Warnings: %d\n", details.Warnings); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Checked items: %d\n", details.CheckedItems); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Candidate items: %d\n", details.CandidateItems); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Kept items: %d\n", details.KeptItems); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Protected items: %d\n", details.ProtectedItems); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Removed items: %d\n", details.RemovedItems); err != nil {
+		return err
+	}
+	if _, err := fmt.Fprintf(w, "  Failed items: %d\n", details.FailedItems); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Included sections: %s\n", sectionListText(details.IncludedSections)); err != nil {
@@ -378,6 +418,9 @@ func renderMaintenanceContext(w io.Writer, data maintenanceusecase.ContextData) 
 	if _, err := fmt.Fprintf(w, "  Mode: %s\n", valueOrNA(data.Mode)); err != nil {
 		return err
 	}
+	if _, err := fmt.Fprintf(w, "  Unattended: %s\n", yesNo(data.Unattended)); err != nil {
+		return err
+	}
 	if _, err := fmt.Fprintf(w, "  Compose project: %s\n", valueOrNA(data.ComposeProject)); err != nil {
 		return err
 	}
@@ -431,12 +474,7 @@ func renderMaintenanceCleanup(w io.Writer, data maintenanceusecase.CleanupData) 
 			return err
 		}
 	}
-
-	removeLabel := "Removed"
-	if data.DryRun {
-		removeLabel = "Would remove"
-	}
-	if _, err := fmt.Fprintf(w, "  Counts: checked=%d kept=%d protected=%d %s=%d failed=%d\n", data.Checked, data.Kept, data.Protected, strings.ToLower(removeLabel), data.Removed, data.Failed); err != nil {
+	if _, err := fmt.Fprintf(w, "  Counts: checked=%d candidates=%d kept=%d protected=%d removed=%d failed=%d\n", data.Checked, data.Candidates, data.Kept, data.Protected, data.Removed, data.Failed); err != nil {
 		return err
 	}
 
@@ -490,9 +528,26 @@ func maintenanceSectionTitle(code string) string {
 	}
 }
 
-func maintenanceModeText(dryRun bool) string {
-	if dryRun {
-		return "preview"
+func maintenanceOutcomeMessage(outcome string) string {
+	switch outcome {
+	case "nothing_to_do":
+		return "maintenance found nothing to do"
+	case "preview_found_cleanup_candidates":
+		return "maintenance preview found cleanup candidates"
+	case "apply_removed_items":
+		return "maintenance removed cleanup candidates"
+	case "partial_failure":
+		return "maintenance run partially failed"
+	case "blocked":
+		return "maintenance run blocked"
+	default:
+		return "maintenance run completed"
 	}
-	return "apply"
+}
+
+func yesNo(value bool) string {
+	if value {
+		return "yes"
+	}
+	return "no"
 }

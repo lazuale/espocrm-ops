@@ -63,9 +63,23 @@ func TestRootExposesSingleHousekeepingCommand(t *testing.T) {
 	if _, ok := commands["maintenance"]; !ok {
 		t.Fatalf("expected maintenance command to be present")
 	}
-	for _, forbidden := range []string{"cleanup", "housekeeping"} {
+	for _, forbidden := range []string{"cleanup", "housekeeping", "scheduled-maintenance", "maintenance-run"} {
 		if _, ok := commands[forbidden]; ok {
 			t.Fatalf("expected no duplicate housekeeping command %q", forbidden)
+		}
+	}
+}
+
+func TestMaintenanceCommandExposesUnattendedFlags(t *testing.T) {
+	root := newTestRootCmd()
+	maintenance, _, err := root.Find([]string{"maintenance"})
+	if err != nil {
+		t.Fatalf("find maintenance command: %v", err)
+	}
+
+	for _, name := range []string{"unattended", "allow-unattended-apply"} {
+		if maintenance.Flags().Lookup(name) == nil {
+			t.Fatalf("expected maintenance to expose flag %q", name)
 		}
 	}
 }

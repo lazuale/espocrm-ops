@@ -1,16 +1,25 @@
 {
   "command": "maintenance",
   "ok": true,
-  "message": "maintenance preview ready",
+  "message": "maintenance preview found cleanup candidates",
   "details": {
     "scope": "dev",
     "generated_at": "2026-04-19T09:00:00Z",
+    "mode": "preview",
+    "unattended": true,
+    "outcome": "preview_found_cleanup_candidates",
     "sections": 5,
     "included": 5,
     "omitted": 0,
     "failed": 0,
     "warnings": 0,
     "dry_run": true,
+    "checked_items": 13,
+    "candidate_items": 7,
+    "kept_items": 2,
+    "protected_items": 4,
+    "removed_items": 0,
+    "failed_items": 0,
     "included_sections": [
       "context",
       "journal",
@@ -41,7 +50,7 @@
       "code": "context",
       "status": "included",
       "summary": "Resolved maintenance context",
-      "details": "Using REPLACE_ENV_FILE with compose project espocrm-dev in preview mode.",
+      "details": "Using REPLACE_ENV_FILE with compose project espocrm-dev in preview mode for unattended execution.",
       "action": "Use history, status-report, or show-operation when you need deeper detail about retained artifacts.",
       "context": {
         "contour": "dev",
@@ -53,23 +62,25 @@
         "restore_drill_env_dir": "REPLACE_PROJECT_DIR/.cache/env",
         "restore_drill_storage_dir": "REPLACE_PROJECT_DIR/storage/restore-drill/dev",
         "restore_drill_backup_dir": "REPLACE_PROJECT_DIR/backups/restore-drill/dev",
-        "mode": "preview"
+        "mode": "preview",
+        "unattended": true
       }
     },
     {
       "code": "journal",
       "status": "included",
       "summary": "Journal retention preview ready",
-      "details": "journal entries: kept=1 protected=1 would remove=1.",
+      "details": "journal entries: kept=1 protected=1 candidates=1 removed=0 would_remove=1.",
       "action": "Use history or show-operation to inspect journal entries before pruning more aggressively.",
       "cleanup": {
         "dry_run": true,
         "keep_days": 30,
         "keep_last": 2,
         "checked": 3,
+        "candidates": 1,
         "kept": 1,
         "protected": 1,
-        "removed": 1,
+        "removed": 0,
         "total_files_seen": 3,
         "loaded_entries": 3,
         "latest_operation_id": "op-restore-1",
@@ -153,15 +164,16 @@
       "code": "reports",
       "status": "included",
       "summary": "Report cleanup preview ready",
-      "details": "artifacts: kept=0 protected=2 would remove=2.",
+      "details": "artifacts: kept=0 protected=2 candidates=2 removed=0 would_remove=2.",
       "action": "Use status-report to inspect the newest report artifacts before tightening retention further.",
       "cleanup": {
         "dry_run": true,
         "retention_days": 30,
         "checked": 4,
+        "candidates": 2,
         "kept": 0,
         "protected": 2,
-        "removed": 2,
+        "removed": 0,
         "items": [
           {
             "kind": "report_json",
@@ -210,15 +222,16 @@
       "code": "support",
       "status": "included",
       "summary": "Support bundle cleanup preview ready",
-      "details": "artifacts: kept=0 protected=1 would remove=1.",
+      "details": "artifacts: kept=0 protected=1 candidates=1 removed=0 would_remove=1.",
       "action": "Use support-bundle to regenerate a fresh archive when you need a new diagnostic bundle.",
       "cleanup": {
         "dry_run": true,
         "retention_days": 14,
         "checked": 2,
+        "candidates": 1,
         "kept": 0,
         "protected": 1,
-        "removed": 1,
+        "removed": 0,
         "items": [
           {
             "kind": "support_bundle",
@@ -247,15 +260,16 @@
       "code": "restore_drill",
       "status": "included",
       "summary": "Restore-drill cleanup preview ready",
-      "details": "artifacts: kept=1 protected=0 would remove=3.",
+      "details": "artifacts: kept=1 protected=0 candidates=3 removed=0 would_remove=3.",
       "action": "Use restore-drill --keep-artifacts only when you intentionally want to preserve temporary drill state.",
       "cleanup": {
         "dry_run": true,
         "retention_days": 7,
         "checked": 4,
+        "candidates": 3,
         "kept": 1,
         "protected": 0,
-        "removed": 3,
+        "removed": 0,
         "items": [
           {
             "kind": "restore_drill_env_file",

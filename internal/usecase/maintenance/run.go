@@ -27,6 +27,12 @@ const (
 	sectionStatusOmitted  = "omitted"
 	sectionStatusFailed   = "failed"
 
+	outcomeNothingToDo                   = "nothing_to_do"
+	outcomePreviewFoundCleanupCandidates = "preview_found_cleanup_candidates"
+	outcomeApplyRemovedItems             = "apply_removed_items"
+	outcomePartialFailure                = "partial_failure"
+	outcomeBlocked                       = "blocked"
+
 	defaultReportRetentionDays       = 30
 	defaultSupportRetentionDays      = 14
 	defaultRestoreDrillRetentionDays = 7
@@ -41,6 +47,8 @@ type Request struct {
 	JournalDir                string
 	Now                       time.Time
 	Apply                     bool
+	Unattended                bool
+	AllowUnattendedApply      bool
 	JournalKeepDays           int
 	JournalKeepLast           int
 	ReportRetentionDays       *int
@@ -62,6 +70,15 @@ type Info struct {
 	RestoreDrillBackupDir  string
 	GeneratedAt            string
 	DryRun                 bool
+	Mode                   string
+	Unattended             bool
+	Outcome                string
+	CheckedItems           int
+	CandidateItems         int
+	KeptItems              int
+	ProtectedItems         int
+	RemovedItems           int
+	FailedItems            int
 	IncludedSections       []string
 	OmittedSections        []string
 	FailedSections         []string
@@ -92,6 +109,7 @@ type ContextData struct {
 	RestoreDrillStorageDir string `json:"restore_drill_storage_dir"`
 	RestoreDrillBackupDir  string `json:"restore_drill_backup_dir"`
 	Mode                   string `json:"mode"`
+	Unattended             bool   `json:"unattended"`
 }
 
 type CleanupData struct {
@@ -100,6 +118,7 @@ type CleanupData struct {
 	KeepLast          *int          `json:"keep_last,omitempty"`
 	RetentionDays     *int          `json:"retention_days,omitempty"`
 	Checked           int           `json:"checked"`
+	Candidates        int           `json:"candidates"`
 	Kept              int           `json:"kept"`
 	Protected         int           `json:"protected"`
 	Removed           int           `json:"removed"`
@@ -161,6 +180,8 @@ func Run(req Request) (Info, error) {
 		JournalDir:  filepath.Clean(strings.TrimSpace(req.JournalDir)),
 		GeneratedAt: now.Format(time.RFC3339),
 		DryRun:      !req.Apply,
+		Mode:        maintenanceMode(!req.Apply),
+		Unattended:  req.Unattended,
 	}
 
 	failedErrs := []error{}
@@ -197,6 +218,27 @@ func Run(req Request) (Info, error) {
 
 	contextSection := buildContextSection(env, info)
 	info.Sections = append(info.Sections, contextSection)
+
+	if req.Unattended && req.Apply && !req.AllowUnattendedApply {
+		blockedErr := apperr.Wrap(
+			apperr.KindValidation,
+			"maintenance_blocked",
+			errors.New("unattended maintenance apply requires --allow-unattended-apply"),
+		)
+		info.Sections[0] = failedContextPolicySection(
+			info.Sections[0],
+			blockedErr,
+			"unattended_apply_requires_explicit_allow",
+		)
+		info.Sections = append(info.Sections,
+			omittedPreflightSection(sectionJournal, "Journal cleanup omitted", blockedErr),
+			omittedPreflightSection(sectionReports, "Report cleanup omitted", blockedErr),
+			omittedPreflightSection(sectionSupport, "Support bundle cleanup omitted", blockedErr),
+			omittedPreflightSection(sectionRestoreDrill, "Restore-drill cleanup omitted", blockedErr),
+		)
+		finalizeMaintenanceInfo(&info)
+		return info, blockedErr
+	}
 
 	ctx, prepErr := PrepareOperation(OperationContextRequest{
 		Scope:           info.Scope,
@@ -254,11 +296,16 @@ func Run(req Request) (Info, error) {
 }
 
 func buildContextSection(env platformconfig.OperationEnv, info Info) Section {
+	details := fmt.Sprintf("Using %s with compose project %s in %s mode.", env.FilePath, env.ComposeProject(), info.Mode)
+	if info.Unattended {
+		details = fmt.Sprintf("Using %s with compose project %s in %s mode for unattended execution.", env.FilePath, env.ComposeProject(), info.Mode)
+	}
+
 	return Section{
 		Code:    sectionContext,
 		Status:  sectionStatusIncluded,
 		Summary: "Resolved maintenance context",
-		Details: fmt.Sprintf("Using %s with compose project %s in %s mode.", env.FilePath, env.ComposeProject(), maintenanceMode(info.DryRun)),
+		Details: details,
 		Action:  "Use history, status-report, or show-operation when you need deeper detail about retained artifacts.",
 		Context: &ContextData{
 			Contour:                env.ResolvedContour,
@@ -270,7 +317,8 @@ func buildContextSection(env platformconfig.OperationEnv, info Info) Section {
 			RestoreDrillEnvDir:     info.RestoreDrillEnvDir,
 			RestoreDrillStorageDir: info.RestoreDrillStorageDir,
 			RestoreDrillBackupDir:  info.RestoreDrillBackupDir,
-			Mode:                   maintenanceMode(info.DryRun),
+			Mode:                   info.Mode,
+			Unattended:             info.Unattended,
 		},
 	}
 }
@@ -287,6 +335,15 @@ func failedContextEnvSection(err error, dryRun bool) Section {
 			Mode: maintenanceMode(dryRun),
 		},
 	}
+}
+
+func failedContextPolicySection(section Section, err error, failureCode string) Section {
+	section.Status = sectionStatusFailed
+	section.Summary = "Maintenance policy blocked"
+	section.Details = err.Error()
+	section.Action = "Use --unattended for scheduled preview runs, or add --allow-unattended-apply together with --apply when you intentionally want unattended cleanup."
+	section.FailureCode = failureCode
+	return section
 }
 
 func failedContextPreflightSection(section Section, err error) Section {
@@ -318,11 +375,15 @@ func buildJournalSection(journalDir string, keepDays, keepLast int, dryRun bool)
 
 	items := make([]CleanupItem, 0, len(prune.Items))
 	failed := 0
+	candidates := 0
 	for _, item := range prune.Items {
 		decision := item.Decision
 		if prune.FailedPath != "" && item.Path == prune.FailedPath {
 			decision = "failed"
 			failed++
+			candidates++
+		} else if item.Decision == "remove" && item.Kind == journalusecase.PruneItemKindOperation {
+			candidates++
 		}
 
 		cleanupItem := CleanupItem{
@@ -342,12 +403,16 @@ func buildJournalSection(journalDir string, keepDays, keepLast int, dryRun bool)
 	if kept < 0 {
 		kept = 0
 	}
+	removed := prune.Deleted
+	if dryRun {
+		removed = 0
+	}
 
 	section := Section{
 		Code:     sectionJournal,
 		Status:   sectionStatusIncluded,
 		Summary:  maintenanceActionSummary("Journal retention", dryRun),
-		Details:  cleanupCountsText("journal entries", kept, prune.Protected, prune.Deleted, failed, dryRun),
+		Details:  cleanupCountsText("journal entries", kept, prune.Protected, candidates, removed, failed, dryRun),
 		Action:   "Use history or show-operation to inspect journal entries before pruning more aggressively.",
 		Warnings: dedupeStrings(journalusecase.WarningsFromReadStats(prune.ReadStats)),
 		Cleanup: &CleanupData{
@@ -355,9 +420,10 @@ func buildJournalSection(journalDir string, keepDays, keepLast int, dryRun bool)
 			KeepDays:          intPtr(keepDays),
 			KeepLast:          intPtr(keepLast),
 			Checked:           prune.Checked,
+			Candidates:        candidates,
 			Kept:              kept,
 			Protected:         prune.Protected,
-			Removed:           prune.Deleted,
+			Removed:           removed,
 			Failed:            failed,
 			TotalFilesSeen:    prune.ReadStats.TotalFilesSeen,
 			LoadedEntries:     prune.ReadStats.LoadedEntries,
@@ -377,7 +443,7 @@ func buildJournalSection(journalDir string, keepDays, keepLast int, dryRun bool)
 
 	section.Status = sectionStatusFailed
 	section.Summary = "Journal cleanup failed"
-	section.Details = cleanupCountsText("journal entries", kept, prune.Protected, prune.Deleted, failed, dryRun)
+	section.Details = cleanupCountsText("journal entries", kept, prune.Protected, candidates, removed, failed, dryRun)
 	if prune.FailedPath != "" {
 		section.Details = fmt.Sprintf("%s First failure: %s.", section.Details, prune.FailedPath)
 	}
@@ -594,8 +660,8 @@ func executeCleanupSection(cfg cleanupSectionConfig, now time.Time) (Section, er
 		default:
 			item.Decision = "remove"
 			item.Reasons = []string{"older_than_retention"}
+			data.Candidates++
 			if cfg.DryRun {
-				data.Removed++
 			} else if err := candidate.Remove(); err != nil {
 				item.Decision = "failed"
 				item.Reasons = append(item.Reasons, err.Error())
@@ -611,7 +677,7 @@ func executeCleanupSection(cfg cleanupSectionConfig, now time.Time) (Section, er
 
 	data.Checked = len(cfg.Candidates)
 	data.Items = items
-	section.Details = cleanupCountsText("artifacts", data.Kept, data.Protected, data.Removed, data.Failed, cfg.DryRun)
+	section.Details = cleanupCountsText("artifacts", data.Kept, data.Protected, data.Candidates, data.Removed, data.Failed, cfg.DryRun)
 	if len(failures) == 0 {
 		return section, nil
 	}
@@ -803,13 +869,11 @@ func resolveStaticRetentionDays(fallback int, override *int) (int, error) {
 	return *override, nil
 }
 
-func cleanupCountsText(label string, kept, protected, removed, failed int, dryRun bool) string {
-	removeLabel := "removed"
+func cleanupCountsText(label string, kept, protected, candidates, removed, failed int, dryRun bool) string {
+	text := fmt.Sprintf("%s: kept=%d protected=%d candidates=%d removed=%d", label, kept, protected, candidates, removed)
 	if dryRun {
-		removeLabel = "would remove"
+		text += fmt.Sprintf(" would_remove=%d", candidates)
 	}
-
-	text := fmt.Sprintf("%s: kept=%d protected=%d %s=%d", label, kept, protected, removeLabel, removed)
 	if failed > 0 {
 		text += fmt.Sprintf(" failed=%d", failed)
 	}
@@ -853,6 +917,12 @@ func finalizeMaintenanceInfo(info *Info) {
 	info.IncludedSections = nil
 	info.OmittedSections = nil
 	info.FailedSections = nil
+	info.CheckedItems = 0
+	info.CandidateItems = 0
+	info.KeptItems = 0
+	info.ProtectedItems = 0
+	info.RemovedItems = 0
+	info.FailedItems = 0
 	for _, section := range info.Sections {
 		switch section.Status {
 		case sectionStatusIncluded:
@@ -862,9 +932,52 @@ func finalizeMaintenanceInfo(info *Info) {
 		case sectionStatusFailed:
 			info.FailedSections = append(info.FailedSections, section.Code)
 		}
+		if section.Cleanup != nil {
+			info.CheckedItems += section.Cleanup.Checked
+			info.CandidateItems += section.Cleanup.Candidates
+			info.KeptItems += section.Cleanup.Kept
+			info.ProtectedItems += section.Cleanup.Protected
+			info.RemovedItems += section.Cleanup.Removed
+			info.FailedItems += section.Cleanup.Failed
+		}
 		warnings = append(warnings, section.Warnings...)
 	}
 	info.Warnings = dedupeStrings(warnings)
+	info.Outcome = determineMaintenanceOutcome(*info)
+}
+
+func determineMaintenanceOutcome(info Info) string {
+	if len(info.FailedSections) != 0 {
+		if maintenanceRunBlocked(info) {
+			return outcomeBlocked
+		}
+		return outcomePartialFailure
+	}
+	if info.CandidateItems == 0 {
+		return outcomeNothingToDo
+	}
+	if info.DryRun {
+		return outcomePreviewFoundCleanupCandidates
+	}
+	if info.RemovedItems > 0 {
+		return outcomeApplyRemovedItems
+	}
+	return outcomeNothingToDo
+}
+
+func maintenanceRunBlocked(info Info) bool {
+	if len(info.FailedSections) != 1 || info.FailedSections[0] != sectionContext {
+		return false
+	}
+	for _, section := range info.Sections {
+		if section.Code == sectionContext {
+			continue
+		}
+		if section.Status != sectionStatusOmitted {
+			return false
+		}
+	}
+	return true
 }
 
 func primaryMaintenanceFailure(failures []error, failedSections []string) error {

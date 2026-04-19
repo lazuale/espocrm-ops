@@ -25,6 +25,7 @@ func TestSchema_Maintenance_JSON_FailureIncludesFailedAndOmittedSections(t *test
 		"maintenance",
 		"--scope", "dev",
 		"--project-dir", projectDir,
+		"--unattended",
 	)
 
 	if outcome.ExitCode != exitcode.ValidationError {
@@ -47,6 +48,15 @@ func TestSchema_Maintenance_JSON_FailureIncludesFailedAndOmittedSections(t *test
 	}
 	if code := requireJSONPath(t, obj, "error", "code"); code != "maintenance_failed" {
 		t.Fatalf("unexpected error code: %v", code)
+	}
+	if mode := requireJSONPath(t, obj, "details", "mode"); mode != "preview" {
+		t.Fatalf("unexpected mode: %v", mode)
+	}
+	if unattended, _ := requireJSONPath(t, obj, "details", "unattended").(bool); !unattended {
+		t.Fatalf("expected unattended=true")
+	}
+	if outcome := requireJSONPath(t, obj, "details", "outcome"); outcome != "blocked" {
+		t.Fatalf("unexpected outcome: %v", outcome)
 	}
 
 	if failed := requireJSONPath(t, obj, "details", "failed_sections").([]any); len(failed) != 1 || failed[0] != "context" {
