@@ -1029,32 +1029,31 @@ EOF
   pass_test "Regression case passed"
 }
 
-test_restore_drill_selects_complete_set() {
+test_restore_drill_wrapper_delegates_auto_selection_to_go_execution() {
   announce_test "Regression case"
 
-  local backup_root="$TEST_TMP_ROOT/drill-backups"
   local env_file="$TEST_TMP_ROOT/env.restore-drill"
   local output_file="$TEST_TMP_ROOT/restore-drill.out"
-
-  create_db_backup "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "db-complete"
-  create_files_backup "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "files-complete"
-  create_manifest_pair "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "dev" "espo-dev"
-  create_db_backup "$backup_root" "espocrm-dev" "2026-04-07_02-00-00" "db-incomplete-newer"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-drill-auto.sh"
 
   copy_example_env dev "$env_file"
-  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
 
-  set +e
-  env ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-drill.sh" dev >"$output_file" 2>&1
-  set -e
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock restore-drill args: $*"
+EOF
+  chmod +x "$mock_espops"
 
-  assert_file_contains "$output_file" "Database backup for the restore drill: $backup_root/db/espocrm-dev_2026-04-07_01-00-00.sql.gz" "runtime output"
-  assert_file_contains "$output_file" "Files backup for the restore drill: $backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz" "runtime output"
-  cleanup_generated_repo_artifacts
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-drill.sh" dev --timeout 654; then
+    fail_test "Regression case failed"
+  fi
+
+  assert_file_contains "$output_file" "mock restore-drill args: restore-drill --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --timeout 654" "runtime output"
   pass_test "Regression case passed"
 }
 
-test_restore_drill_rejects_equal_ports() {
+test_restore_drill_wrapper_delegates_manual_selection_flags_to_go_execution() {
   announce_test "Regression case"
 
   local backup_root="$TEST_TMP_ROOT/restore-drill-equal-ports-backups"
@@ -1062,18 +1061,25 @@ test_restore_drill_rejects_equal_ports() {
   local output_file="$TEST_TMP_ROOT/restore-drill-equal-ports.out"
   local db_backup="$backup_root/db/espocrm-dev_2026-04-07_01-00-00.sql.gz"
   local files_backup="$backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-drill-manual.sh"
 
   copy_example_env dev "$env_file"
-  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
 
   create_db_backup "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "drill-db"
   create_files_backup "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "drill-files"
 
-  if run_command_capture "$output_file" env ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-drill.sh" dev --db-backup "$db_backup" --files-backup "$files_backup" --app-port 28080 --ws-port 28080; then
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock restore-drill args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-drill.sh" dev --db-backup "$db_backup" --files-backup "$files_backup" --app-port 28080 --ws-port 28081 --skip-http-probe --keep-artifacts; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "APP and WS ports for restore-drill must differ" "runtime output"
+  assert_file_contains "$output_file" "mock restore-drill args: restore-drill --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --db-backup $db_backup --files-backup $files_backup --app-port 28080 --ws-port 28081 --skip-http-probe --keep-artifacts" "runtime output"
   pass_test "Regression case passed"
 }
 

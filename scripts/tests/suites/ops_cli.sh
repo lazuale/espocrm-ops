@@ -440,97 +440,33 @@ EOF
   pass_test "Regression case passed"
 }
 
-test_restore_drill_supports_explicit_selection_skip_probe_and_keep_artifacts() {
+test_restore_drill_wrapper_delegates_explicit_selection_to_go_execution() {
   announce_test "Regression case"
-  local backup_root="$TEST_TMP_ROOT/restore-drill-explicit-backups"
   local env_file="$TEST_TMP_ROOT/env.restore-drill-explicit"
   local output_file="$TEST_TMP_ROOT/restore-drill-explicit.out"
+  local backup_root="$TEST_TMP_ROOT/restore-drill-explicit-backups"
   local db_backup="$backup_root/db/espocrm-dev_2026-04-07_01-00-00.sql.gz"
   local files_backup="$backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-restore-drill-explicit"
-  local restore_db_mock="$TEST_TMP_ROOT/mock.restore-db.drill.sh"
-  local restore_files_mock="$TEST_TMP_ROOT/mock.restore-files.drill.sh"
-  local status_mock="$TEST_TMP_ROOT/mock.status-report.drill.sh"
-  local drill_env_file=""
-
-  restore_replaced_repo_files
-  cleanup_generated_repo_artifacts
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.restore-drill-explicit.sh"
 
   copy_example_env dev "$env_file"
-  set_env_value "$env_file" DB_STORAGE_DIR "$TEST_TMP_ROOT/restore-drill-source-storage/db"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$TEST_TMP_ROOT/restore-drill-source-storage/espo"
-  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
-  set_env_value "$env_file" APP_PORT "18088"
-  set_env_value "$env_file" WS_PORT "18089"
-  set_env_value "$env_file" SITE_URL "http://127.0.0.1:18088"
-  set_env_value "$env_file" WS_PUBLIC_URL "ws://127.0.0.1:18089"
 
   create_db_backup "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "drill-explicit-db"
   create_files_backup "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "drill-explicit-files"
   create_manifest_pair "$backup_root" "espocrm-dev" "2026-04-07_01-00-00" "dev" "drill-explicit"
 
-  cat > "$restore_db_mock" <<'EOF'
+  cat > "$mock_espops" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-echo "mock restore-db args: $*"
+echo "mock restore-drill args: $*"
 EOF
-  chmod +x "$restore_db_mock"
-  replace_repo_file_temporarily "$restore_db_mock" "$SCRIPT_DIR/restore-db.sh"
+  chmod +x "$mock_espops"
 
-  cat > "$restore_files_mock" <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-echo "mock restore-files args: $*"
-EOF
-  chmod +x "$restore_files_mock"
-  replace_repo_file_temporarily "$restore_files_mock" "$SCRIPT_DIR/restore-files.sh"
-
-  cat > "$status_mock" <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-output_path=""
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --output)
-      output_path="$2"
-      shift 2
-      ;;
-    *)
-      shift
-      ;;
-  esac
-done
-
-if [[ -n "$output_path" ]]; then
-  mkdir -p "$(dirname "$output_path")"
-  printf '%s\n' 'mock drill status' > "$output_path"
-else
-  printf '%s\n' 'mock drill status'
-fi
-EOF
-  chmod +x "$status_mock"
-  replace_repo_file_temporarily "$status_mock" "$SCRIPT_DIR/status-report.sh"
-
-  create_mock_docker_runtime_success "$mock_bin_dir"
-
-  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/restore-drill.sh" dev --db-backup "$db_backup" --files-backup "$files_backup" --timeout 123 --app-port 28080 --ws-port 28081 --skip-http-probe --keep-artifacts; then
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/restore-drill.sh" dev --db-backup "$db_backup" --files-backup "$files_backup" --timeout 123 --app-port 28080 --ws-port 28081 --skip-http-probe --keep-artifacts; then
     fail_test "Regression case failed"
   fi
 
-  drill_env_file="$(find "$ROOT_DIR/.cache/env" -maxdepth 1 -type f -name 'restore-drill.dev.*.env' | sort | tail -n 1)"
-  [[ -n "$drill_env_file" && -f "$drill_env_file" ]] || fail_test "Regression case failed"
-  [[ -d "$ROOT_DIR/storage/restore-drill/dev/db" ]] || fail_test "Regression case failed"
-  [[ -d "$ROOT_DIR/storage/restore-drill/dev/espo" ]] || fail_test "Regression case failed"
-  [[ -d "$ROOT_DIR/backups/restore-drill/dev" ]] || fail_test "Regression case failed"
-
-  assert_file_contains "$output_file" "HTTP probe skipped because of --skip-http-probe" "runtime output"
-  assert_file_contains "$output_file" "mock restore-db args: dev $db_backup --force --no-snapshot --no-stop --no-start" "runtime output"
-  assert_file_contains "$output_file" "mock restore-files args: dev $files_backup --force --no-snapshot --no-stop --no-start" "runtime output"
-  assert_file_contains "$output_file" "Temporary restore-drill contour preserved because of --keep-artifacts" "runtime output"
-
-  restore_replaced_repo_files
-  cleanup_generated_repo_artifacts
+  assert_file_contains "$output_file" "mock restore-drill args: restore-drill --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --db-backup $db_backup --files-backup $files_backup --timeout 123 --app-port 28080 --ws-port 28081 --skip-http-probe --keep-artifacts" "runtime output"
   pass_test "Regression case passed"
 }
 

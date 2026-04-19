@@ -216,6 +216,55 @@ type RestoreExecutionItem struct {
 	Action  string `json:"action,omitempty"`
 }
 
+type RestoreDrillDetails struct {
+	Scope                  string   `json:"scope"`
+	Ready                  bool     `json:"ready"`
+	RequestedSelectionMode string   `json:"requested_selection_mode,omitempty"`
+	SelectionMode          string   `json:"selection_mode,omitempty"`
+	Steps                  int      `json:"steps"`
+	Completed              int      `json:"completed"`
+	Failed                 int      `json:"failed"`
+	NotRun                 int      `json:"not_run"`
+	Warnings               int      `json:"warnings,omitempty"`
+	TimeoutSeconds         int      `json:"timeout_seconds"`
+	SkipHTTPProbe          bool     `json:"skip_http_probe"`
+	KeepArtifacts          bool     `json:"keep_artifacts"`
+	DrillAppPort           int      `json:"drill_app_port"`
+	DrillWSPort            int      `json:"drill_ws_port"`
+	ServicesReady          []string `json:"services_ready,omitempty"`
+}
+
+type RestoreDrillArtifacts struct {
+	ProjectDir           string `json:"project_dir"`
+	ComposeFile          string `json:"compose_file"`
+	SourceEnvFile        string `json:"source_env_file"`
+	SourceComposeProject string `json:"source_compose_project,omitempty"`
+	SourceBackupRoot     string `json:"source_backup_root,omitempty"`
+	SelectedPrefix       string `json:"selected_prefix,omitempty"`
+	SelectedStamp        string `json:"selected_stamp,omitempty"`
+	ManifestTXT          string `json:"manifest_txt,omitempty"`
+	ManifestJSON         string `json:"manifest_json,omitempty"`
+	DBBackup             string `json:"db_backup,omitempty"`
+	FilesBackup          string `json:"files_backup,omitempty"`
+	DrillEnvFile         string `json:"drill_env_file,omitempty"`
+	DrillComposeProject  string `json:"drill_compose_project,omitempty"`
+	DrillBackupRoot      string `json:"drill_backup_root,omitempty"`
+	DrillDBStorage       string `json:"drill_db_storage,omitempty"`
+	DrillESPOStorage     string `json:"drill_espo_storage,omitempty"`
+	SiteURL              string `json:"site_url,omitempty"`
+	WSPublicURL          string `json:"ws_public_url,omitempty"`
+	ReportTXT            string `json:"report_txt,omitempty"`
+	ReportJSON           string `json:"report_json,omitempty"`
+}
+
+type RestoreDrillItem struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Details string `json:"details,omitempty"`
+	Action  string `json:"action,omitempty"`
+}
+
 type UpdateBackupDetails struct {
 	TimeoutSeconds         int    `json:"timeout_seconds"`
 	StartedDBTemporarily   bool   `json:"started_db_temporarily"`

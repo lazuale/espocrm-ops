@@ -43,6 +43,14 @@ func ComposeStop(cfg ComposeConfig, services ...string) error {
 	return nil
 }
 
+func ComposeDown(cfg ComposeConfig) error {
+	if _, err := runCompose(cfg, "down"); err != nil {
+		return fmt.Errorf("compose down: %w", err)
+	}
+
+	return nil
+}
+
 func ComposeRunningServices(cfg ComposeConfig) ([]string, error) {
 	res, err := runCompose(cfg, "ps", "--status", "running", "--services")
 	if err != nil {

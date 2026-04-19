@@ -116,6 +116,11 @@ if [[ "${1:-}" == "compose" ]]; then
 			fi
 			exit 0
         ;;
+      down)
+        shift
+        write_running_services
+        exit 0
+        ;;
       up)
         shift
         if [[ "${1:-}" == "-d" ]]; then

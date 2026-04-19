@@ -43,23 +43,6 @@
       "line_count": 486,
       "sha256": "0afa6e9e5878a390a7b1dfcd0edede6666a288fa87a73a71d9a95922bade49a4"
     },
-    "scripts/restore-drill.sh": {
-      "function_names": [
-        "assert_go_backend_ready",
-        "cleanup",
-        "derive_drill_port",
-        "ensure_port_available",
-        "json_extract_string_field",
-        "on_error",
-        "resolve_drill_backup_selection",
-        "select_latest_drill_backup_pair",
-        "select_latest_drill_backup_pair_go",
-        "usage",
-        "use_go_backend"
-      ],
-      "line_count": 407,
-      "sha256": "890f41ad17cf88a3a1b329b6a1f158b88f1ceacc27e0fca5d7b7549077afb50e"
-    },
     "scripts/rollback.sh": {
       "function_names": [
         "usage"
