@@ -96,7 +96,7 @@ main() {
   test_backup_reuses_inherited_shell_context
   test_smoke_test_can_keep_artifacts
   test_restore_drill_wrapper_delegates_explicit_selection_to_go_execution
-  test_status_report_writes_output_files
+  test_status_report_wrapper_delegates_to_go_status_report
   test_doctor_does_not_require_ripgrep_for_own_published_ports
   test_doctor_all_switches_between_contours
   test_espo_cli_dispatches_commands

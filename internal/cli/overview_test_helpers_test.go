@@ -58,6 +58,10 @@ func normalizeOverviewValue(value any, replacements map[string]string) any {
 	switch typed := value.(type) {
 	case map[string]any:
 		for key, item := range typed {
+			if key == "age_hours" {
+				typed[key] = float64(0)
+				continue
+			}
 			typed[key] = normalizeOverviewValue(item, replacements)
 		}
 		return typed

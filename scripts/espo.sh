@@ -42,7 +42,7 @@ When in doubt, the safe order is usually:
 Daily commands:
   doctor [dev|prod|all]          Check env, Docker, ports, and config before changes
   overview <dev|prod> [args...]  Show a canonical contour summary of readiness, runtime, backups, and recent operations
-  status <dev|prod> [args...]    Get a short report about the current contour state
+  status <dev|prod> [args...]    Show a canonical detailed contour runtime and artifact report
   backup <dev|prod> [args...]    Create a new coherent backup set
   support <dev|prod> [args...]   Collect a diagnostic bundle for troubleshooting
 

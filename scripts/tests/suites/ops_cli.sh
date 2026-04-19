@@ -470,39 +470,57 @@ EOF
   pass_test "Regression case passed"
 }
 
-test_status_report_writes_output_files() {
+test_status_report_wrapper_delegates_to_go_status_report() {
   announce_test "Regression case"
 
   local env_file="$TEST_TMP_ROOT/env.status-report"
   local text_output="$TEST_TMP_ROOT/status-report.txt"
   local json_output="$TEST_TMP_ROOT/status-report.json"
   local command_output="$TEST_TMP_ROOT/status-report-command.out"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-status-report"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.status-report.sh"
+  local mock_file=""
+  local script_name
+  local mocked_scripts=(
+    doctor.sh
+    contour-overview.sh
+    backup-catalog.sh
+  )
 
+  restore_replaced_repo_files
   copy_example_env dev "$env_file"
-  set_env_value "$env_file" DB_STORAGE_DIR "$TEST_TMP_ROOT/status-report-storage/db"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$TEST_TMP_ROOT/status-report-storage/espo"
-  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/status-report-backups"
 
-  create_mock_docker_cli "$mock_bin_dir"
+  for script_name in "${mocked_scripts[@]}"; do
+    mock_file="$TEST_TMP_ROOT/mock.status-report.$script_name"
+    create_mock_echo_script "$script_name" "$mock_file"
+    replace_repo_file_temporarily "$mock_file" "$SCRIPT_DIR/$script_name"
+  done
 
-  if ! run_command_capture "$command_output" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/status-report.sh" dev --output "$text_output"; then
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock status-report args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$command_output" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/status-report.sh" dev --output "$text_output"; then
     fail_test "Regression case failed"
   fi
 
   [[ -f "$text_output" ]] || fail_test "Regression case failed"
   assert_file_contains "$command_output" "Report saved: $text_output" "runtime output"
-  assert_file_contains "$text_output" "Contour:          dev" "runtime output"
-  assert_file_contains "$text_output" "db:                 daemon_unavailable" "runtime output"
+  assert_file_contains "$text_output" "mock status-report args: status-report --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file" "runtime output"
+  assert_file_not_contains "$command_output" "doctor.sh: dev" "runtime output"
+  assert_file_not_contains "$command_output" "contour-overview.sh: dev" "runtime output"
+  assert_file_not_contains "$command_output" "backup-catalog.sh: dev" "runtime output"
 
-  if ! run_command_capture "$command_output" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/status-report.sh" dev --json --output "$json_output"; then
+  if ! run_command_capture "$command_output" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/status-report.sh" dev --json --output "$json_output"; then
     fail_test "Regression case failed"
   fi
 
   [[ -f "$json_output" ]] || fail_test "Regression case failed"
   assert_file_contains "$command_output" "Report saved: $json_output" "runtime output"
-  assert_file_contains "$json_output" "\"contour\": \"dev\"" "runtime output"
-  assert_file_contains "$json_output" "\"db\": \"daemon_unavailable\"" "runtime output"
+  assert_file_contains "$json_output" "mock status-report args: status-report --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --json" "runtime output"
+  restore_replaced_repo_files
   pass_test "Regression case passed"
 }
 
@@ -1146,7 +1164,8 @@ test_status_fails_cleanly_without_env() {
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$status_output" "Missing $ROOT_DIR/.env.dev" "runtime output"
+  assert_file_contains "$status_output" "\"command\": \"status-report\"" "runtime output"
+  assert_file_contains "$status_output" "missing $ROOT_DIR/.env.dev" "runtime output"
   assert_file_not_contains "$status_output" "unbound variable" "runtime output"
   restore_repo_env_files
   pass_test "Regression case passed"
