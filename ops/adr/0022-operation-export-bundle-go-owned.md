@@ -35,6 +35,7 @@ The canonical export flow now works as follows:
 
 - `export-operation` is the single export surface for operation bundles
 - export selection reuses the existing Go-owned `show-operation` lookup path instead of introducing a parallel reader stack
+- the export use case converts `ExportInput` directly into `ShowOperationInput` so selection stays aligned with the canonical lookup contract instead of carrying duplicate field mapping
 - the written bundle contains canonical bundle metadata, a compact operation summary, the full Go-owned operation report, journal-read stats, and explicit included versus omitted section lists
 - the stdout result remains a normal Go CLI result envelope in both text and JSON, while the bundle file is the durable export artifact
 

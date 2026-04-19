@@ -47,10 +47,7 @@ type OperationBundle struct {
 }
 
 func Export(in ExportInput) (ExportOutput, error) {
-	operation, err := ShowOperation(ShowOperationInput{
-		JournalDir: in.JournalDir,
-		ID:         in.ID,
-	})
+	operation, err := ShowOperation(ShowOperationInput(in))
 	if err != nil {
 		return ExportOutput{}, err
 	}
