@@ -74,6 +74,26 @@ type SupportBundleItem struct {
 	Files   []string `json:"files,omitempty"`
 }
 
+type OverviewDetails struct {
+	Scope            string   `json:"scope"`
+	GeneratedAt      string   `json:"generated_at"`
+	Sections         int      `json:"sections"`
+	Included         int      `json:"included"`
+	Omitted          int      `json:"omitted"`
+	Failed           int      `json:"failed"`
+	Warnings         int      `json:"warnings"`
+	IncludedSections []string `json:"included_sections"`
+	OmittedSections  []string `json:"omitted_sections,omitempty"`
+	FailedSections   []string `json:"failed_sections,omitempty"`
+}
+
+type OverviewArtifacts struct {
+	ProjectDir  string `json:"project_dir"`
+	ComposeFile string `json:"compose_file"`
+	EnvFile     string `json:"env_file,omitempty"`
+	BackupRoot  string `json:"backup_root,omitempty"`
+}
+
 type PruneDetails struct {
 	JournalReadDetails
 	Checked           int    `json:"checked"`

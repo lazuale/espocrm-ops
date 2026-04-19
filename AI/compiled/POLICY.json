@@ -109,23 +109,23 @@
   "knowledge_banner": "",
   "non_canonical_json_scripts": [
     "scripts/doctor.sh",
-    "scripts/status-report.sh",
-    "scripts/contour-overview.sh"
+    "scripts/status-report.sh"
   ],
   "non_canonical_shell_json": [
     "scripts/doctor.sh --json",
-    "scripts/status-report.sh --json",
-    "scripts/contour-overview.sh --json"
+    "scripts/status-report.sh --json"
   ],
   "passthrough_json_scripts": [
     "scripts/backup-audit.sh",
     "scripts/backup-catalog.sh",
-    "scripts/support-bundle.sh"
+    "scripts/support-bundle.sh",
+    "scripts/contour-overview.sh"
   ],
   "passthrough_shell_json": [
     "scripts/backup-audit.sh --json",
     "scripts/backup-catalog.sh --json",
-    "scripts/support-bundle.sh --json"
+    "scripts/support-bundle.sh --json",
+    "scripts/contour-overview.sh --json"
   ],
   "readme_required_snippets": [
     "[AGENTS.md](AGENTS.md)",

@@ -15,13 +15,13 @@
   },
   "non_canonical_shell_json": [
     "scripts/doctor.sh --json",
-    "scripts/status-report.sh --json",
-    "scripts/contour-overview.sh --json"
+    "scripts/status-report.sh --json"
   ],
   "passthrough_shell_json": [
     "scripts/backup-audit.sh --json",
     "scripts/backup-catalog.sh --json",
-    "scripts/support-bundle.sh --json"
+    "scripts/support-bundle.sh --json",
+    "scripts/contour-overview.sh --json"
   ],
   "frozen_shell_debt": {
     "scripts/backup-audit.sh": [

@@ -100,7 +100,7 @@ main() {
   test_doctor_does_not_require_ripgrep_for_own_published_ports
   test_doctor_all_switches_between_contours
   test_espo_cli_dispatches_commands
-  test_contour_overview_runs_read_only_checks
+  test_contour_overview_wrapper_delegates_to_go_overview
   test_support_bundle_wrapper_delegates_tail_output_and_json_to_go_execution
   test_support_bundle_wrapper_preserves_explicit_env_file_to_go_execution
   test_status_fails_cleanly_without_env

@@ -1031,11 +1031,13 @@ test_espo_cli_dispatches_commands() {
   pass_test "Regression case passed"
 }
 
-test_contour_overview_runs_read_only_checks() {
+test_contour_overview_wrapper_delegates_to_go_overview() {
   announce_test "Regression case"
 
+  local env_file="$TEST_TMP_ROOT/env.contour-overview"
   local output_file="$TEST_TMP_ROOT/contour-overview.out"
   local json_file="$TEST_TMP_ROOT/contour-overview.json"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.contour-overview.sh"
   local mock_file=""
   local script_name
   local mocked_scripts=(
@@ -1046,6 +1048,7 @@ test_contour_overview_runs_read_only_checks() {
   )
 
   restore_replaced_repo_files
+  copy_example_env dev "$env_file"
 
   for script_name in "${mocked_scripts[@]}"; do
     mock_file="$TEST_TMP_ROOT/mock.overview.$script_name"
@@ -1053,47 +1056,29 @@ test_contour_overview_runs_read_only_checks() {
     replace_repo_file_temporarily "$mock_file" "$SCRIPT_DIR/$script_name"
   done
 
-  if ! run_command_capture "$output_file" bash "$SCRIPT_DIR/contour-overview.sh" dev; then
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock overview args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/contour-overview.sh" dev; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "Contour: dev" "runtime output"
-  assert_file_contains "$output_file" "Mode: read-only overview" "runtime output"
-  assert_file_contains "$output_file" "doctor.sh: dev" "runtime output"
-  assert_file_contains "$output_file" "status-report.sh: dev" "runtime output"
-  assert_file_contains "$output_file" "backup-audit.sh: dev" "runtime output"
-  assert_file_contains "$output_file" "backup-catalog.sh: dev --latest-only --verify-checksum" "runtime output"
-  assert_file_contains "$output_file" "Read-only overview completed without errors." "runtime output"
+  assert_file_contains "$output_file" "mock overview args: overview --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file" "runtime output"
+  assert_file_not_contains "$output_file" "doctor.sh: dev" "runtime output"
+  assert_file_not_contains "$output_file" "status-report.sh: dev" "runtime output"
+  assert_file_not_contains "$output_file" "backup-audit.sh: dev" "runtime output"
+  assert_file_not_contains "$output_file" "backup-catalog.sh: dev" "runtime output"
 
-  if ! run_command_capture "$output_file" bash "$SCRIPT_DIR/contour-overview.sh" dev --json --output "$json_file"; then
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/contour-overview.sh" dev --json --output "$json_file"; then
     fail_test "Regression case failed"
   fi
 
   assert_file_contains "$output_file" "Overview saved: $json_file" "runtime output"
-  assert_file_contains "$json_file" "\"contour\": \"dev\"" "runtime output"
-  assert_file_contains "$json_file" "\"mode\": \"read_only\"" "runtime output"
-  assert_file_contains "$json_file" "\"success\": true" "runtime output"
-  assert_file_contains "$json_file" "\"failed_sections\": 0" "runtime output"
-  assert_file_contains "$json_file" "\"id\": \"backup_catalog\"" "runtime output"
-  assert_file_contains "$json_file" "\"command\": \"./scripts/espo.sh backup catalog dev --json --latest-only --verify-checksum\"" "runtime output"
-  assert_file_contains "$json_file" "backup-catalog.sh: dev --json --latest-only --verify-checksum" "runtime output"
-
-  cat > "$mock_file" <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-echo "backup-audit.sh: $*"
-exit 7
-EOF
-  chmod +x "$mock_file"
-  replace_repo_file_temporarily "$mock_file" "$SCRIPT_DIR/backup-audit.sh"
-
-  if run_command_capture "$output_file" bash "$SCRIPT_DIR/contour-overview.sh" prod; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "backup-audit.sh: prod" "runtime output"
-  assert_file_contains "$output_file" "backup-catalog.sh: prod --latest-only --verify-checksum" "runtime output"
-  assert_file_contains "$output_file" "Overview found problems" "runtime output"
+  assert_file_contains "$json_file" "mock overview args: overview --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --json" "runtime output"
 
   restore_replaced_repo_files
   pass_test "Regression case passed"
