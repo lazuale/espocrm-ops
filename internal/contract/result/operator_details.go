@@ -116,6 +116,45 @@ type StatusReportArtifacts struct {
 	SupportDir  string `json:"support_dir,omitempty"`
 }
 
+type HealthSummarySection struct {
+	Code          string `json:"code"`
+	Status        string `json:"status"`
+	State         string `json:"state"`
+	SourceCommand string `json:"source_command"`
+	Summary       string `json:"summary"`
+	Details       string `json:"details,omitempty"`
+	CauseCode     string `json:"cause_code,omitempty"`
+	NextAction    string `json:"next_action,omitempty"`
+}
+
+type HealthSummaryDetails struct {
+	Scope                string                 `json:"scope"`
+	GeneratedAt          string                 `json:"generated_at"`
+	Verdict              string                 `json:"verdict"`
+	NextAction           string                 `json:"next_action,omitempty"`
+	DoctorState          string                 `json:"doctor_state"`
+	RuntimeState         string                 `json:"runtime_state"`
+	BackupState          string                 `json:"backup_state"`
+	LatestOperationState string                 `json:"latest_operation_state"`
+	LatestOperationID    string                 `json:"latest_operation_id,omitempty"`
+	LatestOperationCmd   string                 `json:"latest_operation_command,omitempty"`
+	MaintenanceState     string                 `json:"maintenance_state"`
+	WarningAlerts        int                    `json:"warning_alerts"`
+	BlockingAlerts       int                    `json:"blocking_alerts"`
+	FailureAlerts        int                    `json:"failure_alerts"`
+	SectionResults       []HealthSummarySection `json:"section_results"`
+	SectionSummary
+}
+
+type HealthSummaryArtifacts struct {
+	ProjectDir  string `json:"project_dir"`
+	ComposeFile string `json:"compose_file"`
+	EnvFile     string `json:"env_file,omitempty"`
+	BackupRoot  string `json:"backup_root,omitempty"`
+	ReportsDir  string `json:"reports_dir,omitempty"`
+	SupportDir  string `json:"support_dir,omitempty"`
+}
+
 type MaintenanceDetails struct {
 	Scope          string `json:"scope"`
 	GeneratedAt    string `json:"generated_at"`

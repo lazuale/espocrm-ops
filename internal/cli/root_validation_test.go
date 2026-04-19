@@ -70,6 +70,24 @@ func TestRootExposesSingleHousekeepingCommand(t *testing.T) {
 	}
 }
 
+func TestRootExposesSingleHealthSummaryCommand(t *testing.T) {
+	root := newTestRootCmd()
+
+	commands := map[string]struct{}{}
+	for _, cmd := range root.Commands() {
+		commands[cmd.Name()] = struct{}{}
+	}
+
+	if _, ok := commands["health-summary"]; !ok {
+		t.Fatalf("expected health-summary command to be present")
+	}
+	for _, forbidden := range []string{"health", "alerts", "health-alerts"} {
+		if _, ok := commands[forbidden]; ok {
+			t.Fatalf("expected no duplicate health command %q", forbidden)
+		}
+	}
+}
+
 func TestMaintenanceCommandExposesUnattendedFlags(t *testing.T) {
 	root := newTestRootCmd()
 	maintenance, _, err := root.Find([]string{"maintenance"})
