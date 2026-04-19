@@ -119,11 +119,13 @@
   ],
   "passthrough_json_scripts": [
     "scripts/backup-audit.sh",
-    "scripts/backup-catalog.sh"
+    "scripts/backup-catalog.sh",
+    "scripts/support-bundle.sh"
   ],
   "passthrough_shell_json": [
     "scripts/backup-audit.sh --json",
-    "scripts/backup-catalog.sh --json"
+    "scripts/backup-catalog.sh --json",
+    "scripts/support-bundle.sh --json"
   ],
   "readme_required_snippets": [
     "[AGENTS.md](AGENTS.md)",

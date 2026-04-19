@@ -51,6 +51,38 @@ func ComposeDown(cfg ComposeConfig) error {
 	return nil
 }
 
+func ComposeConfigText(cfg ComposeConfig) (string, error) {
+	res, err := runCompose(cfg, "config")
+	if err != nil {
+		return "", fmt.Errorf("compose config: %w", err)
+	}
+
+	return res.Stdout, nil
+}
+
+func ComposePSText(cfg ComposeConfig) (string, error) {
+	res, err := runCompose(cfg, "ps")
+	if err != nil {
+		return "", fmt.Errorf("compose ps: %w", err)
+	}
+
+	return res.Stdout, nil
+}
+
+func ComposeLogsText(cfg ComposeConfig, tailLines int) (string, error) {
+	args := []string{"logs", "--no-color"}
+	if tailLines > 0 {
+		args = append(args, "--tail", fmt.Sprintf("%d", tailLines))
+	}
+
+	res, err := runCompose(cfg, args...)
+	if err != nil {
+		return "", fmt.Errorf("compose logs: %w", err)
+	}
+
+	return res.Stdout, nil
+}
+
 func ComposeRunningServices(cfg ComposeConfig) ([]string, error) {
 	res, err := runCompose(cfg, "ps", "--status", "running", "--services")
 	if err != nil {

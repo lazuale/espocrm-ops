@@ -42,6 +42,38 @@ type OperationExportArtifacts struct {
 	BundlePath string `json:"bundle_path"`
 }
 
+type SupportBundleDetails struct {
+	Scope            string   `json:"scope"`
+	BundleKind       string   `json:"bundle_kind"`
+	BundleVersion    int      `json:"bundle_version"`
+	GeneratedAt      string   `json:"generated_at"`
+	TailLines        int      `json:"tail_lines"`
+	Sections         int      `json:"sections"`
+	Included         int      `json:"included"`
+	Omitted          int      `json:"omitted"`
+	Warnings         int      `json:"warnings"`
+	RetentionDays    int      `json:"retention_days"`
+	IncludedSections []string `json:"included_sections"`
+	OmittedSections  []string `json:"omitted_sections,omitempty"`
+}
+
+type SupportBundleArtifacts struct {
+	ProjectDir  string `json:"project_dir"`
+	ComposeFile string `json:"compose_file"`
+	EnvFile     string `json:"env_file"`
+	BackupRoot  string `json:"backup_root"`
+	BundlePath  string `json:"bundle_path,omitempty"`
+}
+
+type SupportBundleItem struct {
+	Code    string   `json:"code"`
+	Status  string   `json:"status"`
+	Summary string   `json:"summary"`
+	Details string   `json:"details,omitempty"`
+	Action  string   `json:"action,omitempty"`
+	Files   []string `json:"files,omitempty"`
+}
+
 type PruneDetails struct {
 	JournalReadDetails
 	Checked           int    `json:"checked"`

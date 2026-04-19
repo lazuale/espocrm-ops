@@ -101,9 +101,9 @@ main() {
   test_doctor_all_switches_between_contours
   test_espo_cli_dispatches_commands
   test_contour_overview_runs_read_only_checks
-  test_support_bundle_redacts_secrets
-  test_support_bundle_supports_tail_and_default_output
-  test_status_and_support_fail_cleanly_without_env
+  test_support_bundle_wrapper_delegates_tail_output_and_json_to_go_execution
+  test_support_bundle_wrapper_preserves_explicit_env_file_to_go_execution
+  test_status_fails_cleanly_without_env
   test_contour_commands_require_explicit_contour
   test_doctor_json_reports_missing_env_files
   test_doctor_all_rejects_migration_contract_drift

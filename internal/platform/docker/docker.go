@@ -159,6 +159,32 @@ func CheckDockerAvailable() error {
 	return nil
 }
 
+func DockerVersionText() (string, error) {
+	if err := CheckDockerCLIAvailable(); err != nil {
+		return "", err
+	}
+
+	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "version")
+	if err != nil {
+		return "", UnavailableError{Err: err}
+	}
+
+	return res.Stdout, nil
+}
+
+func ComposeVersionText() (string, error) {
+	if err := CheckDockerCLIAvailable(); err != nil {
+		return "", err
+	}
+
+	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "compose", "version")
+	if err != nil {
+		return "", UnavailableError{Err: err}
+	}
+
+	return res.Stdout, nil
+}
+
 func CheckContainerRunning(container string) error {
 	res, err := Run("docker", "inspect", "--format", "{{.State.Running}}", container)
 	if err != nil {

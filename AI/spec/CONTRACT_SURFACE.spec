@@ -20,7 +20,8 @@
   ],
   "passthrough_shell_json": [
     "scripts/backup-audit.sh --json",
-    "scripts/backup-catalog.sh --json"
+    "scripts/backup-catalog.sh --json",
+    "scripts/support-bundle.sh --json"
   ],
   "frozen_shell_debt": {
     "scripts/backup-audit.sh": [

@@ -1099,72 +1099,61 @@ EOF
   pass_test "Regression case passed"
 }
 
-test_support_bundle_redacts_secrets() {
+test_support_bundle_wrapper_delegates_tail_output_and_json_to_go_execution() {
   announce_test "Regression case"
 
   local env_file="$TEST_TMP_ROOT/env.support-bundle"
   local output_file="$TEST_TMP_ROOT/support-bundle.out"
-  local bundle_file="$TEST_TMP_ROOT/support-bundle.tar.gz"
-  local unpack_dir="$TEST_TMP_ROOT/support-bundle-unpack"
-  local secret_root="ROOT_SECRET_12345"
-  local secret_db="APP_SECRET_67890"
-  local secret_admin="ADMIN_SECRET_24680"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.support-bundle.sh"
 
   copy_example_env dev "$env_file"
-  set_env_value "$env_file" DB_STORAGE_DIR "$TEST_TMP_ROOT/support-bundle-storage/db"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$TEST_TMP_ROOT/support-bundle-storage/espo"
-  set_env_value "$env_file" BACKUP_ROOT "$TEST_TMP_ROOT/support-bundle-backups"
-  set_env_value "$env_file" DB_ROOT_PASSWORD "$secret_root"
-  set_env_value "$env_file" DB_PASSWORD "$secret_db"
-  set_env_value "$env_file" ADMIN_PASSWORD "$secret_admin"
 
-  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" bash "$SCRIPT_DIR/support-bundle.sh" dev --output "$bundle_file"; then
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock support-bundle args: $*"
+EOF
+  chmod +x "$mock_espops"
+
+  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/support-bundle.sh" dev --tail 42 --output /tmp/support.tar.gz --json; then
     fail_test "Regression case failed"
   fi
 
-  mkdir -p "$unpack_dir"
-  tar -C "$unpack_dir" -xzf "$bundle_file"
-
-  if rg -Fq "$secret_root" "$unpack_dir" || rg -Fq "$secret_db" "$unpack_dir" || rg -Fq "$secret_admin" "$unpack_dir"; then
-    fail_test "Regression case failed"
-  fi
-
+  assert_file_contains "$output_file" "mock support-bundle args: support-bundle --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $env_file --tail 42 --output /tmp/support.tar.gz --json" "runtime output"
   pass_test "Regression case passed"
 }
 
-test_support_bundle_supports_tail_and_default_output() {
+test_support_bundle_wrapper_preserves_explicit_env_file_to_go_execution() {
   announce_test "Regression case"
 
-  local env_file="$TEST_TMP_ROOT/env.support-bundle-default"
+  local inherited_env_file="$TEST_TMP_ROOT/env.support-bundle-default"
+  local explicit_env_file="$TEST_TMP_ROOT/env.support-bundle-explicit"
   local output_file="$TEST_TMP_ROOT/support-bundle-default.out"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-support-default"
-  local backup_root="$TEST_TMP_ROOT/support-bundle-default-backups"
-  local support_bundle=""
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.support-bundle-explicit.sh"
 
-  copy_example_env dev "$env_file"
-  set_env_value "$env_file" DB_STORAGE_DIR "$TEST_TMP_ROOT/support-default-storage/db"
-  set_env_value "$env_file" ESPO_STORAGE_DIR "$TEST_TMP_ROOT/support-default-storage/espo"
-  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
+  copy_example_env dev "$inherited_env_file"
+  copy_example_env dev "$explicit_env_file"
 
-  create_mock_docker_cli "$mock_bin_dir"
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock support-bundle args: $*"
+EOF
+  chmod +x "$mock_espops"
 
-  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" ENV_FILE="$env_file" bash "$SCRIPT_DIR/support-bundle.sh" dev --tail 42; then
+  if ! run_command_capture "$output_file" env ENV_FILE="$inherited_env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/support-bundle.sh" dev --env-file "$explicit_env_file" --tail 15; then
     fail_test "Regression case failed"
   fi
 
-  support_bundle="$(find "$backup_root/support" -maxdepth 1 -type f -name '*.tar.gz' | sort | tail -n 1)"
-  [[ -n "$support_bundle" && -f "$support_bundle" ]] || fail_test "Regression case failed"
-
-  assert_file_contains "$output_file" "Building support bundle: $support_bundle" "runtime output"
-  assert_file_contains "$output_file" "Support bundle created: $support_bundle" "runtime output"
+  assert_file_contains "$output_file" "mock support-bundle args: support-bundle --scope dev --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --env-file $explicit_env_file --tail 15" "runtime output"
+  assert_file_not_contains "$output_file" "--env-file $inherited_env_file --env-file $explicit_env_file" "runtime output"
   pass_test "Regression case passed"
 }
 
-test_status_and_support_fail_cleanly_without_env() {
+test_status_fails_cleanly_without_env() {
   announce_test "Regression case"
 
   local status_output="$TEST_TMP_ROOT/status-missing-env.out"
-  local support_output="$TEST_TMP_ROOT/support-missing-env.out"
 
   rm -f -- "$ROOT_DIR/.env.dev" "$ROOT_DIR/.env.prod"
 
@@ -1174,13 +1163,6 @@ test_status_and_support_fail_cleanly_without_env() {
 
   assert_file_contains "$status_output" "Missing $ROOT_DIR/.env.dev" "runtime output"
   assert_file_not_contains "$status_output" "unbound variable" "runtime output"
-
-  if run_command_capture "$support_output" bash "$SCRIPT_DIR/support-bundle.sh" prod; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$support_output" "Missing $ROOT_DIR/.env.prod" "runtime output"
-  assert_file_not_contains "$support_output" "unbound variable" "runtime output"
   restore_repo_env_files
   pass_test "Regression case passed"
 }
