@@ -28,130 +28,6 @@ type OperationLookupDetails struct {
 	Command string `json:"command,omitempty"`
 }
 
-type OperationExportDetails struct {
-	JournalReadDetails
-	ID               string   `json:"id"`
-	BundleKind       string   `json:"bundle_kind"`
-	BundleVersion    int      `json:"bundle_version"`
-	ExportedAt       string   `json:"exported_at"`
-	IncludedSections []string `json:"included_sections"`
-	OmittedSections  []string `json:"omitted_sections,omitempty"`
-}
-
-type OperationExportArtifacts struct {
-	BundlePath string `json:"bundle_path"`
-}
-
-type SupportBundleDetails struct {
-	Scope            string   `json:"scope"`
-	BundleKind       string   `json:"bundle_kind"`
-	BundleVersion    int      `json:"bundle_version"`
-	GeneratedAt      string   `json:"generated_at"`
-	TailLines        int      `json:"tail_lines"`
-	Sections         int      `json:"sections"`
-	Included         int      `json:"included"`
-	Omitted          int      `json:"omitted"`
-	Warnings         int      `json:"warnings"`
-	RetentionDays    int      `json:"retention_days"`
-	IncludedSections []string `json:"included_sections"`
-	OmittedSections  []string `json:"omitted_sections,omitempty"`
-}
-
-type SupportBundleArtifacts struct {
-	ProjectDir  string `json:"project_dir"`
-	ComposeFile string `json:"compose_file"`
-	EnvFile     string `json:"env_file"`
-	BackupRoot  string `json:"backup_root"`
-	BundlePath  string `json:"bundle_path,omitempty"`
-}
-
-type SupportBundleItem struct {
-	Code    string   `json:"code"`
-	Status  string   `json:"status"`
-	Summary string   `json:"summary"`
-	Details string   `json:"details,omitempty"`
-	Action  string   `json:"action,omitempty"`
-	Files   []string `json:"files,omitempty"`
-}
-
-type OverviewDetails struct {
-	Scope            string   `json:"scope"`
-	GeneratedAt      string   `json:"generated_at"`
-	Sections         int      `json:"sections"`
-	Included         int      `json:"included"`
-	Omitted          int      `json:"omitted"`
-	Failed           int      `json:"failed"`
-	Warnings         int      `json:"warnings"`
-	IncludedSections []string `json:"included_sections"`
-	OmittedSections  []string `json:"omitted_sections,omitempty"`
-	FailedSections   []string `json:"failed_sections,omitempty"`
-}
-
-type OverviewArtifacts struct {
-	ProjectDir  string `json:"project_dir"`
-	ComposeFile string `json:"compose_file"`
-	EnvFile     string `json:"env_file,omitempty"`
-	BackupRoot  string `json:"backup_root,omitempty"`
-}
-
-type StatusReportDetails struct {
-	Scope            string   `json:"scope"`
-	GeneratedAt      string   `json:"generated_at"`
-	Sections         int      `json:"sections"`
-	Included         int      `json:"included"`
-	Omitted          int      `json:"omitted"`
-	Failed           int      `json:"failed"`
-	Warnings         int      `json:"warnings"`
-	IncludedSections []string `json:"included_sections"`
-	OmittedSections  []string `json:"omitted_sections,omitempty"`
-	FailedSections   []string `json:"failed_sections,omitempty"`
-}
-
-type StatusReportArtifacts struct {
-	ProjectDir  string `json:"project_dir"`
-	ComposeFile string `json:"compose_file"`
-	EnvFile     string `json:"env_file,omitempty"`
-	BackupRoot  string `json:"backup_root,omitempty"`
-	ReportsDir  string `json:"reports_dir,omitempty"`
-	SupportDir  string `json:"support_dir,omitempty"`
-}
-
-type MaintenanceDetails struct {
-	Scope            string   `json:"scope"`
-	GeneratedAt      string   `json:"generated_at"`
-	Mode             string   `json:"mode"`
-	Unattended       bool     `json:"unattended"`
-	Outcome          string   `json:"outcome"`
-	Sections         int      `json:"sections"`
-	Included         int      `json:"included"`
-	Omitted          int      `json:"omitted"`
-	Failed           int      `json:"failed"`
-	Warnings         int      `json:"warnings"`
-	DryRun           bool     `json:"dry_run"`
-	CheckedItems     int      `json:"checked_items"`
-	CandidateItems   int      `json:"candidate_items"`
-	KeptItems        int      `json:"kept_items"`
-	ProtectedItems   int      `json:"protected_items"`
-	RemovedItems     int      `json:"removed_items"`
-	FailedItems      int      `json:"failed_items"`
-	IncludedSections []string `json:"included_sections"`
-	OmittedSections  []string `json:"omitted_sections,omitempty"`
-	FailedSections   []string `json:"failed_sections,omitempty"`
-}
-
-type MaintenanceArtifacts struct {
-	ProjectDir             string `json:"project_dir"`
-	ComposeFile            string `json:"compose_file"`
-	EnvFile                string `json:"env_file,omitempty"`
-	JournalDir             string `json:"journal_dir,omitempty"`
-	BackupRoot             string `json:"backup_root,omitempty"`
-	ReportsDir             string `json:"reports_dir,omitempty"`
-	SupportDir             string `json:"support_dir,omitempty"`
-	RestoreDrillEnvDir     string `json:"restore_drill_env_dir,omitempty"`
-	RestoreDrillStorageDir string `json:"restore_drill_storage_dir,omitempty"`
-	RestoreDrillBackupDir  string `json:"restore_drill_backup_dir,omitempty"`
-}
-
 type PruneDetails struct {
 	JournalReadDetails
 	Checked           int    `json:"checked"`
@@ -319,11 +195,7 @@ type RestoreExecutionArtifacts struct {
 }
 
 type RestoreExecutionItem struct {
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Details string `json:"details,omitempty"`
-	Action  string `json:"action,omitempty"`
+	SectionItem
 }
 
 type RestoreDrillDetails struct {
@@ -368,11 +240,7 @@ type RestoreDrillArtifacts struct {
 }
 
 type RestoreDrillItem struct {
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Details string `json:"details,omitempty"`
-	Action  string `json:"action,omitempty"`
+	SectionItem
 }
 
 type UpdateBackupDetails struct {
@@ -434,11 +302,7 @@ type UpdatePlanArtifacts struct {
 }
 
 type UpdatePlanItem struct {
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Details string `json:"details,omitempty"`
-	Action  string `json:"action,omitempty"`
+	SectionItem
 }
 
 type UpdateDetails struct {
@@ -473,11 +337,7 @@ type UpdateArtifacts struct {
 }
 
 type UpdateItem struct {
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Details string `json:"details,omitempty"`
-	Action  string `json:"action,omitempty"`
+	SectionItem
 }
 
 type RollbackDetails struct {
@@ -524,11 +384,7 @@ type RollbackArtifacts struct {
 }
 
 type RollbackItem struct {
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Details string `json:"details,omitempty"`
-	Action  string `json:"action,omitempty"`
+	SectionItem
 }
 
 type RollbackPlanDetails struct {
@@ -572,11 +428,7 @@ type RollbackPlanArtifacts struct {
 }
 
 type RollbackPlanItem struct {
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Details string `json:"details,omitempty"`
-	Action  string `json:"action,omitempty"`
+	SectionItem
 }
 
 type MigrateBackupDetails struct {
@@ -615,11 +467,7 @@ type MigrateBackupArtifacts struct {
 }
 
 type MigrateBackupItem struct {
-	Code    string `json:"code"`
-	Status  string `json:"status"`
-	Summary string `json:"summary"`
-	Details string `json:"details,omitempty"`
-	Action  string `json:"action,omitempty"`
+	SectionItem
 }
 
 type DoctorDetails struct {

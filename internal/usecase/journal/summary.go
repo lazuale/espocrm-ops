@@ -36,13 +36,12 @@ func OperationLookupDetailsFromReadStats(stats ReadStats) result.OperationLookup
 
 func OperationExportDetailsFromBundle(id string, bundle OperationBundle) result.OperationExportDetails {
 	return result.OperationExportDetails{
-		JournalReadDetails: ReadDetailsFromStats(bundle.JournalRead),
-		ID:                 id,
-		BundleKind:         bundle.BundleKind,
-		BundleVersion:      bundle.BundleVersion,
-		ExportedAt:         bundle.ExportedAt,
-		IncludedSections:   append([]string(nil), bundle.IncludedSections...),
-		OmittedSections:    append([]string(nil), bundle.OmittedSections...),
+		JournalReadDetails:      ReadDetailsFromStats(bundle.JournalRead),
+		ID:                      id,
+		BundleKind:              bundle.BundleKind,
+		BundleVersion:           bundle.BundleVersion,
+		ExportedAt:              bundle.ExportedAt,
+		IncludedOmittedSections: result.NewIncludedOmittedSections(bundle.IncludedSections, bundle.OmittedSections),
 	}
 }
 

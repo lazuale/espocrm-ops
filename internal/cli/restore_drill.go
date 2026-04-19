@@ -213,11 +213,13 @@ func restoreDrillResult(info restoreusecase.DrillInfo) result.Result {
 	items := make([]any, 0, len(info.Steps))
 	for _, step := range info.Steps {
 		items = append(items, result.RestoreDrillItem{
-			Code:    step.Code,
-			Status:  step.Status,
-			Summary: step.Summary,
-			Details: step.Details,
-			Action:  step.Action,
+			SectionItem: result.SectionItem{
+				Code:    step.Code,
+				Status:  step.Status,
+				Summary: step.Summary,
+				Details: step.Details,
+				Action:  step.Action,
+			},
 		})
 	}
 

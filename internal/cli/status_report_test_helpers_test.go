@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"path/filepath"
 	"testing"
 )
@@ -9,12 +8,9 @@ import (
 func normalizeStatusReportJSON(t *testing.T, raw []byte, fixture supportBundleFixture) []byte {
 	t.Helper()
 
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
-	}
+	obj := decodeJSONMap(t, raw)
 
-	replacements := map[string]string{
+	replacements := mergeReplacements(map[string]string{
 		fixture.projectDir: "REPLACE_PROJECT_DIR",
 		filepath.Join(fixture.projectDir, "compose.yaml"):           "REPLACE_COMPOSE_FILE",
 		filepath.Join(fixture.projectDir, ".env.dev"):               "REPLACE_ENV_FILE",
@@ -30,64 +26,12 @@ func normalizeStatusReportJSON(t *testing.T, raw []byte, fixture supportBundleFi
 		fixture.backupSet.FilesBackup + ".sha256":    "REPLACE_FILES_CHECKSUM",
 		fixture.backupSet.ManifestJSON:               "REPLACE_MANIFEST_JSON",
 		fixture.backupSet.ManifestTXT:                "REPLACE_MANIFEST_TXT",
-	}
+	}, operatorRuntimeLockReplacements(obj))
 
-	if items, ok := obj["items"].([]any); ok {
-		for _, rawItem := range items {
-			item, ok := rawItem.(map[string]any)
-			if !ok || item["code"] != "runtime" {
-				continue
-			}
-			runtimeData, ok := item["runtime"].(map[string]any)
-			if !ok {
-				continue
-			}
-			if lock, ok := runtimeData["shared_operation_lock"].(map[string]any); ok {
-				if metadata, ok := lock["metadata_path"].(string); ok && metadata != "" {
-					replacements[metadata] = "REPLACE_SHARED_OPERATION_LOCK"
-				}
-			}
-			if lock, ok := runtimeData["maintenance_lock"].(map[string]any); ok {
-				if metadata, ok := lock["metadata_path"].(string); ok && metadata != "" {
-					replacements[metadata] = "REPLACE_MAINTENANCE_LOCK"
-				}
-			}
-		}
-	}
+	obj = normalizeJSONValue(obj, replacements, map[string]jsonFieldTransform{
+		"modified_at": func(any) any { return "REPLACE_MODIFIED_AT" },
+		"age_hours":   func(any) any { return float64(0) },
+	}).(map[string]any)
 
-	obj = normalizeStatusReportValue(obj, replacements).(map[string]any)
-
-	out, err := json.Marshal(obj)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return out
-}
-
-func normalizeStatusReportValue(value any, replacements map[string]string) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, item := range typed {
-			switch key {
-			case "modified_at":
-				typed[key] = "REPLACE_MODIFIED_AT"
-				continue
-			case "age_hours":
-				typed[key] = float64(0)
-				continue
-			}
-			typed[key] = normalizeStatusReportValue(item, replacements)
-		}
-		return typed
-	case []any:
-		for idx, item := range typed {
-			typed[idx] = normalizeStatusReportValue(item, replacements)
-		}
-		return typed
-	case string:
-		return replaceKnownPaths(typed, replacements)
-	default:
-		return value
-	}
+	return encodeJSONMap(t, obj)
 }

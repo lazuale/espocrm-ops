@@ -145,16 +145,9 @@ func statusReportResult(info statusreportusecase.Info) result.Result {
 		Message:  message,
 		Warnings: append([]string(nil), info.Warnings...),
 		Details: result.StatusReportDetails{
-			Scope:            info.Scope,
-			GeneratedAt:      info.GeneratedAt,
-			Sections:         len(info.Sections),
-			Included:         len(info.IncludedSections),
-			Omitted:          len(info.OmittedSections),
-			Failed:           len(info.FailedSections),
-			Warnings:         len(info.Warnings),
-			IncludedSections: append([]string(nil), info.IncludedSections...),
-			OmittedSections:  append([]string(nil), info.OmittedSections...),
-			FailedSections:   append([]string(nil), info.FailedSections...),
+			Scope:          info.Scope,
+			GeneratedAt:    info.GeneratedAt,
+			SectionSummary: result.NewSectionSummary(len(info.Sections), len(info.Warnings), info.IncludedSections, info.OmittedSections, info.FailedSections),
 		},
 		Artifacts: result.StatusReportArtifacts{
 			ProjectDir:  info.ProjectDir,
@@ -214,25 +207,7 @@ func renderStatusReportText(w io.Writer, res result.Result) error {
 		return err
 	}
 
-	if _, err := fmt.Fprintln(w, "\nSummary:"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Included: %d\n", details.Included); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Omitted: %d\n", details.Omitted); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Failed: %d\n", details.Failed); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Included sections: %s\n", sectionListText(details.IncludedSections)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Omitted sections: %s\n", sectionListText(details.OmittedSections)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Failed sections: %s\n", sectionListText(details.FailedSections)); err != nil {
+	if err := renderOperatorSummaryBlock(w, details.SectionSummary, operatorSummaryRenderOptions{}); err != nil {
 		return err
 	}
 

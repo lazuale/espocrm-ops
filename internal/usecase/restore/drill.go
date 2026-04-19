@@ -20,6 +20,7 @@ import (
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 const (
@@ -128,7 +129,7 @@ func ExecuteDrill(req DrillRequest) (info DrillInfo, err error) {
 	)
 	defer func() {
 		if !cleanupEnabled {
-			info.Warnings = dedupeStrings(info.Warnings)
+			info.Warnings = reporting.DedupeStrings(info.Warnings)
 			return
 		}
 
@@ -142,12 +143,12 @@ func ExecuteDrill(req DrillRequest) (info DrillInfo, err error) {
 			if strings.TrimSpace(info.SiteURL) != "" {
 				info.Warnings = append(info.Warnings, fmt.Sprintf("Drill contour URL: %s", info.SiteURL))
 			}
-			info.Warnings = dedupeStrings(info.Warnings)
+			info.Warnings = reporting.DedupeStrings(info.Warnings)
 			return
 		}
 
 		info.Warnings = append(info.Warnings, cleanupRestoreDrill(drillCfg, info)...)
-		info.Warnings = dedupeStrings(info.Warnings)
+		info.Warnings = reporting.DedupeStrings(info.Warnings)
 	}()
 
 	ctx, prepErr := maintenanceusecase.PrepareOperation(maintenanceusecase.OperationContextRequest{

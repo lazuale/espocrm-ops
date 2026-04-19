@@ -18,6 +18,7 @@ import (
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
 	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 const (
@@ -236,7 +237,6 @@ func Summarize(req Request) (Info, error) {
 	}
 
 	finalizeSectionLists(&info)
-	info.Warnings = dedupeStrings(info.Warnings)
 
 	if len(info.FailedSections) == 0 {
 		return info, nil
@@ -400,7 +400,7 @@ func buildRuntimeSection(projectDir, composeFile string, env config.OperationEnv
 		section.Details = envErr.Error()
 		section.Action = "Resolve env resolution before rerunning status-report to inspect runtime state."
 		section.Warnings = append(section.Warnings, fmt.Sprintf("runtime omitted: %v", envErr))
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		return section, nil
 	}
 
@@ -429,14 +429,14 @@ func buildRuntimeSection(projectDir, composeFile string, env config.OperationEnv
 		section.Details = runtimeErr.Error()
 		section.Action = "Restore Docker and Docker Compose access before rerunning status-report."
 		section.FailureCode = "runtime_collection_failed"
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		return section, apperr.Wrap(apperr.KindValidation, "runtime_collection_failed", runtimeErr)
 	}
 
 	section.Runtime.Services = services
 	section.Details = runtimeDetails(services)
 	section.Warnings = append(section.Warnings, runtimeServiceWarnings(services)...)
-	section.Warnings = dedupeStrings(section.Warnings)
+	section.Warnings = reporting.DedupeStrings(section.Warnings)
 
 	return section, nil
 }
@@ -572,7 +572,7 @@ func buildArtifactsSection(backupRoot, reportsDir, supportDir string, env config
 	if section.Artifacts.LatestReadyBackup == nil && found == 0 {
 		section.Summary = "No backup, report, or support artifacts found"
 		section.Details = "The resolved backup, report, and support directories do not currently contain recorded artifacts."
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		return section, nil
 	}
 
@@ -581,7 +581,7 @@ func buildArtifactsSection(backupRoot, reportsDir, supportDir string, env config
 		found,
 		minInt(1, len(catalog.Items)),
 	)
-	section.Warnings = dedupeStrings(section.Warnings)
+	section.Warnings = reporting.DedupeStrings(section.Warnings)
 	return section, nil
 }
 
@@ -591,7 +591,7 @@ func failedArtifactsSection(section Section, err error) (Section, error) {
 	section.Details = err.Error()
 	section.Action = "Repair backup, report, or support artifact access before rerunning status-report."
 	section.FailureCode = "artifacts_collection_failed"
-	section.Warnings = dedupeStrings(section.Warnings)
+	section.Warnings = reporting.DedupeStrings(section.Warnings)
 	return section, apperr.Wrap(apperr.KindIO, "artifacts_collection_failed", err)
 }
 
@@ -890,20 +890,27 @@ func backupJournalWarnings(stats backupusecase.JournalReadStats) []string {
 }
 
 func finalizeSectionLists(info *Info) {
-	info.IncludedSections = nil
-	info.OmittedSections = nil
-	info.FailedSections = nil
-
+	collector := reporting.SectionCollector{}
 	for _, section := range info.Sections {
-		info.Warnings = append(info.Warnings, section.Warnings...)
-		switch section.Status {
-		case sectionStatusIncluded:
-			info.IncludedSections = append(info.IncludedSections, section.Code)
-		case sectionStatusOmitted:
-			info.OmittedSections = append(info.OmittedSections, section.Code)
-		case sectionStatusFailed:
-			info.FailedSections = append(info.FailedSections, section.Code)
-		}
+		collector.Add(sectionCategory(section.Status), section.Code, section.Warnings)
+	}
+	summary := collector.Finalize(info.Warnings)
+	info.IncludedSections = summary.IncludedSections
+	info.OmittedSections = summary.OmittedSections
+	info.FailedSections = summary.FailedSections
+	info.Warnings = summary.Warnings
+}
+
+func sectionCategory(status string) reporting.SectionCategory {
+	switch status {
+	case sectionStatusIncluded:
+		return reporting.SectionIncluded
+	case sectionStatusOmitted:
+		return reporting.SectionOmitted
+	case sectionStatusFailed:
+		return reporting.SectionFailed
+	default:
+		return reporting.SectionIgnored
 	}
 }
 
@@ -939,28 +946,6 @@ func wrapStatusReportFailure(err error) error {
 		return apperr.Wrap(apperr.KindIO, "status_report_failed", err)
 	}
 	return apperr.Wrap(apperr.KindValidation, "status_report_failed", err)
-}
-
-func dedupeStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-
-	seen := map[string]struct{}{}
-	items := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		items = append(items, value)
-	}
-
-	return items
 }
 
 func intPtr(value int) *int {

@@ -176,12 +176,14 @@ func supportBundleResult(info supportbundleusecase.Info) result.Result {
 	items := make([]any, 0, len(info.Sections))
 	for _, section := range info.Sections {
 		items = append(items, result.SupportBundleItem{
-			Code:    section.Code,
-			Status:  section.Status,
-			Summary: section.Summary,
-			Details: section.Details,
-			Action:  section.Action,
-			Files:   append([]string(nil), section.Files...),
+			SectionItem: result.SectionItem{
+				Code:    section.Code,
+				Status:  section.Status,
+				Summary: section.Summary,
+				Details: section.Details,
+				Action:  section.Action,
+			},
+			Files: append([]string(nil), section.Files...),
 		})
 	}
 
@@ -191,18 +193,13 @@ func supportBundleResult(info supportbundleusecase.Info) result.Result {
 		Message:  message,
 		Warnings: append([]string(nil), info.Warnings...),
 		Details: result.SupportBundleDetails{
-			Scope:            info.Scope,
-			BundleKind:       info.BundleKind,
-			BundleVersion:    info.BundleVersion,
-			GeneratedAt:      info.GeneratedAt,
-			TailLines:        info.TailLines,
-			Sections:         len(info.IncludedSections) + len(info.OmittedSections),
-			Included:         len(info.IncludedSections),
-			Omitted:          len(info.OmittedSections),
-			Warnings:         len(info.Warnings),
-			RetentionDays:    info.RetentionDays,
-			IncludedSections: append([]string(nil), info.IncludedSections...),
-			OmittedSections:  append([]string(nil), info.OmittedSections...),
+			Scope:                  info.Scope,
+			BundleKind:             info.BundleKind,
+			BundleVersion:          info.BundleVersion,
+			GeneratedAt:            info.GeneratedAt,
+			TailLines:              info.TailLines,
+			RetentionDays:          info.RetentionDays,
+			IncludedOmittedSummary: result.NewIncludedOmittedSummary(len(info.IncludedSections)+len(info.OmittedSections), len(info.Warnings), info.IncludedSections, info.OmittedSections),
 		},
 		Artifacts: result.SupportBundleArtifacts{
 			ProjectDir:  info.ProjectDir,

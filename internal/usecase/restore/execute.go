@@ -17,6 +17,7 @@ import (
 	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 	updateusecase "github.com/lazuale/espocrm-ops/internal/usecase/update"
 )
 
@@ -398,7 +399,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: runtimeReturnDetails(runtimePrep, runtimeReturn, req.NoStart),
 	})
 
-	info.Warnings = dedupeStrings(info.Warnings)
+	info.Warnings = reporting.DedupeStrings(info.Warnings)
 	return info, nil
 }
 
@@ -493,7 +494,7 @@ func buildDryRun(ctx maintenanceusecase.OperationContext, req ExecuteRequest, in
 		Summary: dryRunRuntimeReturnSummary(runtimeInfo, req.NoStart),
 		Details: dryRunRuntimeReturnDetails(runtimeInfo, req.NoStart),
 	})
-	info.Warnings = dedupeStrings(info.Warnings)
+	info.Warnings = reporting.DedupeStrings(info.Warnings)
 	return info, nil
 }
 
@@ -1119,23 +1120,6 @@ func failureAction(err error, fallback string) string {
 		return failure.Action
 	}
 	return fallback
-}
-
-func dedupeStrings(values []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-	return out
 }
 
 func (i ExecuteInfo) Counts() (wouldRun, completed, skipped, blocked, failed int) {

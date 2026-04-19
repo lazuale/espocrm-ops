@@ -17,6 +17,7 @@ import (
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/usecase/restore"
 	updateusecase "github.com/lazuale/espocrm-ops/internal/usecase/update"
 )
@@ -462,7 +463,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Summary: "Contour return skipped",
 			Details: "The contour was left stopped because of --no-start.",
 		})
-		info.Warnings = dedupeStrings(info.Warnings)
+		info.Warnings = reporting.DedupeStrings(info.Warnings)
 		return info, nil
 	}
 
@@ -486,7 +487,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: runtimeReturnDetails(info),
 	})
 
-	info.Warnings = dedupeStrings(info.Warnings)
+	info.Warnings = reporting.DedupeStrings(info.Warnings)
 	return info, nil
 }
 

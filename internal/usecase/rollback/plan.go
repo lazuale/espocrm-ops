@@ -17,6 +17,7 @@ import (
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 const (
@@ -153,7 +154,7 @@ func BuildPlan(req PlanRequest) (RollbackPlan, error) {
 
 	runtimeReturnStep := buildRuntimeReturnStep(plan, env, envErr, runtimeStep)
 	plan.Steps = append(plan.Steps, runtimeReturnStep)
-	plan.Warnings = dedupeStrings(plan.Warnings)
+	plan.Warnings = reporting.DedupeStrings(plan.Warnings)
 
 	return plan, nil
 }
@@ -743,7 +744,7 @@ func collectPlanWarnings(checks []doctorusecase.Check, plan RollbackPlan, extra 
 		warnings = append(warnings, "Rollback would skip the final HTTP probe because of --skip-http-probe.")
 	}
 	warnings = append(warnings, extra...)
-	return dedupeStrings(warnings)
+	return reporting.DedupeStrings(warnings)
 }
 
 func blockingDoctorChecks(checks []doctorusecase.Check) []doctorusecase.Check {
@@ -856,22 +857,4 @@ func firstIssueAction(issues []planIssue, fallback string) string {
 	}
 
 	return fallback
-}
-
-func dedupeStrings(values []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-
-	return out
 }

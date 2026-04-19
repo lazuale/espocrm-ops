@@ -16,6 +16,7 @@ import (
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
 	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 const (
@@ -195,7 +196,6 @@ func Summarize(req Request) (Info, error) {
 	}
 
 	finalizeSectionLists(&info)
-	info.Warnings = dedupeStrings(info.Warnings)
 
 	if len(info.FailedSections) == 0 {
 		return info, nil
@@ -314,7 +314,7 @@ func buildRuntimeSection(projectDir, composeFile string, env config.OperationEnv
 			SharedOperationLock: shared,
 			MaintenanceLock:     maintenance,
 		}
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		return section
 	}
 
@@ -329,7 +329,7 @@ func buildRuntimeSection(projectDir, composeFile string, env config.OperationEnv
 	}
 	section.Details = runtimeDetails(services)
 	section.Warnings = append(section.Warnings, runtimeServiceWarnings(services)...)
-	section.Warnings = dedupeStrings(section.Warnings)
+	section.Warnings = reporting.DedupeStrings(section.Warnings)
 	section.Action = "Use status-report when you need deeper runtime and storage detail."
 
 	return section
@@ -406,7 +406,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 
 	switch {
 	case auditErr != nil:
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "Backup summary unavailable"
 		section.Details = auditErr.Error()
@@ -414,7 +414,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "backup_audit_failed"
 		return section, apperr.Wrap(apperr.KindValidation, "backup_audit_failed", auditErr)
 	case !audit.Success:
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "Backup summary found issues"
 		section.Details = backupFailureSummary(audit.Findings)
@@ -422,7 +422,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "backup_audit_failed"
 		return section, apperr.Wrap(apperr.KindValidation, "backup_audit_failed", errors.New("backup audit found failures"))
 	case catalogErr != nil:
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "Latest ready backup lookup failed"
 		section.Details = catalogErr.Error()
@@ -430,7 +430,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "backup_catalog_failed"
 		return section, apperr.Wrap(apperr.KindValidation, "backup_catalog_failed", catalogErr)
 	case section.Backup.LatestReady == nil:
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		section.Status = sectionStatusFailed
 		section.Summary = "No restore-ready backup set is currently available"
 		section.Details = "The backup catalog did not find a latest restore-ready backup set for this contour."
@@ -438,7 +438,7 @@ func buildBackupSection(backupRoot string, env config.OperationEnv, envErr error
 		section.FailureCode = "latest_ready_backup_missing"
 		return section, apperr.Wrap(apperr.KindValidation, "latest_ready_backup_missing", errors.New("no restore-ready backup set is currently available"))
 	default:
-		section.Warnings = dedupeStrings(section.Warnings)
+		section.Warnings = reporting.DedupeStrings(section.Warnings)
 		section.Status = sectionStatusIncluded
 		section.Summary = "Backup summary collected"
 		section.Details = backupSuccessDetails(audit, section.Backup.LatestReady)
@@ -737,20 +737,27 @@ func backupJournalWarnings(stats backupusecase.JournalReadStats) []string {
 }
 
 func finalizeSectionLists(info *Info) {
-	info.IncludedSections = nil
-	info.OmittedSections = nil
-	info.FailedSections = nil
-
+	collector := reporting.SectionCollector{}
 	for _, section := range info.Sections {
-		info.Warnings = append(info.Warnings, section.Warnings...)
-		switch section.Status {
-		case sectionStatusIncluded:
-			info.IncludedSections = append(info.IncludedSections, section.Code)
-		case sectionStatusOmitted:
-			info.OmittedSections = append(info.OmittedSections, section.Code)
-		case sectionStatusFailed:
-			info.FailedSections = append(info.FailedSections, section.Code)
-		}
+		collector.Add(sectionCategory(section.Status), section.Code, section.Warnings)
+	}
+	summary := collector.Finalize(info.Warnings)
+	info.IncludedSections = summary.IncludedSections
+	info.OmittedSections = summary.OmittedSections
+	info.FailedSections = summary.FailedSections
+	info.Warnings = summary.Warnings
+}
+
+func sectionCategory(status string) reporting.SectionCategory {
+	switch status {
+	case sectionStatusIncluded:
+		return reporting.SectionIncluded
+	case sectionStatusOmitted:
+		return reporting.SectionOmitted
+	case sectionStatusFailed:
+		return reporting.SectionFailed
+	default:
+		return reporting.SectionIgnored
 	}
 }
 
@@ -786,26 +793,4 @@ func wrapOverviewFailure(err error) error {
 		return apperr.Wrap(apperr.KindIO, "overview_failed", err)
 	}
 	return apperr.Wrap(apperr.KindValidation, "overview_failed", err)
-}
-
-func dedupeStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-
-	seen := map[string]struct{}{}
-	items := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		items = append(items, value)
-	}
-
-	return items
 }

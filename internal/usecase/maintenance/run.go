@@ -14,6 +14,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 const (
@@ -414,7 +415,7 @@ func buildJournalSection(journalDir string, keepDays, keepLast int, dryRun bool)
 		Summary:  maintenanceActionSummary("Journal retention", dryRun),
 		Details:  cleanupCountsText("journal entries", kept, prune.Protected, candidates, removed, failed, dryRun),
 		Action:   "Use history or show-operation to inspect journal entries before pruning more aggressively.",
-		Warnings: dedupeStrings(journalusecase.WarningsFromReadStats(prune.ReadStats)),
+		Warnings: reporting.DedupeStrings(journalusecase.WarningsFromReadStats(prune.ReadStats)),
 		Cleanup: &CleanupData{
 			DryRun:            dryRun,
 			KeepDays:          intPtr(keepDays),
@@ -913,10 +914,7 @@ func journalItemKind(kind string) string {
 }
 
 func finalizeMaintenanceInfo(info *Info) {
-	warnings := append([]string(nil), info.Warnings...)
-	info.IncludedSections = nil
-	info.OmittedSections = nil
-	info.FailedSections = nil
+	collector := reporting.SectionCollector{}
 	info.CheckedItems = 0
 	info.CandidateItems = 0
 	info.KeptItems = 0
@@ -924,14 +922,7 @@ func finalizeMaintenanceInfo(info *Info) {
 	info.RemovedItems = 0
 	info.FailedItems = 0
 	for _, section := range info.Sections {
-		switch section.Status {
-		case sectionStatusIncluded:
-			info.IncludedSections = append(info.IncludedSections, section.Code)
-		case sectionStatusOmitted:
-			info.OmittedSections = append(info.OmittedSections, section.Code)
-		case sectionStatusFailed:
-			info.FailedSections = append(info.FailedSections, section.Code)
-		}
+		collector.Add(sectionCategory(section.Status), section.Code, section.Warnings)
 		if section.Cleanup != nil {
 			info.CheckedItems += section.Cleanup.Checked
 			info.CandidateItems += section.Cleanup.Candidates
@@ -940,10 +931,26 @@ func finalizeMaintenanceInfo(info *Info) {
 			info.RemovedItems += section.Cleanup.Removed
 			info.FailedItems += section.Cleanup.Failed
 		}
-		warnings = append(warnings, section.Warnings...)
 	}
-	info.Warnings = dedupeStrings(warnings)
+	summary := collector.Finalize(info.Warnings)
+	info.IncludedSections = summary.IncludedSections
+	info.OmittedSections = summary.OmittedSections
+	info.FailedSections = summary.FailedSections
+	info.Warnings = summary.Warnings
 	info.Outcome = determineMaintenanceOutcome(*info)
+}
+
+func sectionCategory(status string) reporting.SectionCategory {
+	switch status {
+	case sectionStatusIncluded:
+		return reporting.SectionIncluded
+	case sectionStatusOmitted:
+		return reporting.SectionOmitted
+	case sectionStatusFailed:
+		return reporting.SectionFailed
+	default:
+		return reporting.SectionIgnored
+	}
 }
 
 func determineMaintenanceOutcome(info Info) string {
@@ -1012,27 +1019,6 @@ func wrapMaintenanceFailure(err error) error {
 		return apperr.Wrap(apperr.KindIO, "maintenance_failed", err)
 	}
 	return apperr.Wrap(apperr.KindValidation, "maintenance_failed", err)
-}
-
-func dedupeStrings(values []string) []string {
-	if len(values) == 0 {
-		return nil
-	}
-
-	seen := map[string]struct{}{}
-	items := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		items = append(items, value)
-	}
-	return items
 }
 
 func intPtr(value int) *int {

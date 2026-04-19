@@ -220,26 +220,19 @@ func maintenanceResult(info maintenanceusecase.Info) result.Result {
 		Warnings: append([]string(nil), info.Warnings...),
 		DryRun:   info.DryRun,
 		Details: result.MaintenanceDetails{
-			Scope:            info.Scope,
-			GeneratedAt:      info.GeneratedAt,
-			Mode:             info.Mode,
-			Unattended:       info.Unattended,
-			Outcome:          info.Outcome,
-			Sections:         len(info.Sections),
-			Included:         len(info.IncludedSections),
-			Omitted:          len(info.OmittedSections),
-			Failed:           len(info.FailedSections),
-			Warnings:         len(info.Warnings),
-			DryRun:           info.DryRun,
-			CheckedItems:     info.CheckedItems,
-			CandidateItems:   info.CandidateItems,
-			KeptItems:        info.KeptItems,
-			ProtectedItems:   info.ProtectedItems,
-			RemovedItems:     info.RemovedItems,
-			FailedItems:      info.FailedItems,
-			IncludedSections: append([]string(nil), info.IncludedSections...),
-			OmittedSections:  append([]string(nil), info.OmittedSections...),
-			FailedSections:   append([]string(nil), info.FailedSections...),
+			Scope:          info.Scope,
+			GeneratedAt:    info.GeneratedAt,
+			Mode:           info.Mode,
+			Unattended:     info.Unattended,
+			Outcome:        info.Outcome,
+			DryRun:         info.DryRun,
+			CheckedItems:   info.CheckedItems,
+			CandidateItems: info.CandidateItems,
+			KeptItems:      info.KeptItems,
+			ProtectedItems: info.ProtectedItems,
+			RemovedItems:   info.RemovedItems,
+			FailedItems:    info.FailedItems,
+			SectionSummary: result.NewSectionSummary(len(info.Sections), len(info.Warnings), info.IncludedSections, info.OmittedSections, info.FailedSections),
 		},
 		Artifacts: result.MaintenanceArtifacts{
 			ProjectDir:             info.ProjectDir,
@@ -316,46 +309,17 @@ func renderMaintenanceText(w io.Writer, res result.Result) error {
 		return err
 	}
 
-	if _, err := fmt.Fprintln(w, "\nSummary:"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Included: %d\n", details.Included); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Omitted: %d\n", details.Omitted); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Failed: %d\n", details.Failed); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Warnings: %d\n", details.Warnings); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Checked items: %d\n", details.CheckedItems); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Candidate items: %d\n", details.CandidateItems); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Kept items: %d\n", details.KeptItems); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Protected items: %d\n", details.ProtectedItems); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Removed items: %d\n", details.RemovedItems); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Failed items: %d\n", details.FailedItems); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Included sections: %s\n", sectionListText(details.IncludedSections)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Omitted sections: %s\n", sectionListText(details.OmittedSections)); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Failed sections: %s\n", sectionListText(details.FailedSections)); err != nil {
+	if err := renderOperatorSummaryBlock(w, details.SectionSummary, operatorSummaryRenderOptions{
+		IncludeWarnings: true,
+		ExtraLines: []operatorSummaryLine{
+			{Label: "Checked items", Value: details.CheckedItems},
+			{Label: "Candidate items", Value: details.CandidateItems},
+			{Label: "Kept items", Value: details.KeptItems},
+			{Label: "Protected items", Value: details.ProtectedItems},
+			{Label: "Removed items", Value: details.RemovedItems},
+			{Label: "Failed items", Value: details.FailedItems},
+		},
+	}); err != nil {
 		return err
 	}
 

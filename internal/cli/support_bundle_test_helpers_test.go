@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -207,10 +206,7 @@ exit 1
 func normalizeSupportBundleJSON(t *testing.T, raw []byte) []byte {
 	t.Helper()
 
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
-	}
+	obj := decodeJSONMap(t, raw)
 
 	if artifacts, ok := obj["artifacts"].(map[string]any); ok {
 		for key, placeholder := range map[string]string{
@@ -226,12 +222,7 @@ func normalizeSupportBundleJSON(t *testing.T, raw []byte) []byte {
 		}
 	}
 
-	out, err := json.Marshal(obj)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return out
+	return encodeJSONMap(t, obj)
 }
 
 func unpackSupportBundle(t *testing.T, archivePath string) string {

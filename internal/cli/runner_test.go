@@ -143,9 +143,11 @@ func TestRunCommand_SerializesTypedArtifactsAndDetailsIntoJournal(t *testing.T) 
 			},
 			Items: []any{
 				result.UpdateItem{
-					Code:    "doctor",
-					Status:  "completed",
-					Summary: "Doctor completed",
+					SectionItem: result.SectionItem{
+						Code:    "doctor",
+						Status:  "completed",
+						Summary: "Doctor completed",
+					},
 				},
 			},
 		}, nil

@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -121,10 +120,7 @@ func setFixturePathModTime(t *testing.T, path string, when time.Time) {
 func normalizeMaintenanceJSON(t *testing.T, raw []byte, fixture maintenanceFixture) []byte {
 	t.Helper()
 
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
-	}
+	obj := decodeJSONMap(t, raw)
 
 	replacements := map[string]string{
 		fixture.projectDir:                   "REPLACE_PROJECT_DIR",
@@ -135,30 +131,7 @@ func normalizeMaintenanceJSON(t *testing.T, raw []byte, fixture maintenanceFixtu
 		fixture.backupRoot:                   "REPLACE_BACKUP_ROOT",
 	}
 
-	obj = normalizeMaintenanceValue(obj, replacements).(map[string]any)
+	obj = normalizeJSONValue(obj, replacements, nil).(map[string]any)
 
-	out, err := json.Marshal(obj)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
-}
-
-func normalizeMaintenanceValue(value any, replacements map[string]string) any {
-	switch typed := value.(type) {
-	case map[string]any:
-		for key, item := range typed {
-			typed[key] = normalizeMaintenanceValue(item, replacements)
-		}
-		return typed
-	case []any:
-		for idx, item := range typed {
-			typed[idx] = normalizeMaintenanceValue(item, replacements)
-		}
-		return typed
-	case string:
-		return replaceKnownPaths(typed, replacements)
-	default:
-		return value
-	}
+	return encodeJSONMap(t, obj)
 }

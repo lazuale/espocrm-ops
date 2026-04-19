@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -20,6 +19,7 @@ import (
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
 	journalusecase "github.com/lazuale/espocrm-ops/internal/usecase/journal"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 const (
@@ -149,7 +149,7 @@ func Generate(req Request) (info Info, err error) {
 		}
 		if releaseErr := opLock.Release(); releaseErr != nil {
 			info.Warnings = append(info.Warnings, fmt.Sprintf("failed to release the shared operations lock: %v", releaseErr))
-			info.Warnings = dedupeStrings(info.Warnings)
+			info.Warnings = reporting.DedupeStrings(info.Warnings)
 		}
 	}()
 
@@ -462,7 +462,7 @@ func Generate(req Request) (info Info, err error) {
 			info.Warnings = append(info.Warnings, fmt.Sprintf("support bundle retention cleanup failed: %v", cleanupErr))
 		}
 	}
-	info.Warnings = dedupeStrings(info.Warnings)
+	info.Warnings = reporting.DedupeStrings(info.Warnings)
 
 	if err := finalizeBundleMetadata(&info, tmpDir); err != nil {
 		failSection(&info, "archive_create", "Support bundle archive creation failed", "The bundle summary or manifest could not be written.", "Resolve the failed section collection first and rerun support-bundle.")
@@ -480,7 +480,7 @@ func Generate(req Request) (info Info, err error) {
 		"Created the final support bundle archive at the resolved output path.",
 		nil,
 	)
-	info.Warnings = dedupeStrings(info.Warnings)
+	info.Warnings = reporting.DedupeStrings(info.Warnings)
 
 	return info, nil
 }
@@ -760,9 +760,7 @@ func notRunSection(info *Info, code, summary string) {
 }
 
 func supportBundleSectionLists(sections []Section) ([]string, []string) {
-	included := []string{}
-	omitted := []string{}
-
+	collector := reporting.SectionCollector{}
 	for _, section := range sections {
 		if !isReportableSupportSection(section.Code) {
 			continue
@@ -770,13 +768,13 @@ func supportBundleSectionLists(sections []Section) ([]string, []string) {
 
 		switch section.Status {
 		case supportBundleSectionStatusCompleted:
-			included = append(included, section.Code)
+			collector.Add(reporting.SectionIncluded, section.Code, nil)
 		case supportBundleSectionStatusSkipped:
-			omitted = append(omitted, section.Code)
+			collector.Add(reporting.SectionOmitted, section.Code, nil)
 		}
 	}
-
-	return included, omitted
+	summary := collector.Finalize(nil)
+	return summary.IncludedSections, summary.OmittedSections
 }
 
 func isReportableSupportSection(code string) bool {
@@ -864,18 +862,6 @@ func backupCatalogWarnings(stats backupusecase.JournalReadStats) []string {
 		LoadedEntries:  stats.LoadedEntries,
 		SkippedCorrupt: stats.SkippedCorrupt,
 	})
-}
-
-func dedupeStrings(values []string) []string {
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" || slices.Contains(out, value) {
-			continue
-		}
-		out = append(out, value)
-	}
-	return out
 }
 
 func wrapSupportBundleEnvError(err error) error {

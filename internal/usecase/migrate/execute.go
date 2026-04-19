@@ -16,6 +16,7 @@ import (
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
+	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/usecase/restore"
 )
 
@@ -387,7 +388,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		})
 	}
 
-	info.Warnings = dedupeStrings(info.Warnings)
+	info.Warnings = reporting.DedupeStrings(info.Warnings)
 	return info, nil
 }
 
@@ -1003,24 +1004,6 @@ func failureAction(err error, fallback string) string {
 	}
 
 	return fallback
-}
-
-func dedupeStrings(values []string) []string {
-	seen := map[string]struct{}{}
-	out := make([]string, 0, len(values))
-	for _, value := range values {
-		value = strings.TrimSpace(value)
-		if value == "" {
-			continue
-		}
-		if _, ok := seen[value]; ok {
-			continue
-		}
-		seen[value] = struct{}{}
-		out = append(out, value)
-	}
-
-	return out
 }
 
 func wrapMigrationEnvError(err error) error {

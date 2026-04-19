@@ -180,11 +180,13 @@ func updatePlanResult(plan updateusecase.UpdatePlan) result.Result {
 	items := make([]any, 0, len(plan.Steps))
 	for _, step := range plan.Steps {
 		items = append(items, result.UpdatePlanItem{
-			Code:    step.Code,
-			Status:  step.Status,
-			Summary: step.Summary,
-			Details: step.Details,
-			Action:  step.Action,
+			SectionItem: result.SectionItem{
+				Code:    step.Code,
+				Status:  step.Status,
+				Summary: step.Summary,
+				Details: step.Details,
+				Action:  step.Action,
+			},
 		})
 	}
 

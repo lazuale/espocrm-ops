@@ -276,11 +276,13 @@ func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
 	items := make([]any, 0, len(info.Steps))
 	for _, step := range info.Steps {
 		items = append(items, result.RestoreExecutionItem{
-			Code:    step.Code,
-			Status:  step.Status,
-			Summary: step.Summary,
-			Details: step.Details,
-			Action:  step.Action,
+			SectionItem: result.SectionItem{
+				Code:    step.Code,
+				Status:  step.Status,
+				Summary: step.Summary,
+				Details: step.Details,
+				Action:  step.Action,
+			},
 		})
 	}
 
