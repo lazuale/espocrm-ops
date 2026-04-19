@@ -12,6 +12,9 @@ func TestSchema_BackupCatalog_JSON_ReadyVerified(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 	backupRoot := filepath.Join(tmp, "backups")
+	if err := os.MkdirAll(journalDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	opts := []testAppOption{
 		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-bc-1"),
@@ -19,6 +22,16 @@ func TestSchema_BackupCatalog_JSON_ReadyVerified(t *testing.T) {
 
 	writeCLICatalogBackupSet(t, backupRoot, "espocrm-dev", "2026-04-07_01-00-00", "dev")
 	writeGzipFile(t, filepath.Join(backupRoot, "db", "espocrm-dev_2026-04-07_02-00-00.sql.gz"), []byte("select 2;"))
+	writeJournalEntryFile(t, journalDir, "update.json", map[string]any{
+		"operation_id": "op-update-1",
+		"command":      "update",
+		"started_at":   "2026-04-07T01:05:00Z",
+		"finished_at":  "2026-04-07T01:07:00Z",
+		"ok":           true,
+		"artifacts": map[string]any{
+			"manifest_json": filepath.Join(backupRoot, "manifests", "espocrm-dev_2026-04-07_01-00-00.manifest.json"),
+		},
+	})
 
 	out, err := runRootCommandWithOptions(t, opts,
 		"--journal-dir", journalDir,
@@ -47,6 +60,7 @@ func TestSchema_BackupCatalog_JSON_ReadyVerified(t *testing.T) {
 	requireJSONPath(t, obj, "details", "limit")
 	requireJSONPath(t, obj, "details", "total_sets")
 	requireJSONPath(t, obj, "details", "shown_sets")
+	requireJSONPath(t, obj, "details", "total_files_seen")
 	requireJSONPath(t, obj, "items")
 
 	if obj["command"] != "backup-catalog" {
@@ -64,8 +78,21 @@ func TestSchema_BackupCatalog_JSON_ReadyVerified(t *testing.T) {
 	if !ok {
 		t.Fatalf("expected object item, got %#v", items[0])
 	}
+	if item["id"] != "espocrm-dev_2026-04-07_01-00-00" {
+		t.Fatalf("unexpected id: %v", item["id"])
+	}
 	if item["restore_readiness"] != "ready_verified" {
 		t.Fatalf("unexpected readiness: %v", item["restore_readiness"])
+	}
+	if item["scope"] != "dev" {
+		t.Fatalf("unexpected scope: %v", item["scope"])
+	}
+	origin, ok := item["origin"].(map[string]any)
+	if !ok {
+		t.Fatalf("expected origin object, got %#v", item["origin"])
+	}
+	if origin["kind"] != "update_recovery_point" {
+		t.Fatalf("unexpected origin: %#v", origin)
 	}
 }
 

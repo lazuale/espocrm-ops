@@ -47,6 +47,22 @@ func (e ValidationError) ErrorCode() string {
 	return "backup_verification_failed"
 }
 
+type NotFoundError struct {
+	ID string
+}
+
+func (e NotFoundError) Error() string {
+	return "backup not found: " + e.ID
+}
+
+func (e NotFoundError) ErrorKind() apperr.Kind {
+	return apperr.KindNotFound
+}
+
+func (e NotFoundError) ErrorCode() string {
+	return "backup_not_found"
+}
+
 func classifyStoreError(err error) error {
 	if err == nil {
 		return nil

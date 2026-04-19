@@ -36,6 +36,10 @@ type BackupSet struct {
 	ManifestJSON BackupFile
 }
 
+func BackupSetID(group BackupGroup) string {
+	return fmt.Sprintf("%s_%s", group.Prefix, group.Stamp)
+}
+
 func (s BackupSet) ValidateSelection(skipDB, skipFiles bool) error {
 	if skipDB && skipFiles {
 		return fmt.Errorf("nothing selected: both db and files verification are skipped")

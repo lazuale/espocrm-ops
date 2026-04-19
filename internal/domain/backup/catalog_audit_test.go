@@ -8,8 +8,8 @@ import (
 func TestCatalogReadiness(t *testing.T) {
 	completeDB := CatalogArtifact{File: "/backup/db.sql.gz", Sidecar: "/backup/db.sql.gz.sha256"}
 	completeFiles := CatalogArtifact{File: "/backup/files.tar.gz", Sidecar: "/backup/files.tar.gz.sha256"}
-	manifestTXT := CatalogManifest{File: "/backup/set.manifest.txt"}
-	manifestJSON := CatalogManifest{File: "/backup/set.manifest.json"}
+	manifestTXT := CatalogManifest{File: "/backup/set.manifest.txt", Status: CatalogManifestValid}
+	manifestJSON := CatalogManifest{File: "/backup/set.manifest.json", Status: CatalogManifestValid}
 
 	if got := CatalogReadiness(completeDB, completeFiles, manifestTXT, manifestJSON, true); got != CatalogReadinessReadyVerified {
 		t.Fatalf("expected verified readiness, got %s", got)
@@ -36,11 +36,14 @@ func TestNewCatalogItemSetsGroupKeyAndReadyFlag(t *testing.T) {
 		BackupGroup{Prefix: "espocrm-prod", Stamp: "2026-04-07_01-00-00"},
 		CatalogArtifact{File: "db.sql.gz", Sidecar: "db.sql.gz.sha256"},
 		CatalogArtifact{File: "files.tar.gz", Sidecar: "files.tar.gz.sha256"},
-		CatalogManifest{File: "set.manifest.txt"},
-		CatalogManifest{File: "set.manifest.json"},
+		CatalogManifest{File: "set.manifest.txt", Status: CatalogManifestValid},
+		CatalogManifest{File: "set.manifest.json", Status: CatalogManifestValid},
 		true,
 	)
 
+	if item.ID != "espocrm-prod_2026-04-07_01-00-00" {
+		t.Fatalf("unexpected id: %s", item.ID)
+	}
 	if item.GroupKey != "espocrm-prod|2026-04-07_01-00-00" {
 		t.Fatalf("unexpected group key: %s", item.GroupKey)
 	}

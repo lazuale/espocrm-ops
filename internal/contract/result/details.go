@@ -78,12 +78,20 @@ type BackupExecuteDetails struct {
 }
 
 type BackupCatalogDetails struct {
+	JournalReadDetails
 	BackupRoot     string `json:"backup_root"`
 	VerifyChecksum bool   `json:"verify_checksum"`
 	ReadyOnly      bool   `json:"ready_only"`
 	Limit          int    `json:"limit"`
 	TotalSets      int    `json:"total_sets"`
 	ShownSets      int    `json:"shown_sets"`
+}
+
+type BackupShowDetails struct {
+	JournalReadDetails
+	BackupRoot     string `json:"backup_root"`
+	ID             string `json:"id"`
+	VerifyChecksum bool   `json:"verify_checksum"`
 }
 
 type BackupAuditDetails struct {

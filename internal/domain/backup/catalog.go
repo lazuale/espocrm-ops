@@ -12,6 +12,11 @@ const (
 	CatalogChecksumVerified       = "verified"
 	CatalogChecksumMismatch       = "mismatch"
 
+	CatalogManifestMissing   = "missing"
+	CatalogManifestValid     = "valid"
+	CatalogManifestInvalid   = "invalid"
+	CatalogManifestDirectory = "directory"
+
 	CatalogReadinessReadyVerified   = "ready_verified"
 	CatalogReadinessReadyUnverified = "ready_unverified"
 	CatalogReadinessIncomplete      = "incomplete"
@@ -30,9 +35,14 @@ type CatalogInfo struct {
 }
 
 type CatalogItem struct {
+	ID               string          `json:"id"`
 	Prefix           string          `json:"prefix"`
 	Stamp            string          `json:"stamp"`
 	GroupKey         string          `json:"group_key"`
+	Scope            string          `json:"scope,omitempty"`
+	Contour          string          `json:"contour,omitempty"`
+	CreatedAt        string          `json:"created_at,omitempty"`
+	ComposeProject   string          `json:"compose_project,omitempty"`
 	RestoreReadiness string          `json:"restore_readiness"`
 	IsReady          bool            `json:"is_ready"`
 	DB               CatalogArtifact `json:"db"`
@@ -50,17 +60,33 @@ type CatalogArtifact struct {
 }
 
 type CatalogManifest struct {
-	File     string `json:"file,omitempty"`
-	AgeHours *int   `json:"age_hours,omitempty"`
+	File           string `json:"file,omitempty"`
+	AgeHours       *int   `json:"age_hours,omitempty"`
+	Status         string `json:"status"`
+	Error          string `json:"error,omitempty"`
+	Version        int    `json:"version,omitempty"`
+	Scope          string `json:"scope,omitempty"`
+	Contour        string `json:"contour,omitempty"`
+	CreatedAt      string `json:"created_at,omitempty"`
+	ComposeProject string `json:"compose_project,omitempty"`
 }
 
 func NewCatalogItem(group BackupGroup, db, files CatalogArtifact, manifestTXT, manifestJSON CatalogManifest, verifyChecksum bool) CatalogItem {
 	readiness := CatalogReadiness(db, files, manifestTXT, manifestJSON, verifyChecksum)
+	createdAt := manifestJSON.CreatedAt
+	if createdAt == "" {
+		createdAt = stampToRFC3339(group.Stamp)
+	}
 
 	return CatalogItem{
+		ID:               BackupSetID(group),
 		Prefix:           group.Prefix,
 		Stamp:            group.Stamp,
 		GroupKey:         GroupKey(group),
+		Scope:            manifestJSON.Scope,
+		Contour:          firstNonBlank(manifestJSON.Contour, manifestJSON.Scope),
+		CreatedAt:        createdAt,
+		ComposeProject:   manifestJSON.ComposeProject,
 		RestoreReadiness: readiness,
 		IsReady:          IsCatalogReady(readiness),
 		DB:               db,
@@ -71,10 +97,22 @@ func NewCatalogItem(group BackupGroup, db, files CatalogArtifact, manifestTXT, m
 }
 
 func CatalogReadiness(db, files CatalogArtifact, manifestTXT, manifestJSON CatalogManifest, verifyChecksum bool) string {
-	if db.ChecksumStatus == CatalogChecksumMismatch || files.ChecksumStatus == CatalogChecksumMismatch {
+	if db.ChecksumStatus == CatalogChecksumMismatch ||
+		files.ChecksumStatus == CatalogChecksumMismatch ||
+		manifestTXT.Status == CatalogManifestInvalid ||
+		manifestTXT.Status == CatalogManifestDirectory ||
+		manifestJSON.Status == CatalogManifestInvalid ||
+		manifestJSON.Status == CatalogManifestDirectory {
 		return CatalogReadinessCorrupted
 	}
-	if db.File == "" || db.Sidecar == "" || files.File == "" || files.Sidecar == "" || manifestTXT.File == "" || manifestJSON.File == "" {
+	if db.File == "" ||
+		db.Sidecar == "" ||
+		files.File == "" ||
+		files.Sidecar == "" ||
+		manifestTXT.File == "" ||
+		manifestTXT.Status != CatalogManifestValid ||
+		manifestJSON.File == "" ||
+		manifestJSON.Status != CatalogManifestValid {
 		return CatalogReadinessIncomplete
 	}
 	if verifyChecksum {
@@ -98,4 +136,23 @@ func AgeHours(now, modTime time.Time) int {
 
 func GroupKey(group BackupGroup) string {
 	return group.Prefix + "|" + group.Stamp
+}
+
+func stampToRFC3339(stamp string) string {
+	parsed, err := time.Parse("2006-01-02_15-04-05", stamp)
+	if err != nil {
+		return ""
+	}
+
+	return parsed.UTC().Format(time.RFC3339)
+}
+
+func firstNonBlank(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+
+	return ""
 }
