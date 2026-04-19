@@ -43,22 +43,6 @@
       "line_count": 486,
       "sha256": "0afa6e9e5878a390a7b1dfcd0edede6666a288fa87a73a71d9a95922bade49a4"
     },
-    "scripts/migrate-backup.sh": {
-      "function_names": [
-        "assert_go_backend_ready",
-        "collect_migration_contract_mismatch",
-        "json_extract_string_field",
-        "load_contour_vars",
-        "require_migration_contract_compatibility",
-        "resolve_source_backup_selection",
-        "select_latest_source_backup_pair",
-        "select_latest_source_backup_pair_go",
-        "usage",
-        "use_go_backend"
-      ],
-      "line_count": 332,
-      "sha256": "b96adae3eb53d9954d42df05a32bb6ce72f07535c519f18df15cbf75f3577c31"
-    },
     "scripts/restore-db.sh": {
       "function_names": [
         "run_go_restore_db",

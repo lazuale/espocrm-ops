@@ -374,6 +374,49 @@ type RollbackPlanItem struct {
 	Action  string `json:"action,omitempty"`
 }
 
+type MigrateBackupDetails struct {
+	SourceScope            string `json:"source_scope"`
+	TargetScope            string `json:"target_scope"`
+	Ready                  bool   `json:"ready"`
+	SelectionMode          string `json:"selection_mode,omitempty"`
+	RequestedSelectionMode string `json:"requested_selection_mode,omitempty"`
+	Steps                  int    `json:"steps"`
+	Completed              int    `json:"completed"`
+	Skipped                int    `json:"skipped"`
+	Failed                 int    `json:"failed"`
+	NotRun                 int    `json:"not_run"`
+	Warnings               int    `json:"warnings"`
+	SkipDB                 bool   `json:"skip_db"`
+	SkipFiles              bool   `json:"skip_files"`
+	NoStart                bool   `json:"no_start"`
+	StartedDBTemporarily   bool   `json:"started_db_temporarily"`
+}
+
+type MigrateBackupArtifacts struct {
+	ProjectDir           string `json:"project_dir"`
+	ComposeFile          string `json:"compose_file"`
+	SourceEnvFile        string `json:"source_env_file"`
+	TargetEnvFile        string `json:"target_env_file"`
+	SourceBackupRoot     string `json:"source_backup_root,omitempty"`
+	TargetBackupRoot     string `json:"target_backup_root,omitempty"`
+	RequestedDBBackup    string `json:"requested_db_backup,omitempty"`
+	RequestedFilesBackup string `json:"requested_files_backup,omitempty"`
+	SelectedPrefix       string `json:"selected_prefix,omitempty"`
+	SelectedStamp        string `json:"selected_stamp,omitempty"`
+	ManifestTXT          string `json:"manifest_txt,omitempty"`
+	ManifestJSON         string `json:"manifest_json,omitempty"`
+	DBBackup             string `json:"db_backup,omitempty"`
+	FilesBackup          string `json:"files_backup,omitempty"`
+}
+
+type MigrateBackupItem struct {
+	Code    string `json:"code"`
+	Status  string `json:"status"`
+	Summary string `json:"summary"`
+	Details string `json:"details,omitempty"`
+	Action  string `json:"action,omitempty"`
+}
+
 type DoctorDetails struct {
 	TargetScope string `json:"target_scope"`
 	Ready       bool   `json:"ready"`

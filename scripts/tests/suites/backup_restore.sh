@@ -1404,133 +1404,48 @@ EOF
   pass_test "Regression case passed"
 }
 
-test_migrate_backup_selects_complete_pair_and_switches_env() {
+test_migrate_backup_delegates_to_go_execution() {
   announce_test "Regression case"
 
-  local source_backup_root="$TEST_TMP_ROOT/migrate-source"
-  local target_backup_root="$TEST_TMP_ROOT/migrate-target"
   local output_file="$TEST_TMP_ROOT/migrate-backup.out"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.migrate.sh"
 
-  prepare_repo_env_pair
-  set_env_value "$ROOT_DIR/.env.dev" COMPOSE_PROJECT_NAME source-dev
-  set_env_value "$ROOT_DIR/.env.prod" COMPOSE_PROJECT_NAME target-prod
-  set_env_value "$ROOT_DIR/.env.dev" BACKUP_ROOT "$source_backup_root"
-  set_env_value "$ROOT_DIR/.env.prod" BACKUP_ROOT "$target_backup_root"
-
-  create_db_backup "$source_backup_root" "espocrm-dev" "2026-04-07_01-00-00" "db-complete"
-  create_files_backup "$source_backup_root" "espocrm-dev" "2026-04-07_01-00-00" "files-complete"
-  create_db_backup "$source_backup_root" "espocrm-dev" "2026-04-07_02-00-00" "db-newer-incomplete"
-
-  set +e
-  bash "$SCRIPT_DIR/migrate-backup.sh" dev prod --force --confirm-prod prod >"$output_file" 2>&1
-  set -e
-
-  assert_file_contains "$output_file" "Source env file: $ROOT_DIR/.env.dev" "runtime output"
-  assert_file_contains "$output_file" "Target env file: $ROOT_DIR/.env.prod" "runtime output"
-  assert_file_contains "$output_file" "Database backup: $source_backup_root/db/espocrm-dev_2026-04-07_01-00-00.sql.gz" "runtime output"
-  assert_file_contains "$output_file" "Files backup: $source_backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz" "runtime output"
-  pass_test "Regression case passed"
-}
-
-test_migrate_backup_supports_partial_selection_and_no_start() {
-  announce_test "Regression case"
-
-  local source_backup_root="$TEST_TMP_ROOT/migrate-partial-source"
-  local target_backup_root="$TEST_TMP_ROOT/migrate-partial-target"
-  local output_file="$TEST_TMP_ROOT/migrate-partial.out"
-  local mock_bin_dir="$TEST_TMP_ROOT/mock-docker-migrate-partial"
-  local stack_mock="$TEST_TMP_ROOT/mock.stack.migrate.sh"
-  local restore_files_mock="$TEST_TMP_ROOT/mock.restore-files.migrate.sh"
-
-  restore_replaced_repo_files
-  prepare_repo_env_pair
-  set_env_value "$ROOT_DIR/.env.dev" COMPOSE_PROJECT_NAME source-dev-partial
-  set_env_value "$ROOT_DIR/.env.prod" COMPOSE_PROJECT_NAME target-prod-partial
-  set_env_value "$ROOT_DIR/.env.dev" BACKUP_ROOT "$source_backup_root"
-  set_env_value "$ROOT_DIR/.env.prod" BACKUP_ROOT "$target_backup_root"
-
-  create_files_backup "$source_backup_root" "espocrm-dev" "2026-04-07_01-00-00" "files-partial"
-
-  cat > "$stack_mock" <<'EOF'
+  cat > "$mock_espops" <<'EOF'
 #!/usr/bin/env bash
 set -Eeuo pipefail
-echo "mock stack args: $*"
+echo "mock migrate args: $*"
 EOF
-  chmod +x "$stack_mock"
-  replace_repo_file_temporarily "$stack_mock" "$SCRIPT_DIR/stack.sh"
+  chmod +x "$mock_espops"
 
-  cat > "$restore_files_mock" <<'EOF'
-#!/usr/bin/env bash
-set -Eeuo pipefail
-echo "mock restore-files args: $*"
-EOF
-  chmod +x "$restore_files_mock"
-  replace_repo_file_temporarily "$restore_files_mock" "$SCRIPT_DIR/restore-files.sh"
-
-  create_mock_docker_runtime_success "$mock_bin_dir"
-
-  if ! run_command_capture "$output_file" env PATH="$mock_bin_dir:$PATH" bash "$SCRIPT_DIR/migrate-backup.sh" dev prod --force --confirm-prod prod --skip-db --no-start; then
+  if ! run_command_capture "$output_file" env ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/migrate-backup.sh" dev prod --force --confirm-prod prod --skip-db --no-start; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_not_contains "$output_file" "[info] Database backup:" "runtime output"
-  assert_file_contains "$output_file" "[info] Files backup: $source_backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz" "runtime output"
-  assert_file_contains "$output_file" "mock stack args: prod up -d db" "runtime output"
-  assert_file_contains "$output_file" "mock restore-files args: prod $source_backup_root/files/espocrm-dev_files_2026-04-07_01-00-00.tar.gz --force --confirm-prod prod --no-snapshot --no-stop --no-start" "runtime output"
-  assert_file_contains "$output_file" "The target contour was left stopped because of --no-start" "runtime output"
-  restore_replaced_repo_files
+  assert_file_contains "$output_file" "mock migrate args: migrate-backup --from dev --to prod --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --force --confirm-prod prod --skip-db --no-start" "runtime output"
+  assert_file_not_contains "$output_file" "Source env file:" "runtime output"
+  assert_file_not_contains "$output_file" "Restoring the database" "runtime output"
+  assert_file_not_contains "$output_file" "Migration completed:" "runtime output"
   pass_test "Regression case passed"
 }
 
-test_migrate_backup_requires_force_and_prod_confirmation() {
+test_migrate_backup_defers_destructive_confirmation_to_go() {
   announce_test "Regression case"
-  local source_backup_root="$TEST_TMP_ROOT/migrate-guard-source"
-  local target_backup_root="$TEST_TMP_ROOT/migrate-guard-target"
   local output_file="$TEST_TMP_ROOT/migrate-guard.out"
+  local mock_espops="$TEST_TMP_ROOT/mock.espops.migrate.guard.sh"
 
-  prepare_repo_env_pair
-  set_env_value "$ROOT_DIR/.env.dev" BACKUP_ROOT "$source_backup_root"
-  set_env_value "$ROOT_DIR/.env.prod" BACKUP_ROOT "$target_backup_root"
+  cat > "$mock_espops" <<'EOF'
+#!/usr/bin/env bash
+set -Eeuo pipefail
+echo "mock migrate args: $*"
+EOF
+  chmod +x "$mock_espops"
 
-  create_db_backup "$source_backup_root" "espocrm-dev" "2026-04-07_01-00-00" "migrate-guard-db"
-  create_files_backup "$source_backup_root" "espocrm-dev" "2026-04-07_01-00-00" "migrate-guard-files"
-
-  if run_command_capture "$output_file" bash "$SCRIPT_DIR/migrate-backup.sh" dev prod; then
+  if ! run_command_capture "$output_file" env ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/migrate-backup.sh" dev prod --skip-files; then
     fail_test "Regression case failed"
   fi
 
-  assert_file_contains "$output_file" "requires an explicit --force flag" "runtime output"
-
-  if run_command_capture "$output_file" bash "$SCRIPT_DIR/migrate-backup.sh" dev prod --force; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "--confirm-prod prod" "runtime output"
-  pass_test "Regression case passed"
-}
-
-test_migrate_backup_rejects_config_contract_drift() {
-  announce_test "Regression case"
-
-  local source_backup_root="$TEST_TMP_ROOT/migrate-contract-source"
-  local target_backup_root="$TEST_TMP_ROOT/migrate-contract-target"
-  local output_file="$TEST_TMP_ROOT/migrate-contract.out"
-
-  prepare_repo_env_pair
-  set_env_value "$ROOT_DIR/.env.dev" BACKUP_ROOT "$source_backup_root"
-  set_env_value "$ROOT_DIR/.env.prod" BACKUP_ROOT "$target_backup_root"
-  set_env_value "$ROOT_DIR/.env.dev" ESPOCRM_IMAGE "espocrm/espocrm:9.3.4-apache"
-  set_env_value "$ROOT_DIR/.env.prod" ESPOCRM_IMAGE "espocrm/espocrm:9.4.0-apache"
-
-  create_db_backup "$source_backup_root" "espocrm-dev" "2026-04-07_01-00-00" "migrate-contract-db"
-  create_files_backup "$source_backup_root" "espocrm-dev" "2026-04-07_01-00-00" "migrate-contract-files"
-
-  if run_command_capture "$output_file" bash "$SCRIPT_DIR/migrate-backup.sh" dev prod --force --confirm-prod prod; then
-    fail_test "Regression case failed"
-  fi
-
-  assert_file_contains "$output_file" "conflict with the migration compatibility contract" "runtime output"
-  assert_file_contains "$output_file" "ESPOCRM_IMAGE ('espocrm/espocrm:9.3.4-apache' vs 'espocrm/espocrm:9.4.0-apache')" "runtime output"
-  assert_file_contains "$output_file" "./scripts/doctor.sh all" "runtime output"
+  assert_file_contains "$output_file" "mock migrate args: migrate-backup --from dev --to prod --project-dir $ROOT_DIR --compose-file $ROOT_DIR/compose.yaml --skip-files" "runtime output"
+  assert_file_not_contains "$output_file" "requires an explicit --force flag" "runtime output"
+  assert_file_not_contains "$output_file" "--confirm-prod prod" "runtime output"
   pass_test "Regression case passed"
 }

@@ -31,13 +31,6 @@
       "matching_db_backup_for_files",
       "matching_files_backup_for_db"
     ],
-    "scripts/migrate-backup.sh": [
-      "json_extract_string_field(",
-      "latest_complete_backup_group_key",
-      "matching_db_backup_for_files",
-      "matching_files_backup_for_db",
-      "select_latest_source_backup_pair("
-    ],
     "scripts/restore-db.sh": [
       "write_restore_db_plan_reports("
     ],
