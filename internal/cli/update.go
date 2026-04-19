@@ -285,19 +285,6 @@ func updateResult(info updateusecase.ExecuteInfo) result.Result {
 		}
 	}
 
-	items := make([]any, 0, len(info.Steps))
-	for _, step := range info.Steps {
-		items = append(items, result.UpdateItem{
-			SectionItem: result.SectionItem{
-				Code:    step.Code,
-				Status:  step.Status,
-				Summary: step.Summary,
-				Details: step.Details,
-				Action:  step.Action,
-			},
-		})
-	}
-
 	return result.Result{
 		Command:  "update",
 		OK:       info.Ready(),
@@ -332,7 +319,7 @@ func updateResult(info updateusecase.ExecuteInfo) result.Result {
 			DBChecksum:     info.DBSidecarPath,
 			FilesChecksum:  info.FilesSidecarPath,
 		},
-		Items: items,
+		Items: updateItems(info.Steps),
 	}
 }
 
@@ -404,27 +391,11 @@ func renderUpdateText(w io.Writer, res result.Result) error {
 		return err
 	}
 
-	if _, err := fmt.Fprintln(w, "\nSteps:"); err != nil {
+	if err := renderStepItemsBlock(w, res.Items, updateItem, stepRenderOptions{
+		Title:      "Steps",
+		StatusText: upperStatusText,
+	}); err != nil {
 		return err
-	}
-	for _, rawItem := range res.Items {
-		item, ok := rawItem.(result.UpdateItem)
-		if !ok {
-			return fmt.Errorf("unexpected update item type %T", rawItem)
-		}
-		if _, err := fmt.Fprintf(w, "[%s] %s\n", strings.ToUpper(item.Status), item.Summary); err != nil {
-			return err
-		}
-		if strings.TrimSpace(item.Details) != "" {
-			if _, err := fmt.Fprintf(w, "  %s\n", item.Details); err != nil {
-				return err
-			}
-		}
-		if strings.TrimSpace(item.Action) != "" {
-			if _, err := fmt.Fprintf(w, "  Action: %s\n", item.Action); err != nil {
-				return err
-			}
-		}
 	}
 
 	artifactLines := []struct {

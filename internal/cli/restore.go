@@ -273,19 +273,6 @@ func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
 		}
 	}
 
-	items := make([]any, 0, len(info.Steps))
-	for _, step := range info.Steps {
-		items = append(items, result.RestoreExecutionItem{
-			SectionItem: result.SectionItem{
-				Code:    step.Code,
-				Status:  step.Status,
-				Summary: step.Summary,
-				Details: step.Details,
-				Action:  step.Action,
-			},
-		})
-	}
-
 	return result.Result{
 		Command:  "restore",
 		OK:       info.Ready(),
@@ -328,7 +315,7 @@ func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
 			SnapshotDBChecksum:    info.SnapshotDBChecksum,
 			SnapshotFilesChecksum: info.SnapshotFilesChecksum,
 		},
-		Items: items,
+		Items: restoreExecutionItems(info.Steps),
 	}
 }
 
@@ -420,29 +407,12 @@ func renderRestoreText(w io.Writer, res result.Result) error {
 		}
 	}
 
-	if len(res.Items) != 0 {
-		if _, err := fmt.Fprintln(w, "\nSteps:"); err != nil {
-			return err
-		}
-		for _, rawItem := range res.Items {
-			item, ok := rawItem.(result.RestoreExecutionItem)
-			if !ok {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "[%s] %s\n", strings.ToUpper(item.Status), item.Summary); err != nil {
-				return err
-			}
-			if strings.TrimSpace(item.Details) != "" {
-				if _, err := fmt.Fprintf(w, "  %s\n", item.Details); err != nil {
-					return err
-				}
-			}
-			if strings.TrimSpace(item.Action) != "" {
-				if _, err := fmt.Fprintf(w, "  Action: %s\n", item.Action); err != nil {
-					return err
-				}
-			}
-		}
+	if err := renderStepItemsBlock(w, res.Items, restoreExecutionItem, stepRenderOptions{
+		Title:            "Steps",
+		IgnoreUnexpected: true,
+		StatusText:       upperStatusText,
+	}); err != nil {
+		return err
 	}
 
 	return nil

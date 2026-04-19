@@ -210,19 +210,6 @@ func restoreDrillResult(info restoreusecase.DrillInfo) result.Result {
 		message = "restore drill failed"
 	}
 
-	items := make([]any, 0, len(info.Steps))
-	for _, step := range info.Steps {
-		items = append(items, result.RestoreDrillItem{
-			SectionItem: result.SectionItem{
-				Code:    step.Code,
-				Status:  step.Status,
-				Summary: step.Summary,
-				Details: step.Details,
-				Action:  step.Action,
-			},
-		})
-	}
-
 	return result.Result{
 		Command:  "restore-drill",
 		OK:       info.Ready(),
@@ -267,7 +254,7 @@ func restoreDrillResult(info restoreusecase.DrillInfo) result.Result {
 			ReportTXT:            info.ReportTXTPath,
 			ReportJSON:           info.ReportJSONPath,
 		},
-		Items: items,
+		Items: restoreDrillItems(info.Steps),
 	}
 }
 
@@ -371,29 +358,12 @@ func renderRestoreDrillText(w io.Writer, res result.Result) error {
 		}
 	}
 
-	if len(res.Items) != 0 {
-		if _, err := fmt.Fprintln(w, "\nSteps:"); err != nil {
-			return err
-		}
-		for _, rawItem := range res.Items {
-			item, ok := rawItem.(result.RestoreDrillItem)
-			if !ok {
-				continue
-			}
-			if _, err := fmt.Fprintf(w, "[%s] %s\n", strings.ToUpper(item.Status), item.Summary); err != nil {
-				return err
-			}
-			if strings.TrimSpace(item.Details) != "" {
-				if _, err := fmt.Fprintf(w, "  %s\n", item.Details); err != nil {
-					return err
-				}
-			}
-			if strings.TrimSpace(item.Action) != "" {
-				if _, err := fmt.Fprintf(w, "  Action: %s\n", item.Action); err != nil {
-					return err
-				}
-			}
-		}
+	if err := renderStepItemsBlock(w, res.Items, restoreDrillItem, stepRenderOptions{
+		Title:            "Steps",
+		IgnoreUnexpected: true,
+		StatusText:       upperStatusText,
+	}); err != nil {
+		return err
 	}
 
 	return nil

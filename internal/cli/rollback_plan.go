@@ -200,19 +200,6 @@ func rollbackPlanResult(plan rollbackusecase.RollbackPlan) result.Result {
 		}
 	}
 
-	items := make([]any, 0, len(plan.Steps))
-	for _, step := range plan.Steps {
-		items = append(items, result.RollbackPlanItem{
-			SectionItem: result.SectionItem{
-				Code:    step.Code,
-				Status:  step.Status,
-				Summary: step.Summary,
-				Details: step.Details,
-				Action:  step.Action,
-			},
-		})
-	}
-
 	res := result.Result{
 		Command:  "rollback-plan",
 		OK:       plan.Ready(),
@@ -249,7 +236,7 @@ func rollbackPlanResult(plan rollbackusecase.RollbackPlan) result.Result {
 			DBBackup:       plan.DBBackup,
 			FilesBackup:    plan.FilesBackup,
 		},
-		Items: items,
+		Items: rollbackPlanItems(plan.Steps),
 	}
 
 	if !plan.Ready() {
@@ -350,39 +337,15 @@ func renderRollbackPlanText(w io.Writer, res result.Result) error {
 		return err
 	}
 
-	if len(res.Warnings) != 0 {
-		if _, err := fmt.Fprintln(w, "\nWarnings:"); err != nil {
-			return err
-		}
-		for _, warning := range res.Warnings {
-			if _, err := fmt.Fprintf(w, "- %s\n", warning); err != nil {
-				return err
-			}
-		}
-	}
-
-	if _, err := fmt.Fprintln(w, "\nPlan:"); err != nil {
+	if err := renderWarningsBlock(w, res.Warnings); err != nil {
 		return err
 	}
-	for _, rawItem := range res.Items {
-		item, ok := rawItem.(result.RollbackPlanItem)
-		if !ok {
-			return fmt.Errorf("unexpected rollback-plan item type %T", rawItem)
-		}
-		label := strings.ToUpper(strings.ReplaceAll(item.Status, "_", " "))
-		if _, err := fmt.Fprintf(w, "[%s] %s\n", label, item.Summary); err != nil {
-			return err
-		}
-		if strings.TrimSpace(item.Details) != "" {
-			if _, err := fmt.Fprintf(w, "  %s\n", item.Details); err != nil {
-				return err
-			}
-		}
-		if strings.TrimSpace(item.Action) != "" {
-			if _, err := fmt.Fprintf(w, "  Action: %s\n", item.Action); err != nil {
-				return err
-			}
-		}
+
+	if err := renderStepItemsBlock(w, res.Items, rollbackPlanItem, stepRenderOptions{
+		Title:      "Plan",
+		StatusText: upperSpacedStatusText,
+	}); err != nil {
+		return err
 	}
 
 	return nil

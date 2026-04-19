@@ -325,19 +325,6 @@ func rollbackResult(info rollbackusecase.ExecuteInfo) result.Result {
 		}
 	}
 
-	items := make([]any, 0, len(info.Steps))
-	for _, step := range info.Steps {
-		items = append(items, result.RollbackItem{
-			SectionItem: result.SectionItem{
-				Code:    step.Code,
-				Status:  step.Status,
-				Summary: step.Summary,
-				Details: step.Details,
-				Action:  step.Action,
-			},
-		})
-	}
-
 	return result.Result{
 		Command:  "rollback",
 		OK:       info.Ready(),
@@ -384,7 +371,7 @@ func rollbackResult(info rollbackusecase.ExecuteInfo) result.Result {
 			SnapshotDBChecksum:    info.SnapshotDBChecksum,
 			SnapshotFilesChecksum: info.SnapshotFilesChecksum,
 		},
-		Items: items,
+		Items: rollbackItems(info.Steps),
 	}
 }
 
@@ -474,38 +461,15 @@ func renderRollbackText(w io.Writer, res result.Result) error {
 		return err
 	}
 
-	if len(res.Warnings) != 0 {
-		if _, err := fmt.Fprintln(w, "\nWarnings:"); err != nil {
-			return err
-		}
-		for _, warning := range res.Warnings {
-			if _, err := fmt.Fprintf(w, "- %s\n", warning); err != nil {
-				return err
-			}
-		}
-	}
-
-	if _, err := fmt.Fprintln(w, "\nSteps:"); err != nil {
+	if err := renderWarningsBlock(w, res.Warnings); err != nil {
 		return err
 	}
-	for _, rawItem := range res.Items {
-		item, ok := rawItem.(result.RollbackItem)
-		if !ok {
-			return fmt.Errorf("unexpected rollback item type %T", rawItem)
-		}
-		if _, err := fmt.Fprintf(w, "[%s] %s\n", strings.ToUpper(item.Status), item.Summary); err != nil {
-			return err
-		}
-		if strings.TrimSpace(item.Details) != "" {
-			if _, err := fmt.Fprintf(w, "  %s\n", item.Details); err != nil {
-				return err
-			}
-		}
-		if strings.TrimSpace(item.Action) != "" {
-			if _, err := fmt.Fprintf(w, "  Action: %s\n", item.Action); err != nil {
-				return err
-			}
-		}
+
+	if err := renderStepItemsBlock(w, res.Items, rollbackItem, stepRenderOptions{
+		Title:      "Steps",
+		StatusText: upperStatusText,
+	}); err != nil {
+		return err
 	}
 
 	if strings.TrimSpace(artifacts.SnapshotManifestJSON) != "" || strings.TrimSpace(artifacts.SnapshotDBBackup) != "" || strings.TrimSpace(artifacts.SnapshotFilesBackup) != "" {
