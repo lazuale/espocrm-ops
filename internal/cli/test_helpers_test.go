@@ -10,9 +10,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lazuale/espocrm-ops/internal/domain/operation"
-	platformclock "github.com/lazuale/espocrm-ops/internal/platform/clock"
 	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
+	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 	"github.com/spf13/cobra"
 )
@@ -30,17 +29,7 @@ func (f fixedRuntime) NewOperationID() string {
 	return f.id
 }
 
-var _ operation.Runtime = fixedRuntime{}
-
-type fixedClock struct {
-	now time.Time
-}
-
-func (f fixedClock) Now() time.Time {
-	return f.now
-}
-
-var _ platformclock.Clock = fixedClock{}
+var _ operationusecase.Runtime = fixedRuntime{}
 
 type testAppConfig struct {
 	runtime              operationusecase.Runtime
@@ -88,7 +77,7 @@ func withJSONOutput() testAppOption {
 func useJournalClockForTest(t *testing.T, now time.Time) {
 	t.Helper()
 
-	restore := platformclock.SetForTest(fixedClock{now: now})
+	restore := backupusecase.SetNowForTest(func() time.Time { return now })
 	t.Cleanup(restore)
 }
 

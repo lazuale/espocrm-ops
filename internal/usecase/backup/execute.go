@@ -13,7 +13,6 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
-	platformclock "github.com/lazuale/espocrm-ops/internal/platform/clock"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	platformfs "github.com/lazuale/espocrm-ops/internal/platform/fs"
 )
@@ -277,7 +276,7 @@ func ExecuteBackup(req ExecuteRequest) (info ExecuteInfo, err error) {
 }
 
 func allocateBackupExecutionState(req ExecuteRequest, errWriter io.Writer) (backupExecutionState, error) {
-	createdAt := platformclock.Now().UTC()
+	createdAt := nowUTC()
 	for {
 		stamp := createdAt.Format("2006-01-02_15-04-05")
 		set := domainbackup.BuildBackupSet(req.BackupRoot, req.NamePrefix, stamp)
@@ -489,7 +488,7 @@ func cleanupBackupRetention(root string, retentionDays int) error {
 		return fmt.Errorf("retention days must be non-negative")
 	}
 
-	cutoff := platformclock.Now().UTC().Add(-time.Duration(retentionDays+1) * 24 * time.Hour)
+	cutoff := nowUTC().Add(-time.Duration(retentionDays+1) * 24 * time.Hour)
 	targets := []struct {
 		dir      string
 		patterns []string

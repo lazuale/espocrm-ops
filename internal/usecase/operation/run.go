@@ -8,22 +8,11 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	domainjournal "github.com/lazuale/espocrm-ops/internal/domain/journal"
-	domainoperation "github.com/lazuale/espocrm-ops/internal/domain/operation"
 )
 
 type Runtime interface {
 	Now() time.Time
 	NewOperationID() string
-}
-
-type DefaultRuntime struct{}
-
-func (DefaultRuntime) Now() time.Time {
-	return domainoperation.DefaultRuntime{}.Now()
-}
-
-func (DefaultRuntime) NewOperationID() string {
-	return domainoperation.DefaultRuntime{}.NewOperationID()
 }
 
 type Writer interface {
@@ -48,7 +37,7 @@ type Execution struct {
 
 func Begin(runtime Runtime, writer Writer, command string) Execution {
 	if runtime == nil {
-		runtime = domainoperation.DefaultRuntime{}
+		runtime = DefaultRuntime{}
 	}
 
 	return Execution{
@@ -67,16 +56,16 @@ func (e Execution) FinishSuccess(res result.Result) (result.Result, error) {
 	res.Command = e.command
 	res.OK = true
 	res.Timing = &result.TimingInfo{
-		StartedAt:  e.startedAt.Format(domainoperation.TimeFormat),
-		FinishedAt: finishedAt.Format(domainoperation.TimeFormat),
+		StartedAt:  e.startedAt.Format(TimeFormat),
+		FinishedAt: finishedAt.Format(TimeFormat),
 		DurationMS: finishedAt.Sub(e.startedAt).Milliseconds(),
 	}
 
 	if err := e.write(domainjournal.Entry{
 		OperationID: e.operationID,
 		Command:     e.command,
-		StartedAt:   e.startedAt.Format(domainoperation.TimeFormat),
-		FinishedAt:  finishedAt.Format(domainoperation.TimeFormat),
+		StartedAt:   e.startedAt.Format(TimeFormat),
+		FinishedAt:  finishedAt.Format(TimeFormat),
 		OK:          true,
 		DryRun:      res.DryRun,
 		Message:     res.Message,
@@ -98,8 +87,8 @@ func (e Execution) FinishFailure(res result.Result, err error, errCode string) e
 	return e.write(domainjournal.Entry{
 		OperationID:  e.operationID,
 		Command:      e.command,
-		StartedAt:    e.startedAt.Format(domainoperation.TimeFormat),
-		FinishedAt:   finishedAt.Format(domainoperation.TimeFormat),
+		StartedAt:    e.startedAt.Format(TimeFormat),
+		FinishedAt:   finishedAt.Format(TimeFormat),
 		OK:           false,
 		DryRun:       res.DryRun,
 		Message:      res.Message,

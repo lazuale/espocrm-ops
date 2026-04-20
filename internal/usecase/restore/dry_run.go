@@ -8,7 +8,6 @@ import (
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
-	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 func buildDryRun(ctx maintenanceusecase.OperationContext, req ExecuteRequest, info ExecuteInfo, source executeSource, runtimeInfo runtimePrepareInfo) (ExecuteInfo, error) {
@@ -102,7 +101,7 @@ func buildDryRun(ctx maintenanceusecase.OperationContext, req ExecuteRequest, in
 		Summary: dryRunRuntimeReturnSummary(runtimeInfo, req.NoStart),
 		Details: dryRunRuntimeReturnDetails(runtimeInfo, req.NoStart),
 	})
-	info.Warnings = reporting.DedupeStrings(info.Warnings)
+	info.Warnings = dedupeStrings(info.Warnings)
 	return info, nil
 }
 

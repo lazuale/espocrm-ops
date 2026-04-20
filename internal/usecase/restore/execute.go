@@ -13,7 +13,6 @@ import (
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
-	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 )
 
 const (
@@ -408,7 +407,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: runtimeReturnDetails(req, runtimePrep, runtimeReturn, validatedServices),
 	})
 
-	info.Warnings = reporting.DedupeStrings(info.Warnings)
+	info.Warnings = dedupeStrings(info.Warnings)
 	return info, nil
 }
 

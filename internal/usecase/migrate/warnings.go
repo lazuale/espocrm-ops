@@ -1,8 +1,8 @@
-package reporting
+package migrate
 
 import "strings"
 
-func DedupeStrings(values []string) []string {
+func dedupeStrings(values []string) []string {
 	if len(values) == 0 {
 		return nil
 	}

@@ -8,7 +8,6 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	domainjournal "github.com/lazuale/espocrm-ops/internal/domain/journal"
-	domainoperation "github.com/lazuale/espocrm-ops/internal/domain/operation"
 )
 
 type fixedRuntime struct {
@@ -65,7 +64,7 @@ func TestExecutionFinishSuccessPopulatesResultAndJournalEntry(t *testing.T) {
 	if res.Command != "test-command" || !res.OK {
 		t.Fatalf("unexpected result identity: %#v", res)
 	}
-	if res.Timing == nil || res.Timing.StartedAt != now.Format(domainoperation.TimeFormat) || res.Timing.FinishedAt != now.Format(domainoperation.TimeFormat) {
+	if res.Timing == nil || res.Timing.StartedAt != now.Format(TimeFormat) || res.Timing.FinishedAt != now.Format(TimeFormat) {
 		t.Fatalf("unexpected timing: %#v", res.Timing)
 	}
 	if len(writer.entries) != 1 {

@@ -11,7 +11,6 @@ import (
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
-	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/usecase/restore"
 )
 
@@ -412,7 +411,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		})
 	}
 
-	info.Warnings = reporting.DedupeStrings(info.Warnings)
+	info.Warnings = dedupeStrings(info.Warnings)
 	return info, nil
 }
 
