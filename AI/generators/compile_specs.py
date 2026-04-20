@@ -36,32 +36,32 @@ def write_or_check(path: pathlib.Path, content: str, check: bool) -> int:
 
 
 def make_policy(specs: dict) -> str:
-    docs = specs["DOCS_SYNC"]
-    package_policy = specs["PACKAGE_POLICY"]
-    contract_surface = specs["CONTRACT_SURFACE"]
+    sync = specs["SYNC"]
+    architecture = specs["ARCH"]
+    surface = specs["SURFACE"]
     policy = {
         "version": 1,
-        "readme_required_snippets": docs["readme_required_snippets"],
-        "contributing_required_snippets": docs["contributing_required_snippets"],
-        "contributing_forbidden_snippets": docs["contributing_forbidden_snippets"],
-        "archived_docs": docs["archived_docs"],
-        "archived_knowledge_docs": docs["archived_knowledge_docs"],
-        "archive_banner": docs["archive_banner"],
-        "knowledge_banner": docs["knowledge_banner"],
-        "canonical_contract": contract_surface["canonical"],
-        "non_canonical_shell_json": contract_surface["non_canonical_shell_json"],
-        "passthrough_shell_json": contract_surface["passthrough_shell_json"],
-        "banned_directory_names": package_policy["banned_directory_names"],
-        "banned_package_names": package_policy["banned_package_names"],
-        "banned_file_stems": package_policy["banned_file_stems"],
-        "allowed_internal_roots": package_policy["allowed_internal_roots"],
-        "allowed_cmd_roots": package_policy["allowed_cmd_roots"],
-        "frozen_shell_debt": contract_surface["frozen_shell_debt"],
+        "readme_required_snippets": sync["readme_required_snippets"],
+        "contributing_required_snippets": sync["contributing_required_snippets"],
+        "contributing_forbidden_snippets": sync["contributing_forbidden_snippets"],
+        "agents_required_snippets": sync["agents_required_snippets"],
+        "changed_file_rules": sync["changed_file_rules"],
+        "canonical_contract": surface["canonical"],
+        "json_fixture_glob": surface["json_fixture_glob"],
+        "shell_parse_smoke": surface["shell_parse_smoke"],
+        "non_canonical_shell_json": surface["non_canonical_shell_json"],
+        "passthrough_shell_json": surface["passthrough_shell_json"],
+        "banned_directory_names": architecture["banned_directory_names"],
+        "banned_package_names": architecture["banned_package_names"],
+        "banned_file_stems": architecture["banned_file_stems"],
+        "allowed_internal_roots": architecture["allowed_internal_roots"],
+        "allowed_cmd_roots": architecture["allowed_cmd_roots"],
+        "frozen_shell_debt": surface["frozen_shell_debt"],
         "non_canonical_json_scripts": [
-            item.removesuffix(" --json") for item in contract_surface["non_canonical_shell_json"]
+            item.removesuffix(" --json") for item in surface["non_canonical_shell_json"]
         ],
         "passthrough_json_scripts": [
-            item.removesuffix(" --json") for item in contract_surface["passthrough_shell_json"]
+            item.removesuffix(" --json") for item in surface["passthrough_shell_json"]
         ],
     }
     return json.dumps(policy, indent=2, sort_keys=True) + "\n"

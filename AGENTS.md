@@ -1,47 +1,50 @@
 # AGENTS
 
-`espocrm-ops` is AI-first and governance-first.
+## Mission
+- Keep the retained core smaller, stricter, and more reliable.
+- Reliability first. Compactness next. Clarity after that.
+- The retained product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
 
-Bootstrap order:
-1. `AGENTS.md`
-2. `AI/spec/*`
-3. required generated enforcement artifacts under `AI/compiled/`
-   `POLICY.json`, `CONTRACT_BASELINE.json`, `JSON_CONTRACT_BASELINE/`, `SHELL_DEBT_BASELINE.json`
-4. `Makefile`
-5. `.github/workflows/ai-governance.yml`
-
-Repository truth:
-- Go is the strategic core.
-- Shell is transitional legacy.
-- The retained operator-facing product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
-- Canonical machine contract belongs to Go CLI JSON and exit-code surfaces.
-- Shell JSON is either thin passthrough to Go or explicitly non-canonical shell data.
-- Delete drift instead of wrapping drift.
-- Hidden fallback, silent noop, wrapper creep, helper explosion, and prose-derived contract are defects.
-
-Authority:
-- Active authority lives only in `AGENTS.md`, `AI/spec/*`, the required generated enforcement artifacts under `AI/compiled/`, `Makefile`, and `.github/workflows/ai-governance.yml`.
-- `AI/compiled/*` is generated enforcement state. Do not edit it manually. Regenerate it with `make ai-refresh`.
-- Archived human docs are non-authoritative memory only. They do not override the AI corpus.
+## Authority
+- Repository authority is `AGENTS.md` -> `AI/spec/*` -> required generated enforcement under `AI/compiled/*` -> `Makefile` -> `.github/workflows/ai-governance.yml`.
+- `AI/compiled/*` is generated only. Do not edit it manually. Regenerate it with `make ai-refresh`.
+- `README.md` and `CONTRIBUTING.md` are pointer docs only.
 - If an archived doc conflicts with `AGENTS.md`, `AI/spec/*`, or generated enforcement artifacts, ignore the archived doc.
 
-Builder rules:
-- Do not reintroduce removed product surfaces, aliases, or help text outside the retained command set.
-- Do not add new shell-owned destructive plan, selection, policy, or stable report logic.
-- Do not add new shell `--json` surfaces without classifying them as explicit passthrough wrappers or explicit non-canonical shell data.
-- Do not add new generic packages or layers named `common`, `utils`, `helpers`, `services`, `builders`, `factories`, `managers`, `shared`, `facade`, `wrapper`, or `core`.
-- Do not parse JSON or machine errors with `awk`, `grep`, or prose matching as stable contract logic.
-- Do not introduce hidden fallback behavior.
-- Do not leave the AI specs, compiled policy/baselines, workflow, and Makefile out of sync.
-- Do not treat archived docs as current truth, even when they mention older workflows, generated files, or historical rules.
+## Defaults
+- Block unless clearly safe.
+- Fail closed.
+- Delete drift instead of wrapping drift.
+- Shell is thin execution only.
+- No success before explicit post-check or health-check.
 
-Standard cycle:
-- Edit code or `AI/spec/*`.
-- Run `make ai-refresh`.
-- Run `make ai-check`.
-- Run `make ci` as the fast gate only.
-- Do not claim the repository is healthy from `make ci` alone after any Go version, toolchain, dependency, workflow, or enforcement-surface change.
-- Use `make check-full` as the authoritative post-upgrade health gate before claiming the repository is healthy after those changes.
-- `make check-full` must run, in order: `make ai-refresh`, `make ai-check`, the fast gate, `go test -race ./...`, `staticcheck ./...`, `golangci-lint run --no-config ./...`, `go test ./... -coverprofile=coverage.out`, `go tool cover -func=coverage.out`, `make integration`, and `make regression`.
-- Keep `make vulncheck` as a manual-only scan. It is not part of blocking CI or `make check-full`.
-- Update `ops/adr/*` only when the AI rules require an ADR for an architecture or contract change.
+## Rules
+- `internal/` owns retained-core behavior.
+- `cmd/espops/` owns CLI entrypoints and command surface only.
+- No hidden fallback.
+- No auto-repair.
+- No auto-normalization.
+- No silent recovery.
+- No implicit path switching.
+- No ambiguous success.
+- No shell-owned product, contract, validation, or recovery semantics.
+- No new product surface.
+- No generic `common`, `utils`, `helpers`, `services`, `shared`, `wrapper`, or `core` layers.
+
+## Core Flow
+- Resolve input.
+- Validate input.
+- Verify coherence.
+- Execute side effects.
+- Run explicit post-check or health-check.
+- Return explicit result.
+- If correctness is ambiguous, block or fail.
+
+## Testing
+- Scenario proof first.
+- Do not claim a reliability improvement without end-to-end evidence.
+
+## Done
+- Keep authority surfaces in sync.
+- Run `make ai-refresh` and `make ai-check` after governance or enforcement changes.
+- Run `make check-full` before claiming repository health after governance, contract, workflow, or enforcement changes.

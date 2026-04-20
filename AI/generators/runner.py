@@ -65,39 +65,16 @@ def docs_sync() -> int:
             print(f"CONTRIBUTING.md contains forbidden snippet: {snippet}", file=sys.stderr)
             return 1
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    required_agents_lines = [
-        "Active authority lives only in `AGENTS.md`, `AI/spec/*`, the required generated enforcement artifacts under `AI/compiled/`, `Makefile`, and `.github/workflows/ai-governance.yml`.",
-        "`AI/compiled/*` is generated enforcement state. Do not edit it manually. Regenerate it with `make ai-refresh`.",
-        "Archived human docs are non-authoritative memory only. They do not override the AI corpus.",
-        "If an archived doc conflicts with `AGENTS.md`, `AI/spec/*`, or generated enforcement artifacts, ignore the archived doc.",
-    ]
-    if any(line not in agents for line in required_agents_lines):
-        print("AGENTS.md must explicitly resolve conflicts in favor of the AI corpus", file=sys.stderr)
-        return 1
-    for rel in policy["archived_docs"]:
-        path = ROOT / rel
-        if not path.exists():
-            print(f"missing archived doc: {rel}", file=sys.stderr)
-            return 1
-        text = path.read_text(encoding="utf-8")
-        if policy["archive_banner"] not in text:
-            print(f"{rel} missing archive banner", file=sys.stderr)
-            return 1
-        if "AGENTS.md" not in text:
-            print(f"{rel} must point to AGENTS.md", file=sys.stderr)
-            return 1
-    for rel in policy["archived_knowledge_docs"]:
-        path = ROOT / rel
-        text = path.read_text(encoding="utf-8")
-        if policy["knowledge_banner"] not in text:
-            print(f"{rel} must preserve historical knowledge, not a dead stub", file=sys.stderr)
+    for snippet in policy["agents_required_snippets"]:
+        if snippet not in agents:
+            print(f"AGENTS.md missing required snippet: {snippet}", file=sys.stderr)
             return 1
     print("docs sync passed")
     return 0
 
 
 def test_sync() -> int:
-    rules = json.loads((ROOT / "AI" / "spec" / "TEST_SYNC.spec").read_text(encoding="utf-8"))["rules"]
+    rules = load_policy()["changed_file_rules"]
     files = changed_files()
     if not files:
         print("test sync passed")

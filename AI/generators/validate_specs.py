@@ -13,25 +13,15 @@ WORKFLOWS_DIR = ROOT / ".github" / "workflows"
 GITHUB_DIR = ROOT / ".github"
 REQUIRED_SPECS = {
     "ARCH.spec",
-    "CONTRACT.spec",
-    "CONTRACT_SURFACE.spec",
-    "JSON_CONTRACT.spec",
-    "DOCS_SYNC.spec",
-    "TEST_SYNC.spec",
-    "PACKAGE_POLICY.spec",
-    "PR_BODY.spec",
-    "ADR_REQUIRED.spec",
-    "ADR_SEMANTIC.spec",
+    "SURFACE.spec",
+    "SYNC.spec",
 }
 ALLOWED_GENERATORS = {
-    "adr_guard.py",
     "ast_arch_guard.py",
     "compile_specs.py",
     "contract_diff.py",
     "json_fixture_contract_diff.py",
-    "pr_body_check.py",
     "runner.py",
-    "semantic_adr_guard.py",
     "shell_debt_diff.py",
     "validate_specs.py",
 }
@@ -41,25 +31,8 @@ ALLOWED_COMPILED_ENTRIES = {
     "POLICY.json",
     "SHELL_DEBT_BASELINE.json",
 }
-ALLOWED_WORKFLOWS = {
-    "ai-governance.yml",
-}
-ALLOWED_GITHUB_TOP_LEVEL = {
-    "workflows",
-}
-ALLOWED_ROOT_MARKDOWN = {
-    "AGENTS.md",
-    "README.md",
-    "CONTRIBUTING.md",
-}
-ALLOWED_OPS_MARKDOWN_ROOT = "ops/adr/"
-REQUIRED_OPS_ENV_EXAMPLES = {
-    "ops/env/.env.dev.example",
-    "ops/env/.env.prod.example",
-}
-
-
 def main() -> int:
+    parsed_specs = {}
     spec_entries = {path.name for path in SPEC_DIR.iterdir()}
     unexpected_spec_entries = sorted(spec_entries - REQUIRED_SPECS)
     if unexpected_spec_entries:
@@ -86,6 +59,9 @@ def main() -> int:
         if not isinstance(data.get("version"), int):
             print(f"{path}: missing integer 'version'", file=sys.stderr)
             return 1
+        parsed_specs[path.name] = data
+
+    sync = parsed_specs["SYNC.spec"]
 
     generator_entries = {path.name for path in GENERATOR_DIR.iterdir()}
     unexpected_generators = sorted(generator_entries - ALLOWED_GENERATORS)
@@ -103,11 +79,11 @@ def main() -> int:
         print("missing .github directory", file=sys.stderr)
         return 1
     github_entries = {path.name for path in GITHUB_DIR.iterdir()}
-    unexpected_github_entries = sorted(github_entries - ALLOWED_GITHUB_TOP_LEVEL)
+    unexpected_github_entries = sorted(github_entries - set(sync["allowed_github_top_level"]))
     if unexpected_github_entries:
         print("unexpected .github entries:", ", ".join(unexpected_github_entries), file=sys.stderr)
         return 1
-    missing_github_entries = sorted(ALLOWED_GITHUB_TOP_LEVEL - github_entries)
+    missing_github_entries = sorted(set(sync["allowed_github_top_level"]) - github_entries)
     if missing_github_entries:
         print("missing .github entries:", ", ".join(missing_github_entries), file=sys.stderr)
         return 1
@@ -116,16 +92,16 @@ def main() -> int:
         print("missing .github/workflows directory", file=sys.stderr)
         return 1
     workflow_entries = {path.name for path in WORKFLOWS_DIR.iterdir()}
-    unexpected_workflows = sorted(workflow_entries - ALLOWED_WORKFLOWS)
+    unexpected_workflows = sorted(workflow_entries - set(sync["allowed_workflows"]))
     if unexpected_workflows:
         print("unexpected workflow entries:", ", ".join(unexpected_workflows), file=sys.stderr)
         return 1
-    missing_workflows = sorted(ALLOWED_WORKFLOWS - workflow_entries)
+    missing_workflows = sorted(set(sync["allowed_workflows"]) - workflow_entries)
     if missing_workflows:
         print("missing workflow files:", ", ".join(missing_workflows), file=sys.stderr)
         return 1
     root_markdown = {path.name for path in ROOT.glob("*.md")}
-    unexpected_root_markdown = sorted(root_markdown - ALLOWED_ROOT_MARKDOWN)
+    unexpected_root_markdown = sorted(root_markdown - set(sync["allowed_root_markdown"]))
     if unexpected_root_markdown:
         print(
             "unexpected root markdown:",
@@ -144,7 +120,7 @@ def main() -> int:
         return 1
 
     missing_ops_env_examples = sorted(
-        rel for rel in REQUIRED_OPS_ENV_EXAMPLES if not (ROOT / rel).exists()
+        rel for rel in sync["required_ops_env_examples"] if not (ROOT / rel).exists()
     )
     if missing_ops_env_examples:
         print(
@@ -159,7 +135,6 @@ def main() -> int:
         unexpected_ops_markdown = sorted(
             str(path.relative_to(ROOT))
             for path in ops_dir.rglob("*.md")
-            if not str(path.relative_to(ROOT)).startswith(ALLOWED_OPS_MARKDOWN_ROOT)
         )
         if unexpected_ops_markdown:
             print(

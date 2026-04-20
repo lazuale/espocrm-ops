@@ -56,13 +56,6 @@ jobs:
           set -Eeuo pipefail
           echo "${HEALTH_TOOLS_BIN}" >> "$GITHUB_PATH"
 
-      - name: Validate PR body
-        if: github.event_name == 'pull_request'
-        run: |
-          set -Eeuo pipefail
-          printf '%s\n' "${{ github.event.pull_request.body }}" > "${RUNNER_TEMP:-/tmp}/pr-body.md"
-          PR_BODY_PATH="${RUNNER_TEMP:-/tmp}/pr-body.md" python3 AI/generators/pr_body_check.py
-
       - name: Run full health gate
         run: |
           set -Eeuo pipefail

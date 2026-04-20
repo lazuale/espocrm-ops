@@ -8,7 +8,7 @@ import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-SPEC = ROOT / "AI" / "spec" / "CONTRACT_SURFACE.spec"
+SPEC = ROOT / "AI" / "spec" / "SURFACE.spec"
 BASELINE = ROOT / "AI" / "compiled" / "SHELL_DEBT_BASELINE.json"
 
 

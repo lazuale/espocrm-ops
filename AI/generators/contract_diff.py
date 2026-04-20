@@ -9,7 +9,7 @@ import sys
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 BASELINE = ROOT / "AI" / "compiled" / "CONTRACT_BASELINE.json"
-SPEC = ROOT / "AI" / "spec" / "CONTRACT.spec"
+SPEC = ROOT / "AI" / "spec" / "SURFACE.spec"
 
 
 def sha256(path: pathlib.Path) -> str:

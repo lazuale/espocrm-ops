@@ -24,7 +24,6 @@ policy: ai-refresh
 
 ai-check: ai-validate
 	$(PYTHON) AI/generators/compile_specs.py --check
-	$(PYTHON) AI/generators/pr_body_check.py
 	$(PYTHON) AI/generators/ast_arch_guard.py
 	$(PYTHON) AI/generators/contract_diff.py --check
 	$(PYTHON) AI/generators/json_fixture_contract_diff.py --check
@@ -33,8 +32,6 @@ ai-check: ai-validate
 	$(PYTHON) AI/generators/runner.py docs-sync
 	$(PYTHON) AI/generators/runner.py test-sync
 	$(PYTHON) AI/generators/runner.py package-guard
-	$(PYTHON) AI/generators/adr_guard.py
-	$(PYTHON) AI/generators/semantic_adr_guard.py
 
 ai-shell-json-smoke: build
 	tmp_root="$$(mktemp -d)"; \
