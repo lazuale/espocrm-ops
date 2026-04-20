@@ -1,4 +1,4 @@
-name: Merge Gate
+name: Go CI
 
 on:
   push:
@@ -19,32 +19,20 @@ defaults:
     shell: bash
 
 jobs:
-  merge-gate:
-    timeout-minutes: 60
+  go-core:
+    timeout-minutes: 30
     runs-on: ubuntu-latest
     env:
-      BASE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.base.sha || github.event.before }}
       HEALTH_TOOLS_BIN: ${{ runner.temp }}/go-bin
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - uses: actions/setup-go@v6
         with:
           go-version-file: go.mod
           cache: true
-
-      - uses: actions/setup-python@v6
-        with:
-          python-version: "3.12"
-
-      - name: Install shellcheck
-        run: |
-          set -Eeuo pipefail
-          sudo apt-get update
-          sudo apt-get install --yes --no-install-recommends shellcheck
 
       - name: Install Go health tools
         run: |
@@ -56,7 +44,7 @@ jobs:
           set -Eeuo pipefail
           echo "${HEALTH_TOOLS_BIN}" >> "$GITHUB_PATH"
 
-      - name: Run full health gate
+      - name: Run Go CI
         run: |
           set -Eeuo pipefail
-          make check-full
+          make ci

@@ -6,10 +6,10 @@
 - The retained product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
 
 ## Authority
-- Repository authority is `AGENTS.md` -> `AI/spec/*` -> required generated enforcement under `AI/compiled/*` -> `Makefile` -> `.github/workflows/ai-governance.yml`.
-- `AI/compiled/*` is generated only. Do not edit it manually. Regenerate it with `make ai-refresh`.
-- `README.md` and `CONTRIBUTING.md` are pointer docs only.
-- If an archived doc conflicts with `AGENTS.md`, `AI/spec/*`, or generated enforcement artifacts, ignore the archived doc.
+- Repository authority for the retained product is `AGENTS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ai-governance.yml`.
+- `AI/*` is transitional governance machinery. It is not part of the default CI path and does not define the runtime product contract.
+- `README.md` and `CONTRIBUTING.md` are practical docs. If they drift from the retained Go product, fix them.
+- If an archived doc conflicts with `AGENTS.md` or the retained Go product, ignore the archived doc.
 
 ## Defaults
 - Block unless clearly safe.
@@ -45,5 +45,5 @@
 
 ## Done
 - Keep authority surfaces in sync.
-- Run `make ai-refresh` and `make ai-check` after governance or enforcement changes.
-- Run `make check-full` before claiming repository health after governance, contract, workflow, or enforcement changes.
+- Run `make ci` before claiming repository health after product, workflow, or contributor-path changes.
+- Use shell or AI checks only when intentionally working on those transitional paths.

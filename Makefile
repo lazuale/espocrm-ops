@@ -6,10 +6,16 @@ HEALTH_TOOLS_BIN ?= $(HOME)/go/bin
 GOVULNCHECK_VERSION ?= v1.2.0
 STATICCHECK_VERSION ?= v0.7.0
 GOLANGCI_LINT_VERSION ?= v2.11.4
-FAST_GATE_COMPONENTS := test vet ai-shell-json-smoke bashcheck shellcheck
 SHELL_SCRIPTS := scripts/espo.sh scripts/doctor.sh scripts/backup.sh scripts/restore.sh scripts/migrate.sh scripts/regression-test.sh scripts/lib/common.sh
 
-.PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke build test test-cli test-golden fmt vet clean integration ci check-fast check-fast-components check-full regression bashcheck shellcheck vulncheck staticcheck lint coverage install-health-tools install-ci-health-tools
+.PHONY: build test test-race test-cli test-golden fmt vet clean integration ci check-go lint coverage vulncheck staticcheck install-health-tools install-ci-health-tools legacy-ai-checks legacy-shell-checks ai-validate ai-refresh ai-check ai-shell-json-smoke regression bashcheck shellcheck
+
+check-go: build test test-race integration staticcheck lint
+
+ci: check-go
+
+test-race:
+	go test -race ./...
 
 ai-validate:
 	$(PYTHON) AI/generators/validate_specs.py
@@ -47,23 +53,9 @@ ai-shell-json-smoke: build
 	$(PYTHON) AI/generators/json_fixture_contract_diff.py --parse-files \
 		"$$tmp_root/out/doctor-dev.json"
 
-check-fast-components: $(FAST_GATE_COMPONENTS)
+legacy-ai-checks: ai-validate ai-check ai-shell-json-smoke
 
-check-fast: ai-check check-fast-components
-
-check-full:
-	$(MAKE) ai-refresh
-	git diff --exit-code -- AI/compiled
-	$(MAKE) ai-check
-	$(MAKE) check-fast-components
-	go test -race ./...
-	$(MAKE) staticcheck
-	$(MAKE) lint
-	$(MAKE) coverage
-	$(MAKE) integration
-	$(MAKE) regression
-
-ci: check-fast
+legacy-shell-checks: bashcheck shellcheck regression
 
 build:
 	mkdir -p bin

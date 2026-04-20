@@ -1,0 +1,5 @@
+Deprecated transitional systemd units.
+
+These units still target shell entrypoints under `scripts/`.
+Do not extend them in their current form.
+Either rewrite them to call `espops` directly or remove them in a later cleanup pass.
