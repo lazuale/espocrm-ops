@@ -3,7 +3,6 @@ package restore
 import (
 	"fmt"
 	"io"
-	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
@@ -77,8 +76,4 @@ func applySnapshotBackup(req snapshotBackupRequest) (snapshotBackupInfo, error) 
 	info.FilesSidecarPath = backupInfo.FilesSidecarPath
 
 	return info, nil
-}
-
-func snapshotDeadline(timeoutSeconds int) time.Time {
-	return time.Now().UTC().Add(time.Duration(timeoutSeconds) * time.Second)
 }

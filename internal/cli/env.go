@@ -8,18 +8,6 @@ import (
 	"strings"
 )
 
-func envDefault(key, fallback string) string {
-	if v := strings.TrimSpace(os.Getenv(key)); v != "" {
-		return v
-	}
-
-	return fallback
-}
-
-func currentProcessEnv() []string {
-	return append([]string(nil), os.Environ()...)
-}
-
 func envFileContourHint() string {
 	return strings.TrimSpace(os.Getenv("ESPO_ENV_FILE_CONTOUR"))
 }
@@ -83,19 +71,6 @@ func loadBackupExecutionConfigFromValues(projectDir string, values map[string]st
 	}, nil
 }
 
-func loadBackupExecutionConfig(projectDir string) (backupExecutionConfig, error) {
-	values := map[string]string{}
-	for _, entry := range os.Environ() {
-		key, value, ok := strings.Cut(entry, "=")
-		if !ok {
-			continue
-		}
-		values[key] = value
-	}
-
-	return loadBackupExecutionConfigFromValues(projectDir, values)
-}
-
 func validateBackupExecutionConfig(cfg backupExecutionConfig, requireDB bool) error {
 	if strings.TrimSpace(cfg.BackupRoot) == "" {
 		return usageError(fmt.Errorf("BACKUP_ROOT must not be blank"))
@@ -126,15 +101,6 @@ func validateBackupExecutionConfig(cfg backupExecutionConfig, requireDB bool) er
 	}
 
 	return nil
-}
-
-func requireEnvValue(name string) (string, error) {
-	value := strings.TrimSpace(os.Getenv(name))
-	if value == "" {
-		return "", usageError(fmt.Errorf("%s is required", name))
-	}
-
-	return value, nil
 }
 
 func requireMapValue(values map[string]string, name string) (string, error) {

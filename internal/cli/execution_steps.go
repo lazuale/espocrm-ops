@@ -15,23 +15,6 @@ type stepRenderOptions struct {
 	StatusText       func(string) string
 }
 
-func renderWarningsBlock(w io.Writer, warnings []string) error {
-	if len(warnings) == 0 {
-		return nil
-	}
-
-	if _, err := fmt.Fprintln(w, "\nWarnings:"); err != nil {
-		return err
-	}
-	for _, warning := range warnings {
-		if _, err := fmt.Fprintf(w, "- %s\n", warning); err != nil {
-			return err
-		}
-	}
-
-	return nil
-}
-
 func renderStepItemsBlock(w io.Writer, items []any, extract func(any) (result.SectionItem, error), opts stepRenderOptions) error {
 	if len(items) == 0 {
 		return nil

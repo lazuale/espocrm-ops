@@ -1,9 +1,7 @@
 package cli
 
 import (
-	"archive/tar"
 	"bytes"
-	"compress/gzip"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -135,19 +133,6 @@ func bindTestApp(cmd *cobra.Command, opts ...testAppOption) *cobra.Command {
 	return bindApp(cmd, newTestApp(opts...))
 }
 
-func writeJournalEntryFile(t *testing.T, dir, name string, entry any) {
-	t.Helper()
-
-	raw, err := json.MarshalIndent(entry, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(filepath.Join(dir, name), raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
 func assertGoldenJSON(t *testing.T, got []byte, goldenPath string) {
 	t.Helper()
 
@@ -241,37 +226,6 @@ func assertNoJournalFiles(t *testing.T, journalDir string) {
 	}
 	if len(paths) != 0 {
 		t.Fatalf("expected no journal files, got %+v", paths)
-	}
-}
-
-func writeOrderedTarGzFile(t *testing.T, path string, entries ...any) {
-	t.Helper()
-
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer closeCLIArchiveResource(t, "ordered tar archive file", f)
-
-	gz := gzip.NewWriter(f)
-	defer closeCLIArchiveResource(t, "ordered tar archive gzip writer", gz)
-
-	tw := tar.NewWriter(gz)
-	defer closeCLIArchiveResource(t, "ordered tar archive writer", tw)
-
-	for i := 0; i < len(entries); i += 2 {
-		hdr, ok := entries[i].(tar.Header)
-		if !ok {
-			t.Fatalf("entry %d header has type %T", i, entries[i])
-		}
-		if err := tw.WriteHeader(&hdr); err != nil {
-			t.Fatal(err)
-		}
-		if body, _ := entries[i+1].([]byte); len(body) != 0 {
-			if _, err := tw.Write(body); err != nil {
-				t.Fatal(err)
-			}
-		}
 	}
 }
 

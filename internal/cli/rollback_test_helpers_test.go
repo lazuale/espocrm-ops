@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -343,73 +342,4 @@ func containsAll(text string, parts ...string) bool {
 		}
 	}
 	return true
-}
-
-func normalizeRollbackJSON(t *testing.T, raw []byte) []byte {
-	t.Helper()
-
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
-	}
-
-	replacements := map[string]string{}
-	if artifacts, ok := obj["artifacts"].(map[string]any); ok {
-		for key, placeholder := range map[string]string{
-			"project_dir":             "REPLACE_PROJECT_DIR",
-			"compose_file":            "REPLACE_COMPOSE_FILE",
-			"env_file":                "REPLACE_ENV_FILE",
-			"backup_root":             "REPLACE_BACKUP_ROOT",
-			"site_url":                "REPLACE_SITE_URL",
-			"manifest_txt":            "REPLACE_MANIFEST_TXT",
-			"manifest_json":           "REPLACE_MANIFEST_JSON",
-			"db_backup":               "REPLACE_DB_BACKUP",
-			"files_backup":            "REPLACE_FILES_BACKUP",
-			"snapshot_manifest_txt":   "REPLACE_SNAPSHOT_MANIFEST_TXT",
-			"snapshot_manifest_json":  "REPLACE_SNAPSHOT_MANIFEST_JSON",
-			"snapshot_db_backup":      "REPLACE_SNAPSHOT_DB_BACKUP",
-			"snapshot_files_backup":   "REPLACE_SNAPSHOT_FILES_BACKUP",
-			"snapshot_db_checksum":    "REPLACE_SNAPSHOT_DB_CHECKSUM",
-			"snapshot_files_checksum": "REPLACE_SNAPSHOT_FILES_CHECKSUM",
-		} {
-			value, ok := artifacts[key].(string)
-			if !ok || value == "" {
-				continue
-			}
-			replacements[value] = placeholder
-			artifacts[key] = placeholder
-		}
-	}
-
-	if warnings, ok := obj["warnings"].([]any); ok {
-		for idx, rawWarning := range warnings {
-			warning, ok := rawWarning.(string)
-			if !ok {
-				continue
-			}
-			warnings[idx] = replaceKnownPaths(warning, replacements)
-		}
-	}
-
-	if items, ok := obj["items"].([]any); ok {
-		for _, rawItem := range items {
-			item, ok := rawItem.(map[string]any)
-			if !ok {
-				continue
-			}
-			if value, ok := item["details"].(string); ok {
-				item["details"] = replaceKnownPaths(value, replacements)
-			}
-			if value, ok := item["action"].(string); ok {
-				item["action"] = replaceKnownPaths(value, replacements)
-			}
-		}
-	}
-
-	out, err := json.Marshal(obj)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return out
 }
