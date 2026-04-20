@@ -15,7 +15,6 @@ type OperationContextRequest struct {
 	Operation       string
 	ProjectDir      string
 	EnvFileOverride string
-	EnvContourHint  string
 	LogWriter       io.Writer
 }
 
@@ -37,7 +36,7 @@ func PrepareOperation(req OperationContextRequest) (OperationContext, error) {
 		ProjectDir: strings.TrimSpace(req.ProjectDir),
 	}
 
-	env, err := platformconfig.LoadOperationEnv(ctx.ProjectDir, ctx.Scope, req.EnvFileOverride, req.EnvContourHint)
+	env, err := platformconfig.LoadOperationEnv(ctx.ProjectDir, ctx.Scope, req.EnvFileOverride)
 	if err != nil {
 		return ctx, wrapOperationEnvError(err)
 	}
@@ -63,10 +62,6 @@ func PrepareOperation(req OperationContextRequest) (OperationContext, error) {
 	ctx.maintenance = maintenanceLock
 
 	return ctx, nil
-}
-
-func (c OperationContext) ApplyEnv(base []string, extra map[string]string) []string {
-	return platformconfig.ApplyOperationEnv(base, c.Env, extra)
 }
 
 func (c *OperationContext) Release() error {

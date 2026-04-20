@@ -184,7 +184,6 @@ func runRestore(cmd *cobra.Command, in restoreInput) error {
 		ProjectDir:      in.projectDir,
 		ComposeFile:     in.composeFile,
 		EnvFileOverride: in.envFile,
-		EnvContourHint:  envFileContourHint(),
 		ManifestPath:    in.manifestPath,
 		DBBackup:        in.dbBackup,
 		FilesBackup:     in.filesBackup,

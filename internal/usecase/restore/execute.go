@@ -9,11 +9,8 @@ import (
 	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
-	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
-	"github.com/lazuale/espocrm-ops/internal/platform/backupstore"
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
-	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
 	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
@@ -40,7 +37,6 @@ type ExecuteRequest struct {
 	ProjectDir      string
 	ComposeFile     string
 	EnvFileOverride string
-	EnvContourHint  string
 	ManifestPath    string
 	DBBackup        string
 	FilesBackup     string
@@ -148,7 +144,6 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Operation:       "restore",
 		ProjectDir:      info.ProjectDir,
 		EnvFileOverride: strings.TrimSpace(req.EnvFileOverride),
-		EnvContourHint:  strings.TrimSpace(req.EnvContourHint),
 		LogWriter:       req.LogWriter,
 	})
 	if err != nil {
@@ -417,211 +412,6 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	return info, nil
 }
 
-func buildDryRun(ctx maintenanceusecase.OperationContext, req ExecuteRequest, info ExecuteInfo, source executeSource, runtimeInfo runtimePrepareInfo) (ExecuteInfo, error) {
-	info.StartedDBTemporarily = runtimeInfo.StartedDBTemporarily
-	info.AppServicesWereRunning = runtimeInfo.AppServicesWereRunning
-	info.Steps = append(info.Steps, ExecuteStep{
-		Code:    "runtime_prepare",
-		Status:  RestoreStepStatusWouldRun,
-		Summary: "Runtime preparation would run",
-		Details: runtimePrepareDetails(runtimeInfo, req),
-	})
-
-	if req.NoSnapshot {
-		info.Steps = append(info.Steps, ExecuteStep{
-			Code:    "snapshot_recovery_point",
-			Status:  RestoreStepStatusSkipped,
-			Summary: "Emergency recovery point skipped",
-			Details: "The pre-restore emergency recovery point would be skipped because of --no-snapshot.",
-		})
-	} else {
-		info.Steps = append(info.Steps, ExecuteStep{
-			Code:    "snapshot_recovery_point",
-			Status:  RestoreStepStatusWouldRun,
-			Summary: "Emergency recovery point would run",
-			Details: snapshotPlanDetails(req),
-		})
-	}
-
-	if req.SkipDB {
-		info.Steps = append(info.Steps, ExecuteStep{
-			Code:    "db_restore",
-			Status:  RestoreStepStatusSkipped,
-			Summary: "Database restore skipped",
-			Details: "The database restore would be skipped because of --skip-db.",
-		})
-	} else {
-		if err := dryRunDBChecks(ctx, source, runtimeInfo); err != nil {
-			info.Steps = append(info.Steps,
-				ExecuteStep{
-					Code:    "db_restore",
-					Status:  RestoreStepStatusFailed,
-					Summary: "Database restore planning failed",
-					Details: err.Error(),
-					Action:  "Resolve the database restore planning failure before rerunning restore.",
-				},
-				blockedRestoreStep("files_restore", "Files restore did not run because database restore planning failed"),
-				blockedRestoreStep("runtime_return", "Runtime return did not run because database restore planning failed"),
-			)
-			return info, wrapRestoreExecuteError(err)
-		}
-		info.Steps = append(info.Steps, ExecuteStep{
-			Code:    "db_restore",
-			Status:  RestoreStepStatusWouldRun,
-			Summary: "Database restore would run",
-			Details: dryRunDBDetails(ctx, source, runtimeInfo),
-		})
-	}
-
-	if req.SkipFiles {
-		info.Steps = append(info.Steps, ExecuteStep{
-			Code:    "files_restore",
-			Status:  RestoreStepStatusSkipped,
-			Summary: "Files restore skipped",
-			Details: "The files restore would be skipped because of --skip-files.",
-		})
-	} else {
-		if err := dryRunFilesChecks(ctx, source); err != nil {
-			info.Steps = append(info.Steps,
-				ExecuteStep{
-					Code:    "files_restore",
-					Status:  RestoreStepStatusFailed,
-					Summary: "Files restore planning failed",
-					Details: err.Error(),
-					Action:  "Resolve the files restore planning failure before rerunning restore.",
-				},
-				blockedRestoreStep("runtime_return", "Runtime return did not run because files restore planning failed"),
-			)
-			return info, wrapRestoreExecuteError(err)
-		}
-		info.Steps = append(info.Steps, ExecuteStep{
-			Code:    "files_restore",
-			Status:  RestoreStepStatusWouldRun,
-			Summary: "Files restore would run",
-			Details: dryRunFilesDetails(ctx, source),
-		})
-	}
-
-	info.Steps = append(info.Steps, ExecuteStep{
-		Code:    "runtime_return",
-		Status:  dryRunRuntimeReturnStatus(runtimeInfo, req.NoStart),
-		Summary: dryRunRuntimeReturnSummary(runtimeInfo, req.NoStart),
-		Details: dryRunRuntimeReturnDetails(runtimeInfo, req.NoStart),
-	})
-	info.Warnings = reporting.DedupeStrings(info.Warnings)
-	return info, nil
-}
-
-func resolveExecuteSource(backupRoot string, req ExecuteRequest) (executeSource, error) {
-	manifestPath := strings.TrimSpace(req.ManifestPath)
-	dbBackup := strings.TrimSpace(req.DBBackup)
-	filesBackup := strings.TrimSpace(req.FilesBackup)
-
-	if manifestPath != "" {
-		info, err := backupstore.VerifyManifestDetailed(manifestPath)
-		if err != nil {
-			return executeSource{}, executeFailure{
-				Summary: "The selected restore manifest is not valid",
-				Action:  "Choose a valid manifest JSON that references readable, verified backup artifacts.",
-				Err:     err,
-			}
-		}
-		return executeSource{
-			SelectionMode: manifestSelectionMode(req),
-			SourceKind:    "manifest",
-			ManifestJSON:  filepath.Clean(manifestPath),
-			ManifestTXT:   matchingManifestTXT(manifestPath),
-			DBBackup:      info.DBBackupPath,
-			FilesBackup:   info.FilesPath,
-		}, nil
-	}
-
-	switch {
-	case req.SkipDB:
-		filesBackup = filepath.Clean(filesBackup)
-		if err := backupstore.VerifyDirectFilesBackup(filesBackup); err != nil {
-			return executeSource{}, executeFailure{
-				Summary: "The selected files backup is not valid",
-				Action:  "Choose a readable .tar.gz files backup with a valid .sha256 sidecar.",
-				Err:     err,
-			}
-		}
-		return executeSource{
-			SelectionMode: "direct_files_only",
-			SourceKind:    "direct",
-			FilesBackup:   filesBackup,
-		}, nil
-	case req.SkipFiles:
-		dbBackup = filepath.Clean(dbBackup)
-		if err := backupstore.VerifyDirectDBBackup(dbBackup); err != nil {
-			return executeSource{}, executeFailure{
-				Summary: "The selected database backup is not valid",
-				Action:  "Choose a readable .sql.gz database backup with a valid .sha256 sidecar.",
-				Err:     err,
-			}
-		}
-		return executeSource{
-			SelectionMode: "direct_db_only",
-			SourceKind:    "direct",
-			DBBackup:      dbBackup,
-		}, nil
-	default:
-		dbBackup = filepath.Clean(dbBackup)
-		filesBackup = filepath.Clean(filesBackup)
-		if err := backupstore.VerifyDirectDBBackup(dbBackup); err != nil {
-			return executeSource{}, executeFailure{
-				Summary: "The selected database backup is not valid",
-				Action:  "Choose a readable .sql.gz database backup with a valid .sha256 sidecar.",
-				Err:     err,
-			}
-		}
-		if err := backupstore.VerifyDirectFilesBackup(filesBackup); err != nil {
-			return executeSource{}, executeFailure{
-				Summary: "The selected files backup is not valid",
-				Action:  "Choose a readable .tar.gz files backup with a valid .sha256 sidecar.",
-				Err:     err,
-			}
-		}
-		if err := validateDirectPair(dbBackup, filesBackup); err != nil {
-			return executeSource{}, err
-		}
-		return executeSource{
-			SelectionMode: "direct_pair",
-			SourceKind:    "direct",
-			DBBackup:      dbBackup,
-			FilesBackup:   filesBackup,
-		}, nil
-	}
-}
-
-func validateDirectPair(dbPath, filesPath string) error {
-	dbGroup, err := domainbackup.ParseDBBackupName(dbPath)
-	if err != nil {
-		return executeFailure{
-			Summary: "The selected database backup name is unsupported",
-			Action:  "Choose a canonical .sql.gz backup path or use a manifest-backed restore.",
-			Err:     err,
-		}
-	}
-	filesGroup, err := domainbackup.ParseFilesBackupName(filesPath)
-	if err != nil {
-		return executeFailure{
-			Summary: "The selected files backup name is unsupported",
-			Action:  "Choose a canonical .tar.gz backup path or use a manifest-backed restore.",
-			Err:     err,
-		}
-	}
-	if dbGroup != filesGroup {
-		return executeFailure{
-			Summary: "The selected database and files backups do not belong to the same backup set",
-			Action:  "Pass database and files backups from the same backup set or use a manifest-backed restore.",
-			Err:     fmt.Errorf("database backup resolves to %s %s, but files backup resolves to %s %s", dbGroup.Prefix, dbGroup.Stamp, filesGroup.Prefix, filesGroup.Stamp),
-		}
-	}
-
-	return nil
-}
-
 func inspectRuntime(projectDir, composeFile, envFile string, needDB bool) (runtimePrepareInfo, error) {
 	info := runtimePrepareInfo{}
 	cfg := platformdocker.ComposeConfig{
@@ -728,55 +518,6 @@ func returnRuntime(projectDir, composeFile, envFile string, prep runtimePrepareI
 	return info, nil
 }
 
-func dryRunDBChecks(ctx maintenanceusecase.OperationContext, source executeSource, runtimeInfo runtimePrepareInfo) error {
-	lock, err := platformlocks.AcquireRestoreDBLock()
-	if err != nil {
-		return LockError{Err: fmt.Errorf("db restore lock failed: %w", err)}
-	}
-	if releaseErr := lock.Release(); releaseErr != nil {
-		return fmt.Errorf("release db restore lock: %w", releaseErr)
-	}
-
-	req := buildDBRestoreRequest(ctx, source, runtimeInfo.DBContainer)
-	req.DryRun = true
-	if _, err := configResolveDBPassword(req); err != nil {
-		return err
-	}
-	if _, _, err := resolveDBRootPasswordForPlan(req); err != nil {
-		return err
-	}
-
-	if runtimeInfo.StartedDBTemporarily {
-		if err := platformdocker.CheckDockerAvailable(); err != nil {
-			return PreflightError{Err: err}
-		}
-		return nil
-	}
-
-	_, err = PreflightDBRestore(DBPreflightRequest{
-		DBBackup:    source.DBBackup,
-		DBContainer: runtimeInfo.DBContainer,
-	})
-	return err
-}
-
-func dryRunFilesChecks(ctx maintenanceusecase.OperationContext, source executeSource) error {
-	lock, err := platformlocks.AcquireRestoreFilesLock()
-	if err != nil {
-		return LockError{Err: fmt.Errorf("files restore lock failed: %w", err)}
-	}
-	if releaseErr := lock.Release(); releaseErr != nil {
-		return fmt.Errorf("release files restore lock: %w", releaseErr)
-	}
-
-	targetDir := platformconfig.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir())
-	_, err = PreflightFilesRestore(FilesPreflightRequest{
-		FilesBackup: source.FilesBackup,
-		TargetDir:   targetDir,
-	})
-	return err
-}
-
 func configResolveDBPassword(req RestoreDBRequest) (string, error) {
 	password, err := platformconfig.ResolveDBPassword(platformconfig.DBConfig{
 		Container:    req.DBContainer,
@@ -837,52 +578,6 @@ func buildFilesRestoreRequest(ctx maintenanceusecase.OperationContext, source ex
 	}
 }
 
-func matchingManifestTXT(manifestJSON string) string {
-	if !strings.HasSuffix(manifestJSON, ".manifest.json") {
-		return ""
-	}
-	return strings.TrimSuffix(manifestJSON, ".manifest.json") + ".manifest.txt"
-}
-
-func manifestSelectionMode(req ExecuteRequest) string {
-	switch {
-	case req.SkipDB:
-		return "manifest_files_only"
-	case req.SkipFiles:
-		return "manifest_db_only"
-	default:
-		return "manifest_full"
-	}
-}
-
-func restoreSourceSummary(source executeSource) string {
-	if source.SourceKind == "manifest" {
-		return "Restore source resolution completed from manifest"
-	}
-
-	switch source.SelectionMode {
-	case "direct_db_only":
-		return "Restore source resolution completed from a direct database backup"
-	case "direct_files_only":
-		return "Restore source resolution completed from a direct files backup"
-	default:
-		return "Restore source resolution completed from a direct backup pair"
-	}
-}
-
-func restoreSourceDetails(source executeSource) string {
-	switch source.SourceKind {
-	case "manifest":
-		return fmt.Sprintf("Using manifest %s with database backup %s and files backup %s.", source.ManifestJSON, source.DBBackup, source.FilesBackup)
-	case "direct_db_only":
-		return fmt.Sprintf("Using direct database backup %s.", source.DBBackup)
-	case "direct_files_only":
-		return fmt.Sprintf("Using direct files backup %s.", source.FilesBackup)
-	default:
-		return fmt.Sprintf("Using direct database backup %s and files backup %s.", source.DBBackup, source.FilesBackup)
-	}
-}
-
 func runtimePrepareDetails(info runtimePrepareInfo, req ExecuteRequest) string {
 	parts := []string{}
 	if info.StartedDBTemporarily {
@@ -914,17 +609,6 @@ func snapshotDetails(info snapshotBackupInfo) string {
 	return strings.Join(parts, " ")
 }
 
-func snapshotPlanDetails(req ExecuteRequest) string {
-	switch {
-	case req.SkipDB:
-		return "Would create a files-only emergency recovery point before the destructive restore step."
-	case req.SkipFiles:
-		return "Would create a database-only emergency recovery point before the destructive restore step."
-	default:
-		return "Would create a full emergency recovery point before the destructive restore steps."
-	}
-}
-
 func dbRestoreDetails(ctx maintenanceusecase.OperationContext, source executeSource, dbContainer string) string {
 	details := fmt.Sprintf("Restored database %s in container %s from %s.", strings.TrimSpace(ctx.Env.Value("DB_NAME")), dbContainer, source.DBBackup)
 	if strings.TrimSpace(source.ManifestJSON) != "" {
@@ -940,21 +624,6 @@ func filesRestoreDetails(ctx maintenanceusecase.OperationContext, source execute
 		details += fmt.Sprintf(" The manifest %s anchored the selected backup set.", source.ManifestJSON)
 	}
 	return details
-}
-
-func dryRunDBDetails(ctx maintenanceusecase.OperationContext, source executeSource, runtimeInfo runtimePrepareInfo) string {
-	details := fmt.Sprintf("Would restore database %s from %s.", strings.TrimSpace(ctx.Env.Value("DB_NAME")), source.DBBackup)
-	if strings.TrimSpace(runtimeInfo.DBContainer) != "" {
-		details += fmt.Sprintf(" The current db container resolves to %s.", runtimeInfo.DBContainer)
-	} else if runtimeInfo.StartedDBTemporarily {
-		details += " Runtime preparation would start the db service first."
-	}
-	return details
-}
-
-func dryRunFilesDetails(ctx maintenanceusecase.OperationContext, source executeSource) string {
-	targetDir := platformconfig.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir())
-	return fmt.Sprintf("Would replace %s from %s and then reconcile the storage permissions to the runtime image contract.", targetDir, source.FilesBackup)
 }
 
 func runtimeReturnStatus(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo, validatedServices []string) string {
@@ -1002,36 +671,6 @@ func runtimeReturnDetails(req ExecuteRequest, prep runtimePrepareInfo, ret runti
 	}
 
 	return details
-}
-
-func dryRunRuntimeReturnStatus(runtimeInfo runtimePrepareInfo, noStart bool) string {
-	if len(runtimeInfo.StoppedAppServices) == 0 && !runtimeInfo.StartedDBTemporarily {
-		return RestoreStepStatusSkipped
-	}
-	if len(runtimeInfo.StoppedAppServices) != 0 && noStart {
-		return RestoreStepStatusSkipped
-	}
-	return RestoreStepStatusWouldRun
-}
-
-func dryRunRuntimeReturnSummary(runtimeInfo runtimePrepareInfo, noStart bool) string {
-	if dryRunRuntimeReturnStatus(runtimeInfo, noStart) == RestoreStepStatusWouldRun {
-		return "Runtime return would run"
-	}
-	return "Runtime return skipped"
-}
-
-func dryRunRuntimeReturnDetails(runtimeInfo runtimePrepareInfo, noStart bool) string {
-	switch {
-	case len(runtimeInfo.StoppedAppServices) != 0 && !noStart:
-		return fmt.Sprintf("Would restart application services after restore: %s.", strings.Join(runtimeInfo.StoppedAppServices, ", "))
-	case runtimeInfo.StartedDBTemporarily && len(runtimeInfo.StoppedAppServices) == 0:
-		return "Would stop the db service again after restore to return the contour to its prior stopped state."
-	case len(runtimeInfo.StoppedAppServices) != 0 && noStart:
-		return "Application services would remain stopped because of --no-start."
-	default:
-		return "The contour runtime state would already match the requested post-restore state."
-	}
 }
 
 func resolvedBackupNamePrefix(env platformconfig.OperationEnv) string {

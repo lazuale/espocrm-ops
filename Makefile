@@ -41,7 +41,7 @@ coverage:
 install-health-tools:
 	mkdir -p "$(HEALTH_TOOLS_BIN)"
 	GOBIN="$(HEALTH_TOOLS_BIN)" go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
-	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(HEALTH_TOOLS_BIN)" $(GOLANGCI_LINT_VERSION)
+	GOBIN="$(HEALTH_TOOLS_BIN)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
 
 install-ci-health-tools: install-health-tools
 

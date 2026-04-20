@@ -39,7 +39,6 @@ func newDoctorCmd() *cobra.Command {
 				ProjectDir:      in.projectDir,
 				ComposeFile:     in.composeFile,
 				EnvFileOverride: in.envFile,
-				EnvContourHint:  envFileContourHint(),
 			})
 			if err != nil {
 				return err

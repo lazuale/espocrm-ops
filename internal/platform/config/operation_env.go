@@ -6,56 +6,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 	"syscall"
 
 	"github.com/lazuale/espocrm-ops/internal/opsconfig"
 )
-
-var knownOperationalEnvVars = []string{
-	"ESPO_CONTOUR",
-	"COMPOSE_PROJECT_NAME",
-	"ESPOCRM_IMAGE",
-	"MARIADB_TAG",
-	"DB_STORAGE_DIR",
-	"ESPO_STORAGE_DIR",
-	"BACKUP_ROOT",
-	"BACKUP_NAME_PREFIX",
-	"BACKUP_RETENTION_DAYS",
-	"BACKUP_MAX_DB_AGE_HOURS",
-	"BACKUP_MAX_FILES_AGE_HOURS",
-	"REPORT_RETENTION_DAYS",
-	"SUPPORT_RETENTION_DAYS",
-	"MIN_FREE_DISK_MB",
-	"DOCKER_LOG_MAX_SIZE",
-	"DOCKER_LOG_MAX_FILE",
-	"DB_MEM_LIMIT",
-	"DB_CPUS",
-	"DB_PIDS_LIMIT",
-	"ESPO_MEM_LIMIT",
-	"ESPO_CPUS",
-	"ESPO_PIDS_LIMIT",
-	"DAEMON_MEM_LIMIT",
-	"DAEMON_CPUS",
-	"DAEMON_PIDS_LIMIT",
-	"WS_MEM_LIMIT",
-	"WS_CPUS",
-	"WS_PIDS_LIMIT",
-	"APP_PORT",
-	"WS_PORT",
-	"SITE_URL",
-	"WS_PUBLIC_URL",
-	"DB_ROOT_PASSWORD",
-	"DB_NAME",
-	"DB_USER",
-	"DB_PASSWORD",
-	"ADMIN_USERNAME",
-	"ADMIN_PASSWORD",
-	"ESPO_DEFAULT_LANGUAGE",
-	"ESPO_TIME_ZONE",
-	"ESPO_LOGGER_LEVEL",
-}
 
 type OperationEnv struct {
 	FilePath        string
@@ -87,7 +42,7 @@ func (e OperationEnv) BackupRoot() string {
 	return e.Value("BACKUP_ROOT")
 }
 
-func LoadOperationEnv(projectDir, scope, overridePath, contourHint string) (OperationEnv, error) {
+func LoadOperationEnv(projectDir, scope, overridePath string) (OperationEnv, error) {
 	resolvedPath, err := resolveOperationEnvFile(projectDir, scope, overridePath)
 	if err != nil {
 		return OperationEnv{}, err
@@ -108,7 +63,7 @@ func LoadOperationEnv(projectDir, scope, overridePath, contourHint string) (Oper
 		}
 	}
 
-	resolvedContour, err := validateLoadedEnvContour(resolvedPath, scope, contourHint, values["ESPO_CONTOUR"])
+	resolvedContour, err := validateLoadedEnvContour(resolvedPath, scope, values["ESPO_CONTOUR"])
 	if err != nil {
 		return OperationEnv{}, err
 	}
@@ -118,58 +73,6 @@ func LoadOperationEnv(projectDir, scope, overridePath, contourHint string) (Oper
 		ResolvedContour: resolvedContour,
 		Values:          values,
 	}, nil
-}
-
-func ApplyOperationEnv(base []string, env OperationEnv, extra map[string]string) []string {
-	filtered := []string{}
-	blocked := map[string]bool{}
-
-	for _, key := range knownOperationalEnvVars {
-		blocked[key] = true
-	}
-	for _, key := range []string{
-		"ENV_FILE",
-		"ESPO_ENV",
-		"RESOLVED_ENV_CONTOUR",
-		"ESPO_OPERATION_LOCK",
-		"ESPO_MAINTENANCE_LOCK",
-		"ESPO_SHELL_EXEC_CONTEXT",
-	} {
-		blocked[key] = true
-	}
-
-	for _, entry := range base {
-		key := envEntryKey(entry)
-		if blocked[key] {
-			continue
-		}
-		filtered = append(filtered, entry)
-	}
-
-	for key, value := range env.Values {
-		filtered = append(filtered, key+"="+value)
-	}
-
-	filtered = append(filtered,
-		"ENV_FILE="+env.FilePath,
-		"ESPO_ENV="+env.ResolvedContour,
-		"RESOLVED_ENV_CONTOUR="+env.ResolvedContour,
-	)
-
-	keys := make([]string, 0, len(extra))
-	for key := range extra {
-		keys = append(keys, key)
-	}
-	sort.Strings(keys)
-	for _, key := range keys {
-		filtered = append(filtered, key+"="+extra[key])
-	}
-
-	return filtered
-}
-
-func KnownOperationalEnvVars() []string {
-	return append([]string(nil), knownOperationalEnvVars...)
 }
 
 func ResolveProjectPath(projectDir, value string) string {
@@ -390,9 +293,8 @@ func decodeUnquotedEnvValue(rawValue, path string, lineNo int) (string, error) {
 	return rawValue, nil
 }
 
-func validateLoadedEnvContour(path, requestedScope, contourHint, declaredContour string) (string, error) {
+func validateLoadedEnvContour(path, requestedScope, declaredContour string) (string, error) {
 	requestedScope = strings.TrimSpace(requestedScope)
-	contourHint = strings.TrimSpace(contourHint)
 	declaredContour = strings.TrimSpace(declaredContour)
 
 	pathContour, err := inferEnvFileContourFromPath(path)
@@ -403,28 +305,16 @@ func validateLoadedEnvContour(path, requestedScope, contourHint, declaredContour
 	if declaredContour != "" && !supportedContour(declaredContour) {
 		return "", InvalidEnvFileError{Path: path, Message: fmt.Sprintf("ESPO_CONTOUR in the env file must be dev or prod: %s", declaredContour)}
 	}
-	if contourHint != "" && !supportedContour(contourHint) {
-		return "", InvalidEnvFileError{Path: path, Message: fmt.Sprintf("ESPO_ENV_FILE_CONTOUR must be dev or prod: %s", contourHint)}
-	}
 	if pathContour != "" && declaredContour != "" && pathContour != declaredContour {
 		return "", InvalidEnvFileError{Path: path, Message: fmt.Sprintf("env filename points to contour %q, but ESPO_CONTOUR=%s", pathContour, declaredContour)}
-	}
-	if contourHint != "" && declaredContour != "" && contourHint != declaredContour {
-		return "", InvalidEnvFileError{Path: path, Message: fmt.Sprintf("ESPO_ENV_FILE_CONTOUR=%s conflicts with ESPO_CONTOUR=%s", contourHint, declaredContour)}
-	}
-	if contourHint != "" && pathContour != "" && contourHint != pathContour {
-		return "", InvalidEnvFileError{Path: path, Message: fmt.Sprintf("ESPO_ENV_FILE_CONTOUR=%s conflicts with the env filename for contour %q", contourHint, pathContour)}
 	}
 
 	effective := declaredContour
 	if effective == "" {
-		effective = contourHint
-	}
-	if effective == "" {
 		effective = pathContour
 	}
 	if effective == "" {
-		return "", InvalidEnvFileError{Path: path, Message: "could not determine env file contour; add ESPO_CONTOUR=dev|prod or set ESPO_ENV_FILE_CONTOUR=dev|prod"}
+		return "", InvalidEnvFileError{Path: path, Message: "could not determine env file contour; add ESPO_CONTOUR=dev|prod or use a filename containing a dev/prod token"}
 	}
 	if effective != requestedScope {
 		return "", InvalidEnvFileError{Path: path, Message: fmt.Sprintf("env file %q belongs to contour %q, but the command was run for %q", path, effective, requestedScope)}
@@ -482,13 +372,6 @@ func supportedContour(value string) bool {
 	default:
 		return false
 	}
-}
-
-func envEntryKey(entry string) string {
-	if before, _, ok := strings.Cut(entry, "="); ok {
-		return before
-	}
-	return entry
 }
 
 type MissingEnvFileError struct {

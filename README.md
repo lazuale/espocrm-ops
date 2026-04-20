@@ -21,6 +21,12 @@ The retained product surface is intentionally small:
 
 This repository is not a general EspoCRM management toolkit. It is a small operational CLI.
 
+Operational control is explicit:
+
+- use CLI flags
+- use the contour env file
+- do not expect hidden process-env toggles for contour hinting, inherited locks, helper image selection, or journal location
+
 ## Prerequisites
 
 - Go `1.26.x`

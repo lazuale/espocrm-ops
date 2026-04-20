@@ -179,16 +179,12 @@ func TestProductionCLIEnvReadsStayAtEdgeHelpers(t *testing.T) {
 	root := repoRoot(t)
 	cliDir := filepath.Join(root, "internal", "cli")
 	fset := token.NewFileSet()
-	allowed := map[string]bool{
-		filepath.Join(cliDir, "env.go"):     true,
-		filepath.Join(cliDir, "options.go"): true,
-	}
 
 	err := filepath.WalkDir(cliDir, func(path string, entry os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") || allowed[path] {
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
 			return nil
 		}
 

@@ -57,6 +57,7 @@ make ci
 - Prefer deletion over compatibility shims.
 - Prefer one source of truth over mirrored validation layers.
 - Keep operational semantics in Go.
+- Do not add process-env-only switches. Operator-facing behavior must come from flags or the contour env file.
 - Preflight should inspect. Execution should mutate.
 - Do not claim reliability improvements without end-to-end evidence.
 

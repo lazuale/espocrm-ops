@@ -103,7 +103,6 @@ func runBackup(cmd *cobra.Command, in backupInput) error {
 			Operation:       "backup",
 			ProjectDir:      in.projectDir,
 			EnvFileOverride: in.envFile,
-			EnvContourHint:  envFileContourHint(),
 		})
 		if err != nil {
 			return res, wrapBackupCommandError(err)

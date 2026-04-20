@@ -53,12 +53,7 @@ func CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage 
 }
 
 func selectCleanupHelperImage(mariaDBTag, espocrmImage string) (string, error) {
-	candidates := []string{}
-	if candidate := strings.TrimSpace(os.Getenv("ESPO_CLEANUP_IMAGE")); candidate != "" {
-		candidates = append(candidates, candidate)
-	}
-
-	candidates = append(candidates, "alpine:3.20", "busybox:1.36")
+	candidates := []string{"alpine:3.20", "busybox:1.36"}
 	if candidate := strings.TrimSpace(mariaDBTag); candidate != "" {
 		candidates = append(candidates, "mariadb:"+candidate)
 	}

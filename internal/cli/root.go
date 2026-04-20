@@ -60,7 +60,7 @@ func (a *App) NewRootCmd() *cobra.Command {
 	return cmd
 }
 
-func (a *App) IsJSONEnabled() bool {
+func (a *App) JSONEnabled() bool {
 	if a == nil {
 		return false
 	}

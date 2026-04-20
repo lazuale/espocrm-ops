@@ -1,22 +1,14 @@
 package cli
 
-import "os"
-
 type GlobalOptions struct {
 	JSON       bool
 	JournalDir string
 }
 
+const defaultJournalDir = "/tmp/espops-journal"
+
 func defaultGlobalOptions() GlobalOptions {
 	return GlobalOptions{
-		JournalDir: defaultJournalDir(),
+		JournalDir: defaultJournalDir,
 	}
-}
-
-func defaultJournalDir() string {
-	if v := os.Getenv("ESPOPS_JOURNAL_DIR"); v != "" {
-		return v
-	}
-
-	return "/tmp/espops-journal"
 }
