@@ -65,20 +65,5 @@
         "AI/compiled/"
       ]
     }
-  ],
-  "allowed_root_markdown": [
-    "AGENTS.md",
-    "README.md",
-    "CONTRIBUTING.md"
-  ],
-  "required_ops_env_examples": [
-    "ops/env/.env.dev.example",
-    "ops/env/.env.prod.example"
-  ],
-  "allowed_github_top_level": [
-    "workflows"
-  ],
-  "allowed_workflows": [
-    "ai-governance.yml"
   ]
 }

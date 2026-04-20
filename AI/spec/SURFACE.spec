@@ -32,6 +32,5 @@
   "non_canonical_shell_json": [],
   "passthrough_shell_json": [
     "scripts/doctor.sh --json"
-  ],
-  "frozen_shell_debt": {}
+  ]
 }

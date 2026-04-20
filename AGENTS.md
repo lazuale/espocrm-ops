@@ -29,7 +29,6 @@
 - No ambiguous success.
 - No shell-owned product, contract, validation, or recovery semantics.
 - No new product surface.
-- No generic `common`, `utils`, `helpers`, `services`, `shared`, `wrapper`, or `core` layers.
 
 ## Core Flow
 - Resolve input.

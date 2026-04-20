@@ -9,26 +9,20 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 FAST_GATE_COMPONENTS := test vet ai-shell-json-smoke bashcheck shellcheck
 SHELL_SCRIPTS := scripts/espo.sh scripts/doctor.sh scripts/backup.sh scripts/restore.sh scripts/migrate.sh scripts/regression-test.sh scripts/lib/common.sh
 
-.PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke policy build test test-cli test-golden fmt vet clean integration ci check-fast check-fast-components check-full regression bashcheck shellcheck vulncheck staticcheck lint coverage install-health-tools install-ci-health-tools
+.PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke build test test-cli test-golden fmt vet clean integration ci check-fast check-fast-components check-full regression bashcheck shellcheck vulncheck staticcheck lint coverage install-health-tools install-ci-health-tools
 
 ai-validate:
 	$(PYTHON) AI/generators/validate_specs.py
 
 ai-refresh: ai-validate
-	$(PYTHON) AI/generators/compile_specs.py
 	$(PYTHON) AI/generators/contract_diff.py --write-baseline
 	$(PYTHON) AI/generators/json_fixture_contract_diff.py --write-baseline
-	$(PYTHON) AI/generators/shell_debt_diff.py --write-baseline
-
-policy: ai-refresh
 
 ai-check: ai-validate
-	$(PYTHON) AI/generators/compile_specs.py --check
 	$(PYTHON) AI/generators/ast_arch_guard.py
 	$(PYTHON) AI/generators/contract_diff.py --check
 	$(PYTHON) AI/generators/json_fixture_contract_diff.py --check
 	$(PYTHON) AI/generators/runner.py shell-guard
-	$(PYTHON) AI/generators/shell_debt_diff.py --check
 	$(PYTHON) AI/generators/runner.py docs-sync
 	$(PYTHON) AI/generators/runner.py test-sync
 	$(PYTHON) AI/generators/runner.py package-guard

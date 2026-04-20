@@ -9,11 +9,13 @@ import sys
 
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
-POLICY = ROOT / "AI" / "compiled" / "POLICY.json"
+ARCH_SPEC = ROOT / "AI" / "spec" / "ARCH.spec"
+SURFACE_SPEC = ROOT / "AI" / "spec" / "SURFACE.spec"
+SYNC_SPEC = ROOT / "AI" / "spec" / "SYNC.spec"
 
 
-def load_policy() -> dict:
-    return json.loads(POLICY.read_text(encoding="utf-8"))
+def load_json(path: pathlib.Path) -> dict:
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
 def git_output(cmd: list[str]) -> str | None:
@@ -45,9 +47,9 @@ def changed_files() -> list[str]:
 
 
 def docs_sync() -> int:
-    policy = load_policy()
+    sync = load_json(SYNC_SPEC)
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
-    for snippet in policy["readme_required_snippets"]:
+    for snippet in sync["readme_required_snippets"]:
         if snippet not in readme:
             print(f"README.md missing required snippet: {snippet}", file=sys.stderr)
             return 1
@@ -56,16 +58,16 @@ def docs_sync() -> int:
         print("missing CONTRIBUTING.md", file=sys.stderr)
         return 1
     contributing = contributing_path.read_text(encoding="utf-8")
-    for snippet in policy["contributing_required_snippets"]:
+    for snippet in sync["contributing_required_snippets"]:
         if snippet not in contributing:
             print(f"CONTRIBUTING.md missing required snippet: {snippet}", file=sys.stderr)
             return 1
-    for snippet in policy["contributing_forbidden_snippets"]:
+    for snippet in sync["contributing_forbidden_snippets"]:
         if snippet in contributing:
             print(f"CONTRIBUTING.md contains forbidden snippet: {snippet}", file=sys.stderr)
             return 1
     agents = (ROOT / "AGENTS.md").read_text(encoding="utf-8")
-    for snippet in policy["agents_required_snippets"]:
+    for snippet in sync["agents_required_snippets"]:
         if snippet not in agents:
             print(f"AGENTS.md missing required snippet: {snippet}", file=sys.stderr)
             return 1
@@ -74,7 +76,7 @@ def docs_sync() -> int:
 
 
 def test_sync() -> int:
-    rules = load_policy()["changed_file_rules"]
+    rules = load_json(SYNC_SPEC)["changed_file_rules"]
     files = changed_files()
     if not files:
         print("test sync passed")
@@ -102,13 +104,16 @@ def test_sync() -> int:
 
 
 def shell_guard() -> int:
-    policy = load_policy()
-    frozen_debt = {
-        path: set(tokens)
-        for path, tokens in policy["frozen_shell_debt"].items()
+    surface = load_json(SURFACE_SPEC)
+    non_canonical = {
+        item.removesuffix(" --json")
+        for item in surface["non_canonical_shell_json"]
     }
-    drift_tokens = sorted({token for tokens in frozen_debt.values() for token in tokens})
-    classified_json = set(policy["non_canonical_json_scripts"]) | set(policy["passthrough_json_scripts"])
+    passthrough = {
+        item.removesuffix(" --json")
+        for item in surface["passthrough_shell_json"]
+    }
+    classified_json = non_canonical | passthrough
 
     for path in sorted((ROOT / "scripts").glob("*.sh")):
         rel = str(path.relative_to(ROOT))
@@ -117,7 +122,7 @@ def shell_guard() -> int:
         if exposes_json and rel not in classified_json:
             print(f"{rel} exposes --json but is not classified as shell passthrough or non-canonical", file=sys.stderr)
             return 1
-        if rel in policy["non_canonical_json_scripts"]:
+        if rel in non_canonical:
             if (
                 '"canonical": false' not in text
                 or '"contract_level": "non_canonical_shell"' not in text
@@ -125,31 +130,23 @@ def shell_guard() -> int:
             ):
                 print(f"{rel} must explicitly mark json output as non-canonical shell data", file=sys.stderr)
                 return 1
-        if rel in policy["passthrough_json_scripts"]:
+        if rel in passthrough:
             forbidden = ['json_escape(', '"canonical": false', '"contract_level": "non_canonical_shell"', '"machine_contract": false']
             for token in forbidden:
                 if token in text:
                     print(f"{rel} is classified as passthrough json but contains shell-owned json token {token}", file=sys.stderr)
                     return 1
-    for path in sorted((ROOT / "scripts").rglob("*.sh")):
-        rel = str(path.relative_to(ROOT))
-        text = path.read_text(encoding="utf-8")
-        allowed_tokens = frozen_debt.get(rel, set())
-        for token in drift_tokens:
-            if token in text and token not in allowed_tokens:
-                print(f"{rel} uses frozen shell debt token {token}", file=sys.stderr)
-                return 1
     print("shell guard passed")
     return 0
 
 
 def package_guard() -> int:
-    policy = load_policy()
-    banned_dirs = set(policy["banned_directory_names"])
-    banned_pkgs = set(policy["banned_package_names"])
-    banned_file_stems = set(policy["banned_file_stems"])
-    allowed_internal_roots = set(policy["allowed_internal_roots"])
-    allowed_cmd_roots = set(policy["allowed_cmd_roots"])
+    architecture = load_json(ARCH_SPEC)
+    banned_dirs = set(architecture["banned_directory_names"])
+    banned_pkgs = set(architecture["banned_package_names"])
+    banned_file_stems = set(architecture["banned_file_stems"])
+    allowed_internal_roots = set(architecture["allowed_internal_roots"])
+    allowed_cmd_roots = set(architecture["allowed_cmd_roots"])
     internal_root = ROOT / "internal"
     cmd_root = ROOT / "cmd"
     if internal_root.exists():

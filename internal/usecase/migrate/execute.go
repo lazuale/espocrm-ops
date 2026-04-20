@@ -333,7 +333,8 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The files restore was skipped because of --skip-files.",
 		})
 	} else {
-		if _, err := restoreusecase.RestoreFiles(buildFilesRestoreRequest(targetCtx, info)); err != nil {
+		filesReq := buildFilesRestoreRequest(targetCtx, info)
+		if _, err := restoreusecase.RestoreFiles(filesReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",
@@ -345,6 +346,23 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				notRunMigrateStep("target_start", "Target contour start did not run because files restore failed"),
 			)
 			return info, wrapExecuteError(err)
+		}
+		if err := platformdocker.ReconcileEspoStoragePermissions(
+			filesReq.TargetDir,
+			strings.TrimSpace(targetCtx.Env.Value("MARIADB_TAG")),
+			strings.TrimSpace(targetCtx.Env.Value("ESPOCRM_IMAGE")),
+		); err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "files_restore",
+					Status:  MigrateStepStatusFailed,
+					Summary: "Files restore failed",
+					Details: fmt.Sprintf("Files were restored but runtime permission reconciliation failed: %v", err),
+					Action:  "Resolve the permission reconciliation failure before rerunning migrate.",
+				},
+				notRunMigrateStep("target_start", "Target contour start did not run because files restore failed"),
+			)
+			return info, wrapExternalError(err)
 		}
 
 		info.Steps = append(info.Steps, ExecuteStep{
