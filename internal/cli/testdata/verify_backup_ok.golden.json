@@ -1,5 +1,5 @@
 {
-  "command": "verify-backup",
+  "command": "backup verify",
   "ok": true,
   "message": "backup verification passed",
   "details": {

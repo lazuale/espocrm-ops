@@ -1,4 +1,4 @@
-# Canonical Backup Migration Execution Flow Moves Into Go
+# Canonical Backup Migration Flow Uses `migrate`
 
 Historical ADR. Non-authoritative. Repository authority lives in `AGENTS.md`, `AI/spec/*`, generated enforcement under `AI/compiled/*`, `Makefile`, and `.github/workflows/ai-governance.yml`.
 
@@ -12,22 +12,23 @@ Accepted
 
 ## Context
 
-After ADR 0023, operators already had Go-owned backup execution, verification, inventory, inspection, rollback, update, and operation reporting.
+The retained product keeps migration as one of only four operator-facing
+commands. That makes it important to keep migration execution fully Go-owned
+instead of letting shell wrappers or sibling command names become controllers.
 
-One high-value destructive path still remained split:
+The retained migration path must own:
 
-- `scripts/migrate-backup.sh` still owned the real migration sequencing
-- shell still selected source backups, paired DB and files archives, enforced the migration compatibility contract, and invoked restore scripts directly
-- Go-owned backup and restore building blocks existed, but shell remained the true migration controller for the operator-facing path
-- that left parallel migration execution semantics and made shell the effective source of warning and failure attribution
-
-That split violated the repository direction that canonical execution, machine contract, exit-code behavior, and result reporting belong to Go.
+- source backup selection
+- compatibility validation between contours
+- restore sequencing into the target contour
+- canonical warnings, failures, JSON, and exit codes
 
 ## Decision
 
-Introduce a canonical public Go command, `migrate-backup`, backed by a Go migration execution usecase.
+Keep migration on one canonical public Go command, `migrate`, backed by the Go
+migration execution usecase.
 
-`migrate-backup` is now the authoritative owner of the real execution path:
+`migrate` is the authoritative owner of the real execution path:
 
 - source contour env resolution and source backup root discovery
 - automatic and explicit source backup selection, including DB/files pairing and partial selection modes
@@ -36,17 +37,21 @@ Introduce a canonical public Go command, `migrate-backup`, backed by a Go migrat
 - direct database and files restore execution through the Go restore usecases
 - target contour restart handling, warnings, failure attribution, and canonical JSON/text result output
 
-`scripts/migrate-backup.sh` remains only as a thin compatibility wrapper. It may keep the legacy positional `<from> <to>` shell UX, but it must delegate immediately to `espops migrate-backup ...` and must not own substantive migration sequencing or fallback behavior.
+`scripts/migrate.sh` may keep the positional `<from> <to>` shell UX, but it
+must delegate immediately to `espops migrate ...` and must not own substantive
+migration sequencing or fallback behavior.
 
 ## Consequences
 
-- The real `migrate-backup` path is now primarily Go-owned instead of shell-orchestrated.
-- The contract surface changes in this pass because the public `migrate-backup` command joins the governed CLI surface and gains its own JSON fixture/baseline entry.
-- The shell debt baseline shrinks because migration selection and sequencing no longer live in `scripts/migrate-backup.sh`.
-- Backup and restore building blocks remain focused subpaths, but they are no longer parallel controllers for the main migration flow.
+- The real migration path is now primarily Go-owned instead of shell
+  orchestrated.
+- The retained product surface stays aligned with the operator noun: `migrate`.
+- Backup and restore building blocks remain focused subpaths, but they are not
+  parallel controllers for migration.
 
 ## Rules
 
-- Do not reintroduce meaningful migration sequencing into `scripts/migrate-backup.sh`.
-- Keep source selection, pairing validation, warnings, and failure attribution in the Go `migrate-backup` command/usecase.
+- Do not reintroduce meaningful migration sequencing into `scripts/migrate.sh`.
+- Keep source selection, pairing validation, warnings, and failure attribution
+  in the Go `migrate` command/usecase.
 - Extend the Go migration usecase when new migration phases or guardrails need to appear instead of rebuilding controller logic in shell.

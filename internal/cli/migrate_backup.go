@@ -27,8 +27,8 @@ func newMigrateBackupCmd() *cobra.Command {
 	var confirmProd string
 
 	cmd := &cobra.Command{
-		Use:   "migrate-backup",
-		Short: "Run the canonical backup migration flow",
+		Use:   "migrate",
+		Short: "Migrate a backup between contours",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			in := migrateBackupInput{
@@ -159,10 +159,10 @@ func validateMigrateBackupInput(cmd *cobra.Command, in *migrateBackupInput) erro
 	}
 
 	if !in.force {
-		return usageError(fmt.Errorf("migrate-backup requires an explicit --force flag"))
+		return usageError(fmt.Errorf("migrate requires an explicit --force flag"))
 	}
 	if in.toScope == "prod" && in.confirmProd != "prod" {
-		return usageError(fmt.Errorf("prod backup migration also requires --confirm-prod prod"))
+		return usageError(fmt.Errorf("prod migration also requires --confirm-prod prod"))
 	}
 
 	return nil
@@ -170,8 +170,8 @@ func validateMigrateBackupInput(cmd *cobra.Command, in *migrateBackupInput) erro
 
 func runMigrateBackupExecute(cmd *cobra.Command, in migrateBackupInput) error {
 	spec := CommandSpec{
-		Name:       "migrate-backup",
-		ErrorCode:  "migrate_backup_failed",
+		Name:       "migrate",
+		ErrorCode:  "migrate_failed",
 		ExitCode:   exitcode.InternalError,
 		RenderText: renderMigrateBackupText,
 	}
@@ -213,7 +213,7 @@ func migrateBackupResult(info migrateusecase.ExecuteInfo) result.Result {
 
 	items := make([]any, 0, len(info.Steps))
 	for _, step := range info.Steps {
-		items = append(items, result.MigrateBackupItem{
+		items = append(items, result.MigrateItem{
 			SectionItem: result.SectionItem{
 				Code:    step.Code,
 				Status:  step.Status,
@@ -225,11 +225,11 @@ func migrateBackupResult(info migrateusecase.ExecuteInfo) result.Result {
 	}
 
 	return result.Result{
-		Command:  "migrate-backup",
+		Command:  "migrate",
 		OK:       info.Ready(),
 		Message:  message,
 		Warnings: append([]string(nil), info.Warnings...),
-		Details: result.MigrateBackupDetails{
+		Details: result.MigrateDetails{
 			SourceScope:            info.SourceScope,
 			TargetScope:            info.TargetScope,
 			Ready:                  info.Ready(),
@@ -246,7 +246,7 @@ func migrateBackupResult(info migrateusecase.ExecuteInfo) result.Result {
 			NoStart:                info.NoStart,
 			StartedDBTemporarily:   info.StartedDBTemporarily,
 		},
-		Artifacts: result.MigrateBackupArtifacts{
+		Artifacts: result.MigrateArtifacts{
 			ProjectDir:           info.ProjectDir,
 			ComposeFile:          info.ComposeFile,
 			SourceEnvFile:        info.SourceEnvFile,
@@ -267,17 +267,17 @@ func migrateBackupResult(info migrateusecase.ExecuteInfo) result.Result {
 }
 
 func renderMigrateBackupText(w io.Writer, res result.Result) error {
-	details, ok := res.Details.(result.MigrateBackupDetails)
+	details, ok := res.Details.(result.MigrateDetails)
 	if !ok {
 		return result.Render(w, res, false)
 	}
 
-	artifacts, ok := res.Artifacts.(result.MigrateBackupArtifacts)
+	artifacts, ok := res.Artifacts.(result.MigrateArtifacts)
 	if !ok {
-		return fmt.Errorf("unexpected migrate-backup artifacts type %T", res.Artifacts)
+		return fmt.Errorf("unexpected migrate artifacts type %T", res.Artifacts)
 	}
 
-	if _, err := fmt.Fprintln(w, "EspoCRM backup migration"); err != nil {
+	if _, err := fmt.Fprintln(w, "EspoCRM backup migrate"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "Source contour: %s\n", details.SourceScope); err != nil {
@@ -353,9 +353,9 @@ func renderMigrateBackupText(w io.Writer, res result.Result) error {
 		return err
 	}
 	for _, rawItem := range res.Items {
-		item, ok := rawItem.(result.MigrateBackupItem)
+		item, ok := rawItem.(result.MigrateItem)
 		if !ok {
-			return fmt.Errorf("unexpected migrate-backup item type %T", rawItem)
+			return fmt.Errorf("unexpected migrate item type %T", rawItem)
 		}
 		if _, err := fmt.Fprintf(w, "[%s] %s\n", strings.ToUpper(item.Status), item.Summary); err != nil {
 			return err

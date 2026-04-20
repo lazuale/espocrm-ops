@@ -12,12 +12,12 @@ func TestMigrateBackup_Validation_RequiresForce(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"migrate-backup",
+		"migrate",
 		"--from", "dev",
 		"--to", "prod",
 	)
 
-	assertUsageErrorOutput(t, outcome, "migrate-backup requires an explicit --force flag")
+	assertUsageErrorOutput(t, outcome, "migrate requires an explicit --force flag")
 }
 
 func TestMigrateBackup_Validation_RequiresProdConfirmation(t *testing.T) {
@@ -27,11 +27,11 @@ func TestMigrateBackup_Validation_RequiresProdConfirmation(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"migrate-backup",
+		"migrate",
 		"--from", "dev",
 		"--to", "prod",
 		"--force",
 	)
 
-	assertUsageErrorOutput(t, outcome, "prod backup migration also requires --confirm-prod prod")
+	assertUsageErrorOutput(t, outcome, "prod migration also requires --confirm-prod prod")
 }

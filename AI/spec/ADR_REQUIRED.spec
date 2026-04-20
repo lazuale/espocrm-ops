@@ -15,17 +15,11 @@
     "internal/architecture/",
     "internal/platform/",
     "internal/usecase/",
-    "scripts/backup-audit.sh",
-    "scripts/backup-catalog.sh",
     "scripts/doctor.sh",
-    "scripts/status-report.sh",
-    "scripts/contour-overview.sh",
-    "scripts/verify-backup.sh",
-    "scripts/restore-db.sh",
-    "scripts/restore-files.sh",
-    "scripts/rollback.sh",
-    "scripts/update.sh",
-    "scripts/migrate-backup.sh"
+    "scripts/backup.sh",
+    "scripts/restore.sh",
+    "scripts/migrate.sh",
+    "scripts/espo.sh"
   ],
   "adr_directory": "ops/adr"
 }

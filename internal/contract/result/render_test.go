@@ -10,7 +10,7 @@ func TestRenderTextSuccess(t *testing.T) {
 	var buf bytes.Buffer
 
 	err := Render(&buf, Result{
-		Command: "verify-backup",
+		Command: "backup verify",
 		OK:      true,
 		Message: "backup verification passed",
 	}, false)
@@ -27,16 +27,16 @@ func TestRenderTextSuccessWithWarnings(t *testing.T) {
 	var buf bytes.Buffer
 
 	err := Render(&buf, Result{
-		Command:  "restore-files",
+		Command:  "restore",
 		OK:       true,
-		Message:  "files restore completed",
-		Warnings: []string{"files restore is destructive for the target directory"},
+		Message:  "restore completed",
+		Warnings: []string{"restore is destructive for the target contour"},
 	}, false)
 	if err != nil {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	want := "files restore completed\nWARNING: files restore is destructive for the target directory\n"
+	want := "restore completed\nWARNING: restore is destructive for the target contour\n"
 	if got := buf.String(); got != want {
 		t.Fatalf("unexpected render output: got %q want %q", got, want)
 	}
@@ -46,11 +46,13 @@ func TestRenderJSON(t *testing.T) {
 	var buf bytes.Buffer
 
 	err := Render(&buf, Result{
-		Command: "restore-files",
+		Command: "restore",
 		OK:      true,
-		Message: "files restore dry-run passed",
-		Details: RestoreFilesDetails{
-			DryRun: true,
+		Message: "restore dry-run passed",
+		Details: RestoreDetails{
+			Ready:     true,
+			Scope:     "dev",
+			SourceKind:"manifest",
 		},
 		Timing: &TimingInfo{
 			StartedAt:  "2026-04-15T10:00:00Z",
@@ -66,7 +68,7 @@ func TestRenderJSON(t *testing.T) {
 	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("invalid JSON output: %v", err)
 	}
-	if decoded.Command != "restore-files" || !decoded.OK || decoded.Message != "files restore dry-run passed" {
+	if decoded.Command != "restore" || !decoded.OK || decoded.Message != "restore dry-run passed" {
 		t.Fatalf("unexpected decoded result: %+v", decoded)
 	}
 	if decoded.Timing == nil || decoded.Timing.DurationMS != 1000 {

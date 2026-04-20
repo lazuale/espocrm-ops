@@ -52,28 +52,8 @@ if [[ "$TARGET_SCOPE" != "all" && -n "${ENV_FILE:-}" ]]; then
   doctor_args+=(--env-file "$ENV_FILE")
 fi
 
-if [[ $JSON_MODE -eq 0 ]]; then
-  run_espops "${doctor_args[@]}"
-  exit $?
-fi
-
-set +e
-doctor_output="$(run_espops --json "${doctor_args[@]}" 2>&1)"
-doctor_status=$?
-set -e
-
-printf '{\n'
-printf '  "canonical": false,\n'
-printf '  "contract_level": "non_canonical_shell",\n'
-printf '  "machine_contract": false,\n'
-printf '  "target_scope": "%s",\n' "$(json_escape "$TARGET_SCOPE")"
-printf '  "success": %s' "$(json_bool "$(( doctor_status == 0 ))")"
-
-if [[ "$doctor_output" == \{* ]]; then
-  printf ',\n  "doctor": %s\n' "$doctor_output"
+if [[ $JSON_MODE -eq 1 ]]; then
+  run_espops --json "${doctor_args[@]}"
 else
-  printf ',\n  "error_message": "%s"\n' "$(json_escape "$doctor_output")"
+  run_espops "${doctor_args[@]}"
 fi
-
-printf '}\n'
-exit "$doctor_status"

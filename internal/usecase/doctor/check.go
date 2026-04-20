@@ -201,27 +201,27 @@ func checkSharedOperationLock(report *Report, inherited bool) {
 
 func checkMaintenanceLock(report *Report, scope, backupRoot string, inherited bool) {
 	if inherited {
-		report.ok(scope, "maintenance_lock", "The maintenance lock is already held by the parent operation", backupRoot)
+		report.ok(scope, "contour_operation_lock", "The contour operation lock is already held by the parent operation", backupRoot)
 		return
 	}
 
 	readiness, err := platformlocks.CheckMaintenanceReadiness(backupRoot)
 	if err != nil {
-		report.fail(scope, "maintenance_lock", "Could not inspect the maintenance lock", err.Error(), "Check the backup lock directory permissions and rerun doctor.")
+		report.fail(scope, "contour_operation_lock", "Could not inspect the contour operation lock", err.Error(), "Check the backup lock directory permissions and rerun doctor.")
 		return
 	}
 
 	switch readiness.State {
 	case platformlocks.LockReady:
-		report.ok(scope, "maintenance_lock", "The maintenance lock is available", readiness.MetadataPath)
+		report.ok(scope, "contour_operation_lock", "The contour operation lock is available", readiness.MetadataPath)
 	case platformlocks.LockStale:
-		report.warn(scope, "maintenance_lock", "Found stale maintenance lock metadata", strings.Join(readiness.StalePaths, "; "), "Remove the stale maintenance lock files after verifying that no maintenance operation is still running.")
+		report.warn(scope, "contour_operation_lock", "Found stale contour operation lock metadata", strings.Join(readiness.StalePaths, "; "), "Remove the stale contour operation lock files after verifying that no recovery operation is still running.")
 	case platformlocks.LockActive:
-		report.fail(scope, "maintenance_lock", "Another maintenance operation is already running for this contour", lockOwnerDetails(readiness.MetadataPath, readiness.PID), "Wait for the running maintenance operation to finish before starting a new one.")
+		report.fail(scope, "contour_operation_lock", "Another recovery operation is already running for this contour", lockOwnerDetails(readiness.MetadataPath, readiness.PID), "Wait for the running recovery operation to finish before starting a new one.")
 	case platformlocks.LockLegacy:
-		report.fail(scope, "maintenance_lock", "A legacy maintenance lock blocks safe readiness checks", lockOwnerDetails(readiness.MetadataPath, readiness.PID), "Remove the legacy maintenance lock only after verifying that no toolkit process still owns it.")
+		report.fail(scope, "contour_operation_lock", "A legacy contour operation lock blocks safe readiness checks", lockOwnerDetails(readiness.MetadataPath, readiness.PID), "Remove the legacy contour operation lock only after verifying that no toolkit process still owns it.")
 	default:
-		report.fail(scope, "maintenance_lock", "The maintenance lock reported an unknown state", readiness.State, "Inspect the contour lock files and rerun doctor.")
+		report.fail(scope, "contour_operation_lock", "The contour operation lock reported an unknown state", readiness.State, "Inspect the contour lock files and rerun doctor.")
 	}
 }
 

@@ -18,7 +18,6 @@ import (
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
 	"github.com/lazuale/espocrm-ops/internal/usecase/reporting"
-	updateusecase "github.com/lazuale/espocrm-ops/internal/usecase/update"
 )
 
 const (
@@ -273,7 +272,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The pre-restore emergency recovery point was skipped because of --no-snapshot.",
 		})
 	} else {
-		snapshotInfo, err := updateusecase.ApplyBackup(buildSnapshotRequest(ctx, req))
+		snapshotInfo, err := applySnapshotBackup(buildSnapshotRequest(ctx, req))
 		if err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
@@ -777,8 +776,8 @@ func configResolveDBPassword(req RestoreDBRequest) (string, error) {
 	return password, nil
 }
 
-func buildSnapshotRequest(ctx maintenanceusecase.OperationContext, req ExecuteRequest) updateusecase.BackupApplyRequest {
-	return updateusecase.BackupApplyRequest{
+func buildSnapshotRequest(ctx maintenanceusecase.OperationContext, req ExecuteRequest) snapshotBackupRequest {
+	return snapshotBackupRequest{
 		TimeoutSeconds: defaultRestoreReadinessTimeoutSeconds,
 		LogWriter:      req.LogWriter,
 		Backup: backupusecase.ExecuteRequest{
@@ -889,7 +888,7 @@ func runtimePrepareDetails(info runtimePrepareInfo, req ExecuteRequest) string {
 	return strings.Join(parts, " ")
 }
 
-func snapshotDetails(info updateusecase.BackupApplyInfo) string {
+func snapshotDetails(info snapshotBackupInfo) string {
 	parts := []string{fmt.Sprintf("Created emergency recovery point at %s.", info.ManifestJSONPath)}
 	if info.DBBackupPath != "" {
 		parts = append(parts, fmt.Sprintf("Database snapshot: %s.", info.DBBackupPath))

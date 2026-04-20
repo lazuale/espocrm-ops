@@ -28,7 +28,7 @@ func TestSchema_GlobalOptions_JSON_Error_InvalidJournalDir(t *testing.T) {
 			outcome := executeCLI(
 				"--journal-dir", tc.journalDir,
 				"--json",
-				"history",
+				"doctor",
 			)
 
 			assertUsageErrorOutput(t, outcome, tc.messagePart)

@@ -15,7 +15,8 @@ func TestSchema_VerifyBackup_JSON_Error_MissingManifest_NoJournal(t *testing.T) 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 	)
 
 	assertUsageErrorOutput(t, outcome, "--manifest or --backup-root is required")
@@ -29,7 +30,8 @@ func TestSchema_VerifyBackup_JSON_Error_BlankManifest_NoJournal(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 		"--manifest", "   ",
 	)
 
@@ -44,7 +46,8 @@ func TestSchema_VerifyBackup_JSON_Error_ManifestBackupRootConflict_NoJournal(t *
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 		"--manifest", filepath.Join(tmp, "manifest.json"),
 		"--backup-root", filepath.Join(tmp, "backups"),
 	)
@@ -60,7 +63,8 @@ func TestSchema_VerifyBackup_JSON_Error_BlankBackupRoot_NoJournal(t *testing.T) 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 		"--backup-root", "   ",
 	)
 
@@ -79,7 +83,8 @@ func TestSchema_VerifyBackup_JSON_Error_InvalidManifestContract(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 		"--manifest", manifestPath,
 	)
 
@@ -117,7 +122,8 @@ func TestSchema_VerifyBackup_JSON_Error_ChecksumMismatchContract(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 		"--manifest", manifestPath,
 	)
 

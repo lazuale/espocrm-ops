@@ -37,23 +37,23 @@ type backupExecutionConfig struct {
 	MariaDBTag     string
 }
 
-func loadBackupExecutionConfig(projectDir string) (backupExecutionConfig, error) {
-	composeProject, err := requireEnvValue("COMPOSE_PROJECT_NAME")
+func loadBackupExecutionConfigFromValues(projectDir string, values map[string]string) (backupExecutionConfig, error) {
+	composeProject, err := requireMapValue(values, "COMPOSE_PROJECT_NAME")
 	if err != nil {
 		return backupExecutionConfig{}, err
 	}
 
-	backupRootRaw, err := requireEnvValue("BACKUP_ROOT")
+	backupRootRaw, err := requireMapValue(values, "BACKUP_ROOT")
 	if err != nil {
 		return backupExecutionConfig{}, err
 	}
-	storageDirRaw, err := requireEnvValue("ESPO_STORAGE_DIR")
+	storageDirRaw, err := requireMapValue(values, "ESPO_STORAGE_DIR")
 	if err != nil {
 		return backupExecutionConfig{}, err
 	}
 
 	retentionDays := 7
-	if raw := strings.TrimSpace(os.Getenv("BACKUP_RETENTION_DAYS")); raw != "" {
+	if raw := strings.TrimSpace(values["BACKUP_RETENTION_DAYS"]); raw != "" {
 		parsed, err := strconv.Atoi(raw)
 		if err != nil {
 			return backupExecutionConfig{}, usageError(fmt.Errorf("BACKUP_RETENTION_DAYS must be an integer: %w", err))
@@ -64,7 +64,7 @@ func loadBackupExecutionConfig(projectDir string) (backupExecutionConfig, error)
 		retentionDays = parsed
 	}
 
-	namePrefix := strings.TrimSpace(os.Getenv("BACKUP_NAME_PREFIX"))
+	namePrefix := strings.TrimSpace(values["BACKUP_NAME_PREFIX"])
 	if namePrefix == "" {
 		namePrefix = composeProject
 	}
@@ -75,12 +75,25 @@ func loadBackupExecutionConfig(projectDir string) (backupExecutionConfig, error)
 		NamePrefix:     namePrefix,
 		RetentionDays:  retentionDays,
 		ComposeProject: composeProject,
-		DBUser:         strings.TrimSpace(os.Getenv("DB_USER")),
-		DBPassword:     os.Getenv("DB_PASSWORD"),
-		DBName:         strings.TrimSpace(os.Getenv("DB_NAME")),
-		EspoCRMImage:   strings.TrimSpace(os.Getenv("ESPOCRM_IMAGE")),
-		MariaDBTag:     strings.TrimSpace(os.Getenv("MARIADB_TAG")),
+		DBUser:         strings.TrimSpace(values["DB_USER"]),
+		DBPassword:     values["DB_PASSWORD"],
+		DBName:         strings.TrimSpace(values["DB_NAME"]),
+		EspoCRMImage:   strings.TrimSpace(values["ESPOCRM_IMAGE"]),
+		MariaDBTag:     strings.TrimSpace(values["MARIADB_TAG"]),
 	}, nil
+}
+
+func loadBackupExecutionConfig(projectDir string) (backupExecutionConfig, error) {
+	values := map[string]string{}
+	for _, entry := range os.Environ() {
+		key, value, ok := strings.Cut(entry, "=")
+		if !ok {
+			continue
+		}
+		values[key] = value
+	}
+
+	return loadBackupExecutionConfigFromValues(projectDir, values)
 }
 
 func validateBackupExecutionConfig(cfg backupExecutionConfig, requireDB bool) error {
@@ -117,6 +130,15 @@ func validateBackupExecutionConfig(cfg backupExecutionConfig, requireDB bool) er
 
 func requireEnvValue(name string) (string, error) {
 	value := strings.TrimSpace(os.Getenv(name))
+	if value == "" {
+		return "", usageError(fmt.Errorf("%s is required", name))
+	}
+
+	return value, nil
+}
+
+func requireMapValue(values map[string]string, name string) (string, error) {
+	value := strings.TrimSpace(values[name])
 	if value == "" {
 		return "", usageError(fmt.Errorf("%s is required", name))
 	}

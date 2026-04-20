@@ -1,4 +1,4 @@
-# Backup Core Uses a Hidden Go Contract
+# Backup Uses the Canonical Go Contract
 
 Historical ADR. Non-authoritative. Repository authority lives in `AGENTS.md`, `AI/spec/*`, generated enforcement under `AI/compiled/*`, `Makefile`, and `.github/workflows/ai-governance.yml`.
 
@@ -12,40 +12,50 @@ Accepted
 
 ## Context
 
-After ADR 0005, the `update` boundary for the pre-update recovery point moved behind `update-backup`, but the actual backup implementation still lived in `scripts/backup.sh`.
+The repository is intentionally narrowed to backup and recovery. Backup
+creation and verification therefore need one explicit Go-owned command family
+instead of hidden execution nouns or shell-owned sequencing.
 
-That left the highest-value remaining core gap in place:
+The remaining contract requirements are simple:
 
-- standalone backup execution semantics were still shell-owned
-- `update-backup` still depended on shell-owned backup implementation
-- backup artifact creation, checksum sidecars, manifests, service stop/start handling, and retention cleanup were not yet owned by the canonical Go execution stack
+- `backup` must own deterministic backup creation
+- `backup verify` must own deterministic verification
+- shell wrappers must stay thin passthroughs instead of rebuilding backup
+  orchestration
+- Go JSON and exit-code behavior must remain canonical for the retained backup
+  flow
 
 ## Decision
 
-Introduce a hidden Go command, `backup-exec`, and a shared Go backup execution usecase as the authoritative owner of backup runtime behavior.
+Keep backup creation and verification in the canonical public Go command family:
 
-The shared Go backup path now owns:
+- `espops backup` is the authoritative owner of backup creation
+- `espops backup verify` is the authoritative owner of verification
+- the shared Go backup usecase owns backup runtime behavior, including:
 
 - application-service stop/start decisions for consistent snapshots
 - database dump execution
 - files archive creation, including Docker-helper fallback
 - checksum sidecars
-- text and JSON manifest emission
+- manifest emission
 - backup retention cleanup
 
-`scripts/backup.sh` is reduced to env loading, locking, context printing, and a single `run_espops backup-exec ...` delegation.
-
-`update-backup` now uses the same Go backup execution usecase directly instead of bouncing through `scripts/backup.sh`.
+`scripts/backup.sh` remains only a thin shell wrapper around the retained Go
+commands. It may translate the minimal shell UX into `espops backup` or
+`espops backup verify`, but it must not reintroduce controller logic.
 
 ## Consequences
 
-- Backup implementation semantics are no longer shell-owned at the core execution layer.
-- Standalone backup and `update-backup` now share one authoritative Go implementation.
-- Shell remains only the outer boundary for env loading, locking, and operator-facing entrypoints.
-- The machine contract surface changes in this pass because `backup-exec` is added and `update-backup` artifacts/details now report the Go-created recovery-point artifacts instead of shell-wrapper metadata.
+- Backup creation and verification semantics are no longer split across shell
+  and hidden Go entrypoints.
+- The retained public product surface is simpler: one `backup` command family
+  instead of a hidden executor plus adjacent backup nouns.
+- Shell remains only the outer UX boundary where the user still wants a script.
 
 ## Rules
 
-- Do not reintroduce backup implementation logic into `scripts/backup.sh`.
-- Future backup consolidation should extend the shared Go backup usecase rather than adding parallel shell execution paths.
-- `update-backup` must continue to use the shared Go backup execution path instead of invoking `backup.sh`.
+- Do not reintroduce backup implementation, selection, or verification logic
+  into `scripts/backup.sh`.
+- Keep backup verification on `backup verify` instead of creating sibling
+  inventory or audit commands.
+- Extend the shared Go backup usecase when backup behavior changes.

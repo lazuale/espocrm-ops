@@ -72,5 +72,5 @@ func checkRuntimePathReadOnly(report *Report, scope, code, label, path string, m
 		return
 	}
 
-	report.warn(scope, code, fmt.Sprintf("%s does not exist yet", label), readiness.Path, fmt.Sprintf("The update preflight would create %s if %s stays writable.", readiness.Path, readiness.ProbePath))
+	report.warn(scope, code, fmt.Sprintf("%s does not exist yet", label), readiness.Path, fmt.Sprintf("Backup or recovery preparation would create %s if %s stays writable.", readiness.Path, readiness.ProbePath))
 }

@@ -11,26 +11,26 @@ func TestApplyFilters(t *testing.T) {
 	entries := []Entry{
 		{
 			OperationID: "op-old",
-			Command:     "verify-backup",
+			Command:     "backup verify",
 			StartedAt:   "2026-04-15T12:00:00Z",
 			OK:          true,
 		},
 		{
 			OperationID: "op-hit",
-			Command:     "restore-db",
+			Command:     "restore",
 			StartedAt:   "2026-04-15T13:00:00Z",
 			OK:          false,
 		},
 		{
 			OperationID: "op-new",
-			Command:     "restore-db",
+			Command:     "restore",
 			StartedAt:   "2026-04-15T14:00:00Z",
 			OK:          false,
 		},
 	}
 
 	got := ApplyFilters(entries, Filters{
-		Command:    "restore-db",
+		Command:    "restore",
 		FailedOnly: true,
 		Since:      &since,
 		Until:      &until,
@@ -47,7 +47,7 @@ func TestApplyFiltersDateRangeSkipsInvalidStartedAt(t *testing.T) {
 	entries := []Entry{
 		{
 			OperationID: "op-invalid",
-			Command:     "restore-db",
+			Command:     "restore",
 			StartedAt:   "not-a-time",
 			OK:          false,
 		},

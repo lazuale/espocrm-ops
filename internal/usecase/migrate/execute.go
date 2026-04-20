@@ -139,7 +139,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Status:  MigrateStepStatusFailed,
 				Summary: "Source contour preflight failed",
 				Details: err.Error(),
-				Action:  "Resolve the source env file or source backup root settings before rerunning migrate-backup.",
+				Action:  "Resolve the source env file or source backup root settings before rerunning migrate.",
 			},
 			notRunMigrateStep("target_preflight", "Target contour preflight did not run because source contour preflight failed"),
 			notRunMigrateStep("source_selection", "Source backup selection did not run because source contour preflight failed"),
@@ -163,7 +163,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 
 	targetCtx, err := maintenanceusecase.PrepareOperation(maintenanceusecase.OperationContextRequest{
 		Scope:      info.TargetScope,
-		Operation:  "migrate-backup",
+		Operation:  "migrate",
 		ProjectDir: info.ProjectDir,
 		LogWriter:  req.LogWriter,
 	})
@@ -174,7 +174,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Status:  MigrateStepStatusFailed,
 				Summary: "Target contour preflight failed",
 				Details: err.Error(),
-				Action:  "Resolve env, lock, or filesystem readiness before rerunning migrate-backup.",
+				Action:  "Resolve env, lock, or filesystem readiness before rerunning migrate.",
 			},
 			notRunMigrateStep("source_selection", "Source backup selection did not run because target contour preflight failed"),
 			notRunMigrateStep("compatibility", "Migration compatibility checks did not run because target contour preflight failed"),
@@ -206,7 +206,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Status:  MigrateStepStatusFailed,
 				Summary: failureSummary(err, "Source backup selection failed"),
 				Details: err.Error(),
-				Action:  failureAction(err, "Resolve the source backup selection error before rerunning migrate-backup."),
+				Action:  failureAction(err, "Resolve the source backup selection error before rerunning migrate."),
 			},
 			notRunMigrateStep("compatibility", "Migration compatibility checks did not run because source backup selection failed"),
 			notRunMigrateStep("runtime_prepare", "Target runtime preparation did not run because source backup selection failed"),
@@ -214,7 +214,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			notRunMigrateStep("files_restore", "Files restore did not run because source backup selection failed"),
 			notRunMigrateStep("target_start", "Target contour start did not run because source backup selection failed"),
 		)
-		return info, apperr.Wrap(apperr.KindValidation, "migrate_backup_failed", err)
+		return info, apperr.Wrap(apperr.KindValidation, "migrate_failed", err)
 	}
 
 	info.SelectionMode = selection.SelectionMode
@@ -246,7 +246,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			notRunMigrateStep("files_restore", "Files restore did not run because migration compatibility checks failed"),
 			notRunMigrateStep("target_start", "Target contour start did not run because migration compatibility checks failed"),
 		)
-		return info, apperr.Wrap(apperr.KindValidation, "migrate_backup_failed", err)
+		return info, apperr.Wrap(apperr.KindValidation, "migrate_failed", err)
 	}
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "compatibility",
@@ -263,7 +263,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Status:  MigrateStepStatusFailed,
 				Summary: "Target runtime preparation failed",
 				Details: err.Error(),
-				Action:  "Resolve the target runtime preparation failure before rerunning migrate-backup.",
+				Action:  "Resolve the target runtime preparation failure before rerunning migrate.",
 			},
 			notRunMigrateStep("db_restore", "Database restore did not run because target runtime preparation failed"),
 			notRunMigrateStep("files_restore", "Files restore did not run because target runtime preparation failed"),
@@ -295,7 +295,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 					Status:  MigrateStepStatusFailed,
 					Summary: "Database restore failed",
 					Details: err.Error(),
-					Action:  "Resolve the target db container state before rerunning migrate-backup.",
+					Action:  "Resolve the target db container state before rerunning migrate.",
 				},
 				notRunMigrateStep("files_restore", "Files restore did not run because database restore failed"),
 				notRunMigrateStep("target_start", "Target contour start did not run because database restore failed"),
@@ -310,7 +310,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 					Status:  MigrateStepStatusFailed,
 					Summary: "Database restore failed",
 					Details: err.Error(),
-					Action:  "Resolve the database restore failure before rerunning migrate-backup.",
+					Action:  "Resolve the database restore failure before rerunning migrate.",
 				},
 				notRunMigrateStep("files_restore", "Files restore did not run because database restore failed"),
 				notRunMigrateStep("target_start", "Target contour start did not run because database restore failed"),
@@ -341,7 +341,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 					Status:  MigrateStepStatusFailed,
 					Summary: "Files restore failed",
 					Details: err.Error(),
-					Action:  "Resolve the files restore failure before rerunning migrate-backup.",
+					Action:  "Resolve the files restore failure before rerunning migrate.",
 				},
 				notRunMigrateStep("target_start", "Target contour start did not run because files restore failed"),
 			)
@@ -375,7 +375,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Status:  MigrateStepStatusFailed,
 				Summary: "Target contour start failed",
 				Details: err.Error(),
-				Action:  "Resolve the target contour start failure before rerunning migrate-backup.",
+				Action:  "Resolve the target contour start failure before rerunning migrate.",
 			})
 			return info, wrapExternalError(err)
 		}
@@ -463,7 +463,7 @@ func resolveLatestCompleteSelection(backupRoot string) (sourceSelection, error) 
 	if err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "Automatic source backup selection could not inspect the source backup root",
-			Action:  "Check the source BACKUP_ROOT and rerun migrate-backup.",
+			Action:  "Check the source BACKUP_ROOT and rerun migrate.",
 			Err:     err,
 		}
 	}
@@ -579,7 +579,7 @@ func resolveDBOnlySelection(backupRoot, explicitDB string) (sourceSelection, err
 	if err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "Automatic database backup selection could not inspect the source backup root",
-			Action:  "Check the source BACKUP_ROOT and rerun migrate-backup.",
+			Action:  "Check the source BACKUP_ROOT and rerun migrate.",
 			Err:     err,
 		}
 	}
@@ -634,7 +634,7 @@ func resolveFilesOnlySelection(backupRoot, explicitFiles string) (sourceSelectio
 	if err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "Automatic files backup selection could not inspect the source backup root",
-			Action:  "Check the source BACKUP_ROOT and rerun migrate-backup.",
+			Action:  "Check the source BACKUP_ROOT and rerun migrate.",
 			Err:     err,
 		}
 	}
@@ -1009,20 +1009,20 @@ func failureAction(err error, fallback string) string {
 func wrapMigrationEnvError(err error) error {
 	switch err.(type) {
 	case platformconfig.MissingEnvFileError, platformconfig.InvalidEnvFileError, platformconfig.EnvParseError, platformconfig.MissingEnvValueError, platformconfig.UnsupportedContourError:
-		return apperr.Wrap(apperr.KindValidation, "migrate_backup_failed", err)
+		return apperr.Wrap(apperr.KindValidation, "migrate_failed", err)
 	default:
-		return apperr.Wrap(apperr.KindIO, "migrate_backup_failed", err)
+		return apperr.Wrap(apperr.KindIO, "migrate_failed", err)
 	}
 }
 
 func wrapExecuteError(err error) error {
 	if kind, ok := apperr.KindOf(err); ok {
-		return apperr.Wrap(kind, "migrate_backup_failed", err)
+		return apperr.Wrap(kind, "migrate_failed", err)
 	}
 
-	return apperr.Wrap(apperr.KindInternal, "migrate_backup_failed", err)
+	return apperr.Wrap(apperr.KindInternal, "migrate_failed", err)
 }
 
 func wrapExternalError(err error) error {
-	return apperr.Wrap(apperr.KindExternal, "migrate_backup_failed", err)
+	return apperr.Wrap(apperr.KindExternal, "migrate_failed", err)
 }

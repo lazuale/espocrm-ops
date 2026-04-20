@@ -77,8 +77,8 @@ func TestRunCommand_Error_WritesJournalEntry(t *testing.T) {
 	cmd.SetOut(&strings.Builder{})
 
 	err := RunCommand(cmd, CommandSpec{
-		Name:      "restore-db",
-		ErrorCode: "restore_db_failed",
+		Name:      "restore",
+		ErrorCode: "restore_failed",
 		ExitCode:  5,
 	}, func() (result.Result, error) {
 		return result.Result{}, errors.New("boom")
@@ -98,13 +98,13 @@ func TestRunCommand_Error_WritesJournalEntry(t *testing.T) {
 	if entry.OperationID != "op-test-error" {
 		t.Fatalf("unexpected operation id: %s", entry.OperationID)
 	}
-	if entry.Command != "restore-db" {
+	if entry.Command != "restore" {
 		t.Fatalf("unexpected command: %s", entry.Command)
 	}
 	if entry.StartedAt != "2026-04-15T12:00:00Z" || entry.FinishedAt != "2026-04-15T12:00:00Z" {
 		t.Fatalf("unexpected timing: started=%s finished=%s", entry.StartedAt, entry.FinishedAt)
 	}
-	if entry.ErrorCode != "restore_db_failed" {
+	if entry.ErrorCode != "restore_failed" {
 		t.Fatalf("unexpected error code: %s", entry.ErrorCode)
 	}
 	if entry.ErrorMessage != "boom" {
@@ -126,28 +126,26 @@ func TestRunCommand_SerializesTypedArtifactsAndDetailsIntoJournal(t *testing.T) 
 	cmd.SetOut(&strings.Builder{})
 
 	err := RunCommand(cmd, CommandSpec{
-		Name:      "verify-backup",
+		Name:      "backup verify",
 		ErrorCode: "backup_verification_failed",
 		ExitCode:  4,
 	}, func() (result.Result, error) {
 		return result.Result{
 			Message: "backup verification passed",
-			Artifacts: result.VerifyBackupArtifacts{
+			Artifacts: result.BackupVerifyArtifacts{
 				Manifest:    "/tmp/manifest.json",
 				DBBackup:    "/tmp/db.sql.gz",
 				FilesBackup: "/tmp/files.tar.gz",
 			},
-			Details: result.VerifyBackupDetails{
+			Details: result.BackupVerifyDetails{
 				Scope:     "prod",
 				CreatedAt: "2026-04-15T11:00:00Z",
 			},
 			Items: []any{
-				result.UpdateItem{
-					SectionItem: result.SectionItem{
-						Code:    "doctor",
-						Status:  "completed",
-						Summary: "Doctor completed",
-					},
+				result.SectionItem{
+					Code:    "doctor",
+					Status:  "completed",
+					Summary: "Doctor completed",
 				},
 			},
 		}, nil
@@ -253,13 +251,13 @@ func TestRunResultCommand_DoesNotWriteJournalEntries(t *testing.T) {
 	cmd.SetOut(&strings.Builder{})
 
 	if err := RunResultCommand(cmd, CommandSpec{
-		Name:      "history",
-		ErrorCode: "history_failed",
+		Name:      "doctor",
+		ErrorCode: "doctor_failed",
 		ExitCode:  1,
 	}, func() (result.Result, error) {
 		return result.Result{
 			OK:      true,
-			Message: "history loaded",
+			Message: "doctor loaded",
 		}, nil
 	}); err != nil {
 		t.Fatalf("RunResultCommand returned success error: %v", err)
@@ -270,8 +268,8 @@ func TestRunResultCommand_DoesNotWriteJournalEntries(t *testing.T) {
 	}
 
 	err := RunResultCommand(cmd, CommandSpec{
-		Name:      "show-operation",
-		ErrorCode: "show_operation_failed",
+		Name:      "doctor",
+		ErrorCode: "doctor_failed",
 		ExitCode:  1,
 	}, func() (result.Result, error) {
 		return result.Result{}, errors.New("boom")
@@ -299,8 +297,8 @@ func TestRunCommand_CustomRenderText_AppendsWarnings(t *testing.T) {
 	cmd.SetOut(out)
 
 	err := RunCommand(cmd, CommandSpec{
-		Name:      "backup-audit",
-		ErrorCode: "backup_audit_failed",
+		Name:      "backup",
+		ErrorCode: "backup_failed",
 		ExitCode:  1,
 		RenderText: func(w io.Writer, res result.Result) error {
 			_, err := fmt.Fprintln(w, "audit summary")

@@ -50,7 +50,7 @@ func TestGolden_MigrateBackup_JSON(t *testing.T) {
 		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-1")},
 		"--journal-dir", journalDir,
 		"--json",
-		"migrate-backup",
+		"migrate",
 		"--from", "dev",
 		"--to", "prod",
 		"--project-dir", projectDir,

@@ -1,169 +1,223 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"path/filepath"
 	"strings"
-	"time"
 
+	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	"github.com/lazuale/espocrm-ops/internal/usecase/backup"
+	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
+	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
 	"github.com/spf13/cobra"
 )
 
 func newBackupCmd() *cobra.Command {
 	var scope string
-	var createdAtRaw string
-	var dbBackupPath string
-	var filesBackupPath string
-	var manifestPath string
-	var dbChecksumPath string
-	var filesChecksumPath string
+	var projectDir string
+	var composeFile string
+	var envFile string
+	var skipDB bool
+	var skipFiles bool
+	var noStop bool
 
 	cmd := &cobra.Command{
 		Use:   "backup",
-		Short: "Write backup metadata for existing artifacts",
+		Short: "Create a coherent backup set",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			app := appForCommand(cmd)
 			in := backupInput{
-				scope:             scope,
-				createdAtRaw:      createdAtRaw,
-				dbBackupPath:      dbBackupPath,
-				filesBackupPath:   filesBackupPath,
-				manifestPath:      manifestPath,
-				dbChecksumPath:    dbChecksumPath,
-				filesChecksumPath: filesChecksumPath,
+				scope:       scope,
+				projectDir:  projectDir,
+				composeFile: composeFile,
+				envFile:     envFile,
+				skipDB:      skipDB,
+				skipFiles:   skipFiles,
+				noStop:      noStop,
 			}
 			if err := validateBackupInput(cmd, &in); err != nil {
 				return err
 			}
 
-			createdAt := app.runtime.Now()
-			if in.createdAtRaw != "" {
-				parsedAt, err := time.Parse(time.RFC3339, in.createdAtRaw)
-				if err != nil {
-					return usageError(fmt.Errorf("--created-at must be RFC3339: %w", err))
-				}
-				createdAt = parsedAt
-			}
-
-			return RunCommand(cmd, CommandSpec{
-				Name:      "backup",
-				ErrorCode: "backup_failed",
-				ExitCode:  exitcode.InternalError,
-			}, func() (result.Result, error) {
-				res := result.Result{
-					Artifacts: result.BackupArtifacts{
-						Manifest:      in.manifestPath,
-						DBBackup:      in.dbBackupPath,
-						FilesBackup:   in.filesBackupPath,
-						DBChecksum:    in.resolvedDBChecksumPath(),
-						FilesChecksum: in.resolvedFilesChecksumPath(),
-					},
-				}
-
-				info, err := backup.FinalizeBackup(backup.FinalizeRequest{
-					Scope:            in.scope,
-					CreatedAt:        createdAt,
-					DBBackupPath:     in.dbBackupPath,
-					FilesBackupPath:  in.filesBackupPath,
-					ManifestPath:     in.manifestPath,
-					DBSidecarPath:    in.dbChecksumPath,
-					FilesSidecarPath: in.filesChecksumPath,
-				})
-				if err != nil {
-					return res, err
-				}
-
-				res.Message = "backup metadata written"
-				res.Details = result.BackupDetails{
-					Scope:     info.Scope,
-					CreatedAt: info.CreatedAt,
-					Sidecars:  true,
-				}
-				res.Artifacts = result.BackupArtifacts{
-					Manifest:      info.ManifestPath,
-					DBBackup:      info.DBBackupPath,
-					FilesBackup:   info.FilesBackupPath,
-					DBChecksum:    info.DBSidecarPath,
-					FilesChecksum: info.FilesSidecarPath,
-				}
-
-				return res, nil
-			})
+			return runBackup(cmd, in)
 		},
 	}
 
-	cmd.Flags().StringVar(&scope, "scope", "", "backup scope")
-	cmd.Flags().StringVar(&createdAtRaw, "created-at", "", "manifest timestamp in RFC3339 format (defaults to command time)")
-	cmd.Flags().StringVar(&dbBackupPath, "db-backup", "", "path to db backup artifact")
-	cmd.Flags().StringVar(&filesBackupPath, "files-backup", "", "path to files backup artifact")
-	cmd.Flags().StringVar(&manifestPath, "manifest", "", "path to write backup manifest.json")
-	cmd.Flags().StringVar(&dbChecksumPath, "db-checksum", "", "path to write db sha256 sidecar (defaults to --db-backup + .sha256)")
-	cmd.Flags().StringVar(&filesChecksumPath, "files-checksum", "", "path to write files sha256 sidecar (defaults to --files-backup + .sha256)")
+	cmd.Flags().StringVar(&scope, "scope", "", "backup contour")
+	cmd.Flags().StringVar(&projectDir, "project-dir", ".", "project directory containing the compose file and env files")
+	cmd.Flags().StringVar(&composeFile, "compose-file", "", "compose file path (defaults to project-dir/compose.yaml)")
+	cmd.Flags().StringVar(&envFile, "env-file", "", "override env file path")
+	cmd.Flags().BoolVar(&skipDB, "skip-db", false, "skip database backup")
+	cmd.Flags().BoolVar(&skipFiles, "skip-files", false, "skip files backup")
+	cmd.Flags().BoolVar(&noStop, "no-stop", false, "do not stop application services before backup")
 
 	return cmd
 }
 
 type backupInput struct {
-	scope             string
-	createdAtRaw      string
-	dbBackupPath      string
-	filesBackupPath   string
-	manifestPath      string
-	dbChecksumPath    string
-	filesChecksumPath string
+	scope       string
+	projectDir  string
+	composeFile string
+	envFile     string
+	skipDB      bool
+	skipFiles   bool
+	noStop      bool
 }
 
 func validateBackupInput(cmd *cobra.Command, in *backupInput) error {
 	in.scope = strings.TrimSpace(in.scope)
-	in.dbBackupPath = strings.TrimSpace(in.dbBackupPath)
-	in.filesBackupPath = strings.TrimSpace(in.filesBackupPath)
-	in.manifestPath = strings.TrimSpace(in.manifestPath)
-	in.dbChecksumPath = strings.TrimSpace(in.dbChecksumPath)
-	in.filesChecksumPath = strings.TrimSpace(in.filesChecksumPath)
+	in.projectDir = strings.TrimSpace(in.projectDir)
+	in.composeFile = strings.TrimSpace(in.composeFile)
+	in.envFile = strings.TrimSpace(in.envFile)
 
-	if err := requireNonBlankFlag("--scope", in.scope); err != nil {
+	switch in.scope {
+	case "dev", "prod":
+	default:
+		return usageError(fmt.Errorf("--scope must be dev or prod"))
+	}
+
+	if err := requireNonBlankFlag("--project-dir", in.projectDir); err != nil {
 		return err
 	}
-	if err := normalizeOptionalStringFlag(cmd, "created-at", &in.createdAtRaw); err != nil {
+
+	projectAbs, err := filepath.Abs(filepath.Clean(in.projectDir))
+	if err != nil {
+		return usageError(fmt.Errorf("resolve --project-dir: %w", err))
+	}
+	in.projectDir = projectAbs
+
+	if err := normalizeOptionalStringFlag(cmd, "compose-file", &in.composeFile); err != nil {
 		return err
 	}
-	if in.createdAtRaw != "" {
-		if _, err := time.Parse(time.RFC3339, in.createdAtRaw); err != nil {
-			return usageError(fmt.Errorf("--created-at must be RFC3339: %w", err))
-		}
+	if in.composeFile == "" {
+		in.composeFile = filepath.Join(in.projectDir, "compose.yaml")
+	} else if !filepath.IsAbs(in.composeFile) {
+		in.composeFile = filepath.Join(in.projectDir, in.composeFile)
 	}
-	if err := requireNonBlankFlag("--db-backup", in.dbBackupPath); err != nil {
+	in.composeFile = filepath.Clean(in.composeFile)
+
+	if err := normalizeOptionalStringFlag(cmd, "env-file", &in.envFile); err != nil {
 		return err
 	}
-	if err := requireNonBlankFlag("--files-backup", in.filesBackupPath); err != nil {
-		return err
+	if in.envFile != "" && !filepath.IsAbs(in.envFile) {
+		in.envFile = filepath.Join(in.projectDir, in.envFile)
 	}
-	if err := requireNonBlankFlag("--manifest", in.manifestPath); err != nil {
-		return err
+	if in.envFile != "" {
+		in.envFile = filepath.Clean(in.envFile)
 	}
-	if err := normalizeOptionalStringFlag(cmd, "db-checksum", &in.dbChecksumPath); err != nil {
-		return err
-	}
-	if err := normalizeOptionalStringFlag(cmd, "files-checksum", &in.filesChecksumPath); err != nil {
-		return err
+
+	if in.skipDB && in.skipFiles {
+		return usageError(fmt.Errorf("nothing to back up: --skip-db and --skip-files cannot both be set"))
 	}
 
 	return nil
 }
 
-func (in backupInput) resolvedDBChecksumPath() string {
-	if in.dbChecksumPath != "" {
-		return in.dbChecksumPath
-	}
-	return in.dbBackupPath + ".sha256"
+func runBackup(cmd *cobra.Command, in backupInput) error {
+	jsonEnabled := appForCommand(cmd).JSONEnabled()
+
+	return RunCommand(cmd, CommandSpec{
+		Name:      "backup",
+		ErrorCode: "backup_failed",
+		ExitCode:  exitcode.InternalError,
+	}, func() (res result.Result, err error) {
+		res = result.Result{
+			OK: true,
+			Details: result.BackupDetails{
+				Scope:     in.scope,
+				SkipDB:    in.skipDB,
+				SkipFiles: in.skipFiles,
+				NoStop:    in.noStop,
+			},
+		}
+
+		ctx, err := maintenanceusecase.PrepareOperation(maintenanceusecase.OperationContextRequest{
+			Scope:           in.scope,
+			Operation:       "backup",
+			ProjectDir:      in.projectDir,
+			EnvFileOverride: in.envFile,
+			EnvContourHint:  envFileContourHint(),
+		})
+		if err != nil {
+			return res, wrapBackupCommandError(err)
+		}
+		defer func() {
+			if releaseErr := ctx.Release(); releaseErr != nil {
+				if err == nil {
+					err = releaseErr
+					return
+				}
+				err = errors.Join(err, releaseErr)
+			}
+		}()
+
+		cfg, err := loadBackupExecutionConfigFromValues(in.projectDir, ctx.Env.Values)
+		if err != nil {
+			return res, err
+		}
+		if err := validateBackupExecutionConfig(cfg, !in.skipDB); err != nil {
+			return res, err
+		}
+
+		req := backupusecase.ExecuteRequest{
+			Scope:          in.scope,
+			ProjectDir:     in.projectDir,
+			ComposeFile:    in.composeFile,
+			EnvFile:        ctx.Env.FilePath,
+			BackupRoot:     cfg.BackupRoot,
+			StorageDir:     cfg.StorageDir,
+			NamePrefix:     cfg.NamePrefix,
+			RetentionDays:  cfg.RetentionDays,
+			ComposeProject: cfg.ComposeProject,
+			DBUser:         cfg.DBUser,
+			DBPassword:     cfg.DBPassword,
+			DBName:         cfg.DBName,
+			EspoCRMImage:   cfg.EspoCRMImage,
+			MariaDBTag:     cfg.MariaDBTag,
+			SkipDB:         in.skipDB,
+			SkipFiles:      in.skipFiles,
+			NoStop:         in.noStop,
+		}
+		if !jsonEnabled {
+			req.LogWriter = cmd.OutOrStdout()
+			req.ErrWriter = cmd.ErrOrStderr()
+		}
+
+		info, err := backupusecase.ExecuteBackup(req)
+		if err != nil {
+			return res, err
+		}
+
+		res.Message = "backup completed"
+		res.Details = result.BackupDetails{
+			Scope:                  info.Scope,
+			CreatedAt:              info.CreatedAt,
+			SkipDB:                 in.skipDB,
+			SkipFiles:              in.skipFiles,
+			NoStop:                 in.noStop,
+			ConsistentSnapshot:     info.ConsistentSnapshot,
+			AppServicesWereRunning: info.AppServicesWereRunning,
+			RetentionDays:          cfg.RetentionDays,
+		}
+		res.Artifacts = result.BackupArtifacts{
+			ManifestTXT:   info.ManifestTXTPath,
+			ManifestJSON:  info.ManifestJSONPath,
+			DBBackup:      info.DBBackupPath,
+			FilesBackup:   info.FilesBackupPath,
+			DBChecksum:    info.DBSidecarPath,
+			FilesChecksum: info.FilesSidecarPath,
+		}
+
+		return res, nil
+	})
 }
 
-func (in backupInput) resolvedFilesChecksumPath() string {
-	if in.filesChecksumPath != "" {
-		return in.filesChecksumPath
+func wrapBackupCommandError(err error) error {
+	if kind, ok := apperr.KindOf(err); ok {
+		return apperr.Wrap(kind, "backup_failed", err)
 	}
-	return in.filesBackupPath + ".sha256"
+
+	return apperr.Wrap(apperr.KindInternal, "backup_failed", err)
 }

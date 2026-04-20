@@ -89,9 +89,9 @@
     },
     {
       "scope": "prod",
-      "code": "maintenance_lock",
+      "code": "contour_operation_lock",
       "status": "ok",
-      "summary": "The maintenance lock is available",
+      "summary": "The contour operation lock is available",
       "details": "REPLACE_MAINTENANCE_LOCK"
     },
     {

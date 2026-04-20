@@ -26,19 +26,19 @@ func TestPrune_KeepMostRecentByStartedAt(t *testing.T) {
 	entries := []domainjournal.Entry{
 		{
 			OperationID: "op-20260415T120000Z-11111111",
-			Command:     "verify-backup",
+			Command:     "backup verify",
 			StartedAt:   "2026-04-15T12:00:00Z",
 			OK:          true,
 		},
 		{
 			OperationID: "op-20260415T130000Z-22222222",
-			Command:     "restore-files",
+			Command:     "restore",
 			StartedAt:   "2026-04-15T13:00:00Z",
 			OK:          true,
 		},
 		{
 			OperationID: "op-20260415T140000Z-33333333",
-			Command:     "restore-db",
+			Command:     "restore",
 			StartedAt:   "2026-04-15T14:00:00Z",
 			OK:          false,
 		},
@@ -116,13 +116,13 @@ func TestPrune_RejectsConcurrentHolder(t *testing.T) {
 
 	oldEntry := domainjournal.Entry{
 		OperationID: "op-old",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339),
 		OK:          true,
 	}
 	newEntry := domainjournal.Entry{
 		OperationID: "op-new",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   time.Now().UTC().Format(time.RFC3339),
 		OK:          true,
 	}
@@ -181,19 +181,19 @@ func TestPrune_PartialFileRemovalFailureIsRepeatable(t *testing.T) {
 	entries := []domainjournal.Entry{
 		{
 			OperationID: "op-new",
-			Command:     "verify-backup",
+			Command:     "backup verify",
 			StartedAt:   "2026-04-15T14:00:00Z",
 			OK:          true,
 		},
 		{
 			OperationID: "op-middle",
-			Command:     "verify-backup",
+			Command:     "backup verify",
 			StartedAt:   "2026-04-15T13:00:00Z",
 			OK:          true,
 		},
 		{
 			OperationID: "op-old",
-			Command:     "verify-backup",
+			Command:     "backup verify",
 			StartedAt:   "2026-04-15T12:00:00Z",
 			OK:          true,
 		},
@@ -277,7 +277,7 @@ func TestPrune_KeepDaysUsesStartedAtNotMtime(t *testing.T) {
 	newMtime := time.Now().UTC()
 	oldEntry := domainjournal.Entry{
 		OperationID: "op-old-started-at",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   oldStartedAt,
 		OK:          true,
 	}
@@ -289,7 +289,7 @@ func TestPrune_KeepDaysUsesStartedAtNotMtime(t *testing.T) {
 	}
 	newEntry := domainjournal.Entry{
 		OperationID: "op-new-started-at",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   time.Now().UTC().Format(time.RFC3339),
 		FinishedAt:  time.Now().UTC().Add(time.Second).Format(time.RFC3339),
 		OK:          true,
@@ -332,14 +332,14 @@ func TestPrune_ProtectsLatestOperationWhenAgePolicyWouldDeleteIt(t *testing.T) {
 	entries := []domainjournal.Entry{
 		{
 			OperationID: "op-oldest",
-			Command:     "verify-backup",
+			Command:     "backup verify",
 			StartedAt:   "2026-02-01T12:00:00Z",
 			FinishedAt:  "2026-02-01T12:00:01Z",
 			OK:          true,
 		},
 		{
 			OperationID: "op-latest-but-old",
-			Command:     "verify-backup",
+			Command:     "backup verify",
 			StartedAt:   "2026-03-01T12:00:00Z",
 			FinishedAt:  "2026-03-01T12:00:01Z",
 			OK:          true,
@@ -387,14 +387,14 @@ func TestPrune_RemovesEmptyDirs(t *testing.T) {
 
 	oldEntry := domainjournal.Entry{
 		OperationID: "op-20260401T120000Z-old",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   time.Now().UTC().AddDate(0, 0, -10).Format(time.RFC3339),
 		FinishedAt:  time.Now().UTC().AddDate(0, 0, -10).Add(time.Second).Format(time.RFC3339),
 		OK:          true,
 	}
 	newEntry := domainjournal.Entry{
 		OperationID: "op-20260415T120000Z-new",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   time.Now().UTC().Format(time.RFC3339),
 		FinishedAt:  time.Now().UTC().Add(time.Second).Format(time.RFC3339),
 		OK:          true,

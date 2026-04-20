@@ -203,7 +203,7 @@ func normalizeDoctorJSON(t *testing.T, raw []byte) []byte {
 				item["details"] = "REPLACE_ESPO_STORAGE_DIR"
 			case "backup_root":
 				item["details"] = "REPLACE_BACKUP_ROOT"
-			case "maintenance_lock":
+			case "contour_operation_lock":
 				item["details"] = "REPLACE_MAINTENANCE_LOCK"
 			case "compose_config":
 				item["details"] = "compose file REPLACE_COMPOSE_FILE with env REPLACE_ENV_FILE"

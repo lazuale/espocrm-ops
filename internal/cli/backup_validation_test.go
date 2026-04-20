@@ -13,16 +13,14 @@ func TestSchema_Backup_JSON_Error_MissingScope_NoJournal(t *testing.T) {
 		"--journal-dir", journalDir,
 		"--json",
 		"backup",
-		"--db-backup", filepath.Join(tmp, "db.sql.gz"),
-		"--files-backup", filepath.Join(tmp, "files.tar.gz"),
-		"--manifest", filepath.Join(tmp, "manifest.json"),
+		"--project-dir", tmp,
 	)
 
-	assertUsageErrorOutput(t, outcome, "--scope is required")
+	assertUsageErrorOutput(t, outcome, "--scope must be dev or prod")
 	assertNoJournalFiles(t, journalDir)
 }
 
-func TestSchema_Backup_JSON_Error_InvalidCreatedAt_NoJournal(t *testing.T) {
+func TestSchema_Backup_JSON_Error_RejectsEmptySelection_NoJournal(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 
@@ -31,12 +29,11 @@ func TestSchema_Backup_JSON_Error_InvalidCreatedAt_NoJournal(t *testing.T) {
 		"--json",
 		"backup",
 		"--scope", "dev",
-		"--created-at", "not-a-time",
-		"--db-backup", filepath.Join(tmp, "db.sql.gz"),
-		"--files-backup", filepath.Join(tmp, "files.tar.gz"),
-		"--manifest", filepath.Join(tmp, "manifest.json"),
+		"--project-dir", tmp,
+		"--skip-db",
+		"--skip-files",
 	)
 
-	assertUsageErrorOutput(t, outcome, "--created-at must be RFC3339")
+	assertUsageErrorOutput(t, outcome, "nothing to back up")
 	assertNoJournalFiles(t, journalDir)
 }

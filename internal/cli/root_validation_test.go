@@ -26,7 +26,7 @@ func TestSchema_Root_JSON_Error_UnknownFlag_NoJournal(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"history",
+		"doctor",
 		"--totally-unknown-flag",
 	)
 
@@ -34,7 +34,7 @@ func TestSchema_Root_JSON_Error_UnknownFlag_NoJournal(t *testing.T) {
 	assertNoJournalFiles(t, journalDir)
 }
 
-func TestRootExposesSingleDashboardCommand(t *testing.T) {
+func TestRootExposesOnlyBackupRecoveryCommands(t *testing.T) {
 	root := newTestRootCmd()
 
 	commands := map[string]struct{}{}
@@ -42,80 +42,53 @@ func TestRootExposesSingleDashboardCommand(t *testing.T) {
 		commands[cmd.Name()] = struct{}{}
 	}
 
-	if _, ok := commands["overview"]; !ok {
-		t.Fatalf("expected overview command to be present")
+	for _, expected := range []string{"doctor", "backup", "restore", "migrate"} {
+		if _, ok := commands[expected]; !ok {
+			t.Fatalf("expected command %q to be present", expected)
+		}
 	}
-	for _, forbidden := range []string{"summary", "dashboard"} {
+	for _, forbidden := range []string{
+		"overview",
+		"status-report",
+		"health-summary",
+		"operation-gate",
+		"history",
+		"show-operation",
+		"last-operation",
+		"export-operation",
+		"support-bundle",
+		"maintenance",
+		"backup-health",
+		"backup-catalog",
+		"show-backup",
+		"restore-drill",
+		"rollback",
+		"update",
+		"verify-backup",
+		"migrate-backup",
+	} {
 		if _, ok := commands[forbidden]; ok {
-			t.Fatalf("expected no duplicate dashboard command %q", forbidden)
+			t.Fatalf("expected removed command %q to be absent", forbidden)
 		}
 	}
 }
 
-func TestRootExposesSingleHousekeepingCommand(t *testing.T) {
+func TestBackupCommandExposesOnlyVerifySubcommand(t *testing.T) {
 	root := newTestRootCmd()
-
-	commands := map[string]struct{}{}
-	for _, cmd := range root.Commands() {
-		commands[cmd.Name()] = struct{}{}
-	}
-
-	if _, ok := commands["maintenance"]; !ok {
-		t.Fatalf("expected maintenance command to be present")
-	}
-	for _, forbidden := range []string{"cleanup", "housekeeping", "scheduled-maintenance", "maintenance-run"} {
-		if _, ok := commands[forbidden]; ok {
-			t.Fatalf("expected no duplicate housekeeping command %q", forbidden)
-		}
-	}
-}
-
-func TestRootExposesSingleHealthSummaryCommand(t *testing.T) {
-	root := newTestRootCmd()
-
-	commands := map[string]struct{}{}
-	for _, cmd := range root.Commands() {
-		commands[cmd.Name()] = struct{}{}
-	}
-
-	if _, ok := commands["health-summary"]; !ok {
-		t.Fatalf("expected health-summary command to be present")
-	}
-	for _, forbidden := range []string{"health", "alerts", "health-alerts"} {
-		if _, ok := commands[forbidden]; ok {
-			t.Fatalf("expected no duplicate health command %q", forbidden)
-		}
-	}
-}
-
-func TestRootExposesSingleOperationGateCommand(t *testing.T) {
-	root := newTestRootCmd()
-
-	commands := map[string]struct{}{}
-	for _, cmd := range root.Commands() {
-		commands[cmd.Name()] = struct{}{}
-	}
-
-	if _, ok := commands["operation-gate"]; !ok {
-		t.Fatalf("expected operation-gate command to be present")
-	}
-	for _, forbidden := range []string{"can-run", "readiness", "operation-readiness"} {
-		if _, ok := commands[forbidden]; ok {
-			t.Fatalf("expected no duplicate operation gate command %q", forbidden)
-		}
-	}
-}
-
-func TestMaintenanceCommandExposesUnattendedFlags(t *testing.T) {
-	root := newTestRootCmd()
-	maintenance, _, err := root.Find([]string{"maintenance"})
+	backup, _, err := root.Find([]string{"backup"})
 	if err != nil {
-		t.Fatalf("find maintenance command: %v", err)
+		t.Fatalf("find backup command: %v", err)
 	}
-
-	for _, name := range []string{"unattended", "allow-unattended-apply"} {
-		if maintenance.Flags().Lookup(name) == nil {
-			t.Fatalf("expected maintenance to expose flag %q", name)
+	subcommands := map[string]struct{}{}
+	for _, cmd := range backup.Commands() {
+		subcommands[cmd.Name()] = struct{}{}
+	}
+	if _, ok := subcommands["verify"]; !ok {
+		t.Fatalf("expected backup verify subcommand to be present")
+	}
+	for _, forbidden := range []string{"audit", "catalog", "show"} {
+		if _, ok := subcommands[forbidden]; ok {
+			t.Fatalf("expected removed backup subcommand %q to be absent", forbidden)
 		}
 	}
 }

@@ -279,7 +279,7 @@ func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
 		Message:  message,
 		DryRun:   info.DryRun,
 		Warnings: append([]string(nil), info.Warnings...),
-		Details: result.RestoreExecutionDetails{
+		Details: result.RestoreDetails{
 			Scope:                  info.Scope,
 			Ready:                  info.Ready(),
 			SelectionMode:          info.SelectionMode,
@@ -299,7 +299,7 @@ func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
 			AppServicesWereRunning: info.AppServicesWereRunning,
 			StartedDBTemporarily:   info.StartedDBTemporarily,
 		},
-		Artifacts: result.RestoreExecutionArtifacts{
+		Artifacts: result.RestoreArtifacts{
 			ProjectDir:            info.ProjectDir,
 			ComposeFile:           info.ComposeFile,
 			EnvFile:               info.EnvFile,
@@ -320,11 +320,11 @@ func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
 }
 
 func renderRestoreText(w io.Writer, res result.Result) error {
-	details, ok := res.Details.(result.RestoreExecutionDetails)
+	details, ok := res.Details.(result.RestoreDetails)
 	if !ok {
 		return result.Render(w, res, false)
 	}
-	artifacts, ok := res.Artifacts.(result.RestoreExecutionArtifacts)
+	artifacts, ok := res.Artifacts.(result.RestoreArtifacts)
 	if !ok {
 		return fmt.Errorf("unexpected restore artifacts type %T", res.Artifacts)
 	}

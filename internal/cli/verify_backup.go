@@ -15,7 +15,7 @@ func newVerifyBackupCmd() *cobra.Command {
 	var backupRoot string
 
 	cmd := &cobra.Command{
-		Use:   "verify-backup",
+		Use:   "verify",
 		Short: "Verify backup set from manifest",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
@@ -24,13 +24,13 @@ func newVerifyBackupCmd() *cobra.Command {
 			}
 
 			return RunCommand(cmd, CommandSpec{
-				Name:       "verify-backup",
+				Name:       "backup verify",
 				ErrorCode:  "backup_verification_failed",
 				ExitCode:   exitcode.ValidationError,
 				RenderText: renderVerifyBackupText,
 			}, func() (result.Result, error) {
 				res := result.Result{
-					Artifacts: result.VerifyBackupArtifacts{
+					Artifacts: result.BackupVerifyArtifacts{
 						Manifest: manifestPath,
 					},
 				}
@@ -42,7 +42,7 @@ func newVerifyBackupCmd() *cobra.Command {
 						return res, err
 					}
 					verifyManifestPath = selectedManifestPath
-					res.Artifacts = result.VerifyBackupArtifacts{
+					res.Artifacts = result.BackupVerifyArtifacts{
 						Manifest: selectedManifestPath,
 					}
 				}
@@ -55,12 +55,12 @@ func newVerifyBackupCmd() *cobra.Command {
 				}
 
 				res.Message = "backup verification passed"
-				res.Artifacts = result.VerifyBackupArtifacts{
+				res.Artifacts = result.BackupVerifyArtifacts{
 					Manifest:    info.ManifestPath,
 					DBBackup:    info.DBBackupPath,
 					FilesBackup: info.FilesPath,
 				}
-				res.Details = result.VerifyBackupDetails{
+				res.Details = result.BackupVerifyDetails{
 					Scope:     info.Scope,
 					CreatedAt: info.CreatedAt,
 				}
@@ -93,12 +93,12 @@ func validateVerifyBackupInput(manifestPath, backupRoot string) error {
 }
 
 func renderVerifyBackupText(w io.Writer, res result.Result) error {
-	artifacts, ok := res.Artifacts.(result.VerifyBackupArtifacts)
+	artifacts, ok := res.Artifacts.(result.BackupVerifyArtifacts)
 	if !ok {
 		return result.Render(w, res, false)
 	}
 
-	if _, err := fmt.Fprintln(w, "Checking the coherent backup set"); err != nil {
+	if _, err := fmt.Fprintln(w, "Verifying backup set"); err != nil {
 		return err
 	}
 	if artifacts.DBBackup != "" {

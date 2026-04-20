@@ -23,7 +23,8 @@ func TestSchema_VerifyBackup_JSON_BackupRoot_SelectsLatestCompleteSet(t *testing
 	out, err := runRootCommandWithOptions(t, opts,
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 		"--backup-root", backupRoot,
 	)
 	if err != nil {

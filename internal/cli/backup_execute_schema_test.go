@@ -7,6 +7,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	platformfs "github.com/lazuale/espocrm-ops/internal/platform/fs"
 )
 
@@ -15,9 +16,7 @@ func TestSchema_BackupExecute_JSON_FilesOnlyNoStop(t *testing.T) {
 	journalDir := filepath.Join(tmp, "journal")
 	projectDir := filepath.Join(tmp, "project")
 	composeFile := filepath.Join(projectDir, "compose.yaml")
-	envFile := filepath.Join(projectDir, ".env.dev")
-	backupRoot := filepath.Join(tmp, "backups")
-	storageDir := filepath.Join(tmp, "storage", "espo")
+	storageDir := filepath.Join(projectDir, "runtime", "dev", "espo")
 	mockBinDir := filepath.Join(tmp, "bin")
 
 	useJournalClockForTest(t, time.Date(2026, 4, 15, 11, 0, 0, 0, time.UTC))
@@ -37,25 +36,27 @@ func TestSchema_BackupExecute_JSON_FilesOnlyNoStop(t *testing.T) {
 	if err := os.WriteFile(composeFile, []byte("services: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(envFile, []byte("COMPOSE_PROJECT_NAME=espocrm-test\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
 	if err := os.WriteFile(filepath.Join(mockBinDir, "docker"), []byte("#!/usr/bin/env bash\nset -Eeuo pipefail\necho 'docker must not be called' >&2\nexit 97\n"), 0o755); err != nil {
 		t.Fatal(err)
 	}
 
-	t.Setenv("PATH", mockBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-	t.Setenv("COMPOSE_PROJECT_NAME", "espocrm-test")
-	t.Setenv("BACKUP_ROOT", backupRoot)
-	t.Setenv("ESPO_STORAGE_DIR", storageDir)
-	t.Setenv("BACKUP_NAME_PREFIX", "espocrm-test-dev")
-	t.Setenv("BACKUP_RETENTION_DAYS", "7")
+	envFile := writeDoctorEnvFile(t, projectDir, "dev", map[string]string{
+		"COMPOSE_PROJECT_NAME": "espocrm-test",
+		"ESPO_STORAGE_DIR":     "./runtime/dev/espo",
+		"BACKUP_ROOT":          "./backups/dev",
+		"BACKUP_NAME_PREFIX":   "espocrm-test-dev",
+	})
 
-	out, err := runRootCommand(
+	t.Setenv("PATH", mockBinDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	out, err := runRootCommandWithOptions(
 		t,
+		[]testAppOption{
+			withFixedTestRuntime(time.Date(2026, 4, 15, 11, 0, 0, 0, time.UTC), "op-backup-1"),
+		},
 		"--journal-dir", journalDir,
 		"--json",
-		"backup-exec",
+		"backup",
 		"--scope", "dev",
 		"--project-dir", projectDir,
 		"--compose-file", composeFile,
@@ -86,7 +87,7 @@ func TestSchema_BackupExecute_JSON_FilesOnlyNoStop(t *testing.T) {
 	requireJSONPath(t, obj, "artifacts", "files_backup")
 	requireJSONPath(t, obj, "artifacts", "files_checksum")
 
-	if obj["command"] != "backup-exec" {
+	if obj["command"] != "backup" {
 		t.Fatalf("unexpected command: %v", obj["command"])
 	}
 	if message := obj["message"]; message != "backup completed" {
@@ -110,27 +111,80 @@ func TestSchema_BackupExecute_JSON_FilesOnlyNoStop(t *testing.T) {
 		}
 	}
 
-	assertNoJournalFiles(t, journalDir)
+	normalized := normalizeBackupJSON(t, []byte(out))
+	assertGoldenJSON(t, normalized, filepath.Join("testdata", "backup_ok.golden.json"))
 }
 
 func TestSchema_BackupExecute_JSON_Error_MissingBackupRoot_NoJournal(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
-	t.Setenv("COMPOSE_PROJECT_NAME", "espocrm-test")
-	t.Setenv("ESPO_STORAGE_DIR", filepath.Join(tmp, "storage", "espo"))
+	projectDir := filepath.Join(tmp, "project")
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	envFile := writeDoctorEnvFile(t, projectDir, "dev", map[string]string{
+		"BACKUP_ROOT": "",
+	})
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"backup-exec",
+		"backup",
 		"--scope", "dev",
-		"--project-dir", tmp,
-		"--compose-file", filepath.Join(tmp, "compose.yaml"),
-		"--env-file", filepath.Join(tmp, ".env"),
+		"--project-dir", projectDir,
+		"--compose-file", filepath.Join(projectDir, "compose.yaml"),
+		"--env-file", envFile,
 		"--skip-db",
 		"--no-stop",
 	)
 
-	assertUsageErrorOutput(t, outcome, "BACKUP_ROOT is required")
-	assertNoJournalFiles(t, journalDir)
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "backup_failed", "BACKUP_ROOT is not set")
+}
+
+func normalizeBackupJSON(t *testing.T, raw []byte) []byte {
+	t.Helper()
+
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
+	}
+
+	replacements := map[string]string{}
+	if artifacts, ok := obj["artifacts"].(map[string]any); ok {
+		for key, placeholder := range map[string]string{
+			"manifest_txt":   "REPLACE_MANIFEST_TXT",
+			"manifest_json":  "REPLACE_MANIFEST_JSON",
+			"files_backup":   "REPLACE_FILES_BACKUP",
+			"files_checksum": "REPLACE_FILES_CHECKSUM",
+		} {
+			value, ok := artifacts[key].(string)
+			if !ok || value == "" {
+				continue
+			}
+			replacements[value] = placeholder
+			artifacts[key] = placeholder
+		}
+	}
+
+	if items, ok := obj["items"].([]any); ok {
+		for _, rawItem := range items {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			if value, ok := item["details"].(string); ok {
+				item["details"] = replaceKnownPaths(value, replacements)
+			}
+		}
+	}
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return out
 }

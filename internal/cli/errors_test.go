@@ -61,7 +61,7 @@ func TestErrorCodeForError_UsesAppErrorMachineCode(t *testing.T) {
 func TestErrorResult_IncludesTypedMachineFields(t *testing.T) {
 	err := apperr.Wrap(apperr.KindNotFound, "operation_not_found", errors.New("missing operation"))
 
-	res, exitCode := ErrorResult("show-operation", err, exitcode.InternalError, "internal_error")
+	res, exitCode := ErrorResult("doctor", err, exitcode.InternalError, "internal_error")
 
 	if exitCode != exitcode.ValidationError {
 		t.Fatalf("expected validation exit code, got %d", exitCode)
@@ -88,7 +88,7 @@ func TestErrorResult_PropagatesWarningsFromCodeError(t *testing.T) {
 		Warnings: []string{"failed to write journal entry: journal writer is not configured"},
 	}
 
-	res, exitCode := ErrorResult("restore-db", err, exitcode.InternalError, "internal_error")
+	res, exitCode := ErrorResult("restore", err, exitcode.InternalError, "internal_error")
 
 	if exitCode != exitcode.RestoreError {
 		t.Fatalf("expected restore exit code, got %d", exitCode)

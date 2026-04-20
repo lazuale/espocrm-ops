@@ -26,29 +26,16 @@
     {
       "trigger_prefixes": [
         "scripts/doctor.sh",
-        "scripts/status-report.sh",
-        "scripts/backup-audit.sh",
-        "scripts/backup-catalog.sh",
-        "scripts/contour-overview.sh",
-        "scripts/lib/locks.sh"
+        "scripts/backup.sh",
+        "scripts/restore.sh",
+        "scripts/migrate.sh",
+        "scripts/espo.sh",
+        "scripts/regression-test.sh",
+        "scripts/lib/common.sh"
       ],
       "requires_any_prefix": [
         ".github/workflows/ai-governance.yml",
         "AI/compiled/"
-      ]
-    },
-    {
-      "trigger_prefixes": [
-        "scripts/restore-db.sh",
-        "scripts/restore-files.sh",
-        "scripts/rollback.sh",
-        "scripts/migrate-backup.sh",
-        "scripts/restore-drill.sh",
-        "scripts/verify-backup.sh",
-        "scripts/lib/artifacts.sh"
-      ],
-      "requires_any_prefix": [
-        "AI/compiled/SHELL_DEBT_BASELINE.json"
       ]
     }
   ]

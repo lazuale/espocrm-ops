@@ -13,7 +13,7 @@
     "target_backup_root": "REPLACE_TARGET_BACKUP_ROOT",
     "target_env_file": "REPLACE_TARGET_ENV_FILE"
   },
-  "command": "migrate-backup",
+  "command": "migrate",
   "details": {
     "completed": 8,
     "failed": 0,

@@ -48,7 +48,8 @@ func TestGolden_VerifyBackup_JSON(t *testing.T) {
 	out, err := runRootCommandWithOptions(t, opts,
 		"--journal-dir", journalDir,
 		"--json",
-		"verify-backup",
+		"backup",
+		"verify",
 		"--manifest", manifestPath,
 	)
 	if err != nil {

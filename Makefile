@@ -7,6 +7,7 @@ GOVULNCHECK_VERSION ?= v1.2.0
 STATICCHECK_VERSION ?= v0.7.0
 GOLANGCI_LINT_VERSION ?= v2.11.4
 FAST_GATE_COMPONENTS := test vet ai-shell-json-smoke bashcheck shellcheck
+SHELL_SCRIPTS := scripts/espo.sh scripts/doctor.sh scripts/backup.sh scripts/restore.sh scripts/migrate.sh scripts/regression-test.sh scripts/lib/common.sh
 
 .PHONY: ai-validate ai-refresh ai-check ai-shell-json-smoke policy build test test-cli test-golden fmt vet clean integration ci check-fast check-fast-components check-full regression bashcheck shellcheck vulncheck staticcheck lint coverage install-health-tools install-ci-health-tools
 
@@ -52,16 +53,8 @@ ai-shell-json-smoke: build
 	set_env_value "$$env_dev" DB_PASSWORD "dev-db-password"; \
 	set_env_value "$$env_dev" ADMIN_PASSWORD "dev-admin-password"; \
 	ENV_FILE="$$env_dev" bash scripts/doctor.sh dev --json > "$$tmp_root/out/doctor-dev.json" || true; \
-	ENV_FILE="$$env_dev" bash scripts/status-report.sh dev --json > "$$tmp_root/out/status-dev.json" || true; \
-	ENV_FILE="$$env_dev" bash scripts/backup-audit.sh dev --json > "$$tmp_root/out/backup-audit-dev.json" || true; \
-	ENV_FILE="$$env_dev" bash scripts/backup-catalog.sh dev --json --latest-only > "$$tmp_root/out/backup-catalog-dev.json" || true; \
-	ENV_FILE="$$env_dev" bash scripts/contour-overview.sh dev --json > "$$tmp_root/out/overview-dev.json" || true; \
 	$(PYTHON) AI/generators/json_fixture_contract_diff.py --parse-files \
-		"$$tmp_root/out/doctor-dev.json" \
-		"$$tmp_root/out/status-dev.json" \
-		"$$tmp_root/out/backup-audit-dev.json" \
-		"$$tmp_root/out/backup-catalog-dev.json" \
-		"$$tmp_root/out/overview-dev.json"
+		"$$tmp_root/out/doctor-dev.json"
 
 check-fast-components: $(FAST_GATE_COMPONENTS)
 
@@ -125,10 +118,10 @@ install-ci-health-tools:
 	curl -sSfL https://raw.githubusercontent.com/golangci/golangci-lint/master/install.sh | sh -s -- -b "$(HEALTH_TOOLS_BIN)" $(GOLANGCI_LINT_VERSION)
 
 bashcheck:
-	bash -n scripts/espo.sh scripts/*.sh scripts/lib/*.sh scripts/tests/*.sh scripts/tests/suites/*.sh
+	bash -n $(SHELL_SCRIPTS)
 
 shellcheck:
-	shellcheck scripts/espo.sh scripts/*.sh scripts/lib/*.sh scripts/tests/*.sh scripts/tests/suites/*.sh
+	shellcheck $(SHELL_SCRIPTS)
 
 fmt:
 	go fmt ./...

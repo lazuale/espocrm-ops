@@ -14,7 +14,7 @@ func TestFSWriter_Write(t *testing.T) {
 
 	entry := domainjournal.Entry{
 		OperationID: "op-20260415T120000Z-deadbeef",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   "2026-04-15T12:00:00Z",
 		FinishedAt:  "2026-04-15T12:00:01Z",
 		OK:          true,

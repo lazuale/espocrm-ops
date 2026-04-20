@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+
+	"github.com/lazuale/espocrm-ops/internal/platform/locks"
 )
 
 func prependFakeDockerForRollbackCLITest(t *testing.T) {
@@ -269,6 +272,77 @@ exit 98
 	}
 
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func isolateRollbackPlanLocks(t *testing.T) {
+	t.Helper()
+
+	restore := locks.SetLockDirForTest(t.TempDir())
+	t.Cleanup(restore)
+}
+
+func writeRollbackBackupSet(t *testing.T, backupRoot, prefix, stamp, scope string) {
+	t.Helper()
+
+	dbPath := filepath.Join(backupRoot, "db", prefix+"_"+stamp+".sql.gz")
+	filesPath := filepath.Join(backupRoot, "files", prefix+"_files_"+stamp+".tar.gz")
+	manifestTXT := filepath.Join(backupRoot, "manifests", prefix+"_"+stamp+".manifest.txt")
+	manifestJSON := filepath.Join(backupRoot, "manifests", prefix+"_"+stamp+".manifest.json")
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filesPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(manifestJSON), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeGzipFile(t, dbPath, []byte("select 1;"))
+	writeTarGzFile(t, filesPath, map[string]string{
+		"espo/test.txt": "hello",
+	})
+	if err := os.WriteFile(dbPath+".sha256", []byte(sha256OfFile(t, dbPath)+"  "+filepath.Base(dbPath)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filesPath+".sha256", []byte(sha256OfFile(t, filesPath)+"  "+filepath.Base(filesPath)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestTXT, []byte("created_at=2026-04-18T10:00:00Z\ncontour="+scope+"\ncompose_project="+prefix+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, manifestJSON, map[string]any{
+		"version":    1,
+		"scope":      scope,
+		"created_at": "2026-04-18T10:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(dbPath),
+			"files_backup": filepath.Base(filesPath),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, dbPath),
+			"files_backup": sha256OfFile(t, filesPath),
+		},
+	})
+}
+
+func writeUpdateRuntimeStatusFile(t *testing.T, stateDir, service string, statuses ...string) {
+	t.Helper()
+
+	body := strings.Join(statuses, "\n") + "\n"
+	if err := os.WriteFile(filepath.Join(stateDir, service+".statuses"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func containsAll(text string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(text, part) {
+			return false
+		}
+	}
+	return true
 }
 
 func normalizeRollbackJSON(t *testing.T, raw []byte) []byte {

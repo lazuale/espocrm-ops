@@ -56,7 +56,7 @@ func TestSchema_MigrateBackup_JSON_Success(t *testing.T) {
 		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-1")},
 		"--journal-dir", journalDir,
 		"--json",
-		"migrate-backup",
+		"migrate",
 		"--from", "dev",
 		"--to", "prod",
 		"--project-dir", projectDir,
@@ -87,7 +87,7 @@ func TestSchema_MigrateBackup_JSON_Success(t *testing.T) {
 	requireJSONPath(t, obj, "artifacts", "files_backup")
 	requireJSONPath(t, obj, "items")
 
-	if obj["command"] != "migrate-backup" {
+	if obj["command"] != "migrate" {
 		t.Fatalf("unexpected command: %v", obj["command"])
 	}
 	if ok, _ := obj["ok"].(bool); !ok {
@@ -121,7 +121,7 @@ func TestSchema_MigrateBackup_JSON_Success(t *testing.T) {
 
 	items, ok := obj["items"].([]any)
 	if !ok || len(items) != 8 {
-		t.Fatalf("expected eight migrate-backup items, got %#v", obj["items"])
+		t.Fatalf("expected eight migrate items, got %#v", obj["items"])
 	}
 
 	restoredContent, err := os.ReadFile(filepath.Join(storageDir, "test.txt"))
@@ -192,7 +192,7 @@ func TestSchema_MigrateBackup_JSON_Success_SkipDBNoStart(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"migrate-backup",
+		"migrate",
 		"--from", "dev",
 		"--to", "prod",
 		"--project-dir", projectDir,
@@ -255,7 +255,7 @@ func TestSchema_MigrateBackup_JSON_Failure_CompatibilityDrift(t *testing.T) {
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
-		"migrate-backup",
+		"migrate",
 		"--from", "dev",
 		"--to", "prod",
 		"--project-dir", projectDir,
@@ -263,7 +263,7 @@ func TestSchema_MigrateBackup_JSON_Failure_CompatibilityDrift(t *testing.T) {
 		"--confirm-prod", "prod",
 	)
 
-	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "migrate_backup_failed", "conflict with the migration compatibility contract")
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "migrate_failed", "conflict with the migration compatibility contract")
 
 	var obj map[string]any
 	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {

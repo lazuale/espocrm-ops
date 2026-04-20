@@ -14,16 +14,16 @@ func TestReader_ReadAllSortsNewestFirstByStartedAtAndSkipsInvalidJSON(t *testing
 
 	oldEntry := domainjournal.Entry{
 		OperationID: "op-20260415T120000Z-11111111",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   "2026-04-15T12:00:00Z",
 		OK:          true,
 	}
 	newEntry := domainjournal.Entry{
 		OperationID: "op-20260415T130000Z-22222222",
-		Command:     "restore-files",
+		Command:     "restore",
 		StartedAt:   "2026-04-15T13:00:00Z",
 		OK:          false,
-		ErrorCode:   "restore_files_failed",
+		ErrorCode:   "restore_failed",
 	}
 
 	if err := writer.Write(oldEntry); err != nil {
@@ -55,7 +55,7 @@ func TestReader_ReadAllWithPaths(t *testing.T) {
 	tmp := t.TempDir()
 	entry := domainjournal.Entry{
 		OperationID: "op-20260415T120000Z-11111111",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   "2026-04-15T12:00:00Z",
 		OK:          true,
 	}
@@ -85,7 +85,7 @@ func TestReader_ReadByID(t *testing.T) {
 	tmp := t.TempDir()
 	entry := domainjournal.Entry{
 		OperationID: "op-20260415T120000Z-11111111",
-		Command:     "verify-backup",
+		Command:     "backup verify",
 		StartedAt:   "2026-04-15T12:00:00Z",
 		OK:          true,
 	}

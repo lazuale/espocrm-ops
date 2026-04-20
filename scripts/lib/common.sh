@@ -2,7 +2,6 @@
 set -Eeuo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-CALLER_DIR="$(pwd)"
 # shellcheck disable=SC2034
 POSITIONAL_ARGS=()
 declare -a KNOWN_ENV_VARS=(
@@ -65,51 +64,6 @@ usage_error() {
   die "$@"
 }
 
-note() {
-  echo "[info] $*"
-}
-
-warn() {
-  echo "[warn] $*" >&2
-}
-
-append_trap() {
-  local new_command="$1"
-  shift
-
-  local signal existing_command raw_trap
-  for signal in "$@"; do
-    raw_trap="$(trap -p "$signal")"
-    existing_command=""
-
-    if [[ -n "$raw_trap" ]]; then
-      existing_command="${raw_trap#trap -- \'}"
-      existing_command="${existing_command%\' "$signal"}"
-    fi
-
-    if [[ -n "$existing_command" ]]; then
-      # shellcheck disable=SC2064
-      trap "$existing_command"$'\n'"$new_command" "$signal"
-    else
-      # shellcheck disable=SC2064
-      trap "$new_command" "$signal"
-    fi
-  done
-}
-
-command_exists() {
-  command -v "$1" >/dev/null 2>&1
-}
-
-# Run child scripts through bash so checkout mode drift does not matter.
-run_repo_script() {
-  local script_path="$1"
-  shift
-
-  [[ -f "$script_path" ]] || die "Child script not found: $script_path"
-  bash "$script_path" "$@"
-}
-
 ensure_espops_binary() {
   local bin_path="${1:-$ROOT_DIR/bin/espops}"
 
@@ -125,76 +79,6 @@ run_espops() {
 
   ensure_espops_binary "$bin_path"
   "$bin_path" "$@"
-}
-
-json_escape() {
-  local value="$1"
-  local code octal control_char replacement
-
-  value="${value//\\/\\\\}"
-  value="${value//\"/\\\"}"
-
-  for ((code=1; code<32; code++)); do
-    case "$code" in
-      8)
-        control_char=$'\b'
-        replacement='\b'
-        ;;
-      9)
-        control_char=$'\t'
-        replacement='\t'
-        ;;
-      10)
-        control_char=$'\n'
-        replacement='\n'
-        ;;
-      12)
-        control_char=$'\f'
-        replacement='\f'
-        ;;
-      13)
-        control_char=$'\r'
-        replacement='\r'
-        ;;
-      *)
-        printf -v octal '%03o' "$code"
-        printf -v control_char '%b' "\\$octal"
-        printf -v replacement '\\u%04x' "$code"
-        ;;
-    esac
-
-    value="${value//$control_char/$replacement}"
-  done
-
-  printf '%s' "$value"
-}
-
-json_bool() {
-  if [[ "${1:-0}" == "1" ]]; then
-    printf 'true'
-  else
-    printf 'false'
-  fi
-}
-
-json_value_or_null() {
-  local value="${1:-}"
-
-  if [[ -n "$value" ]]; then
-    printf '"%s"' "$(json_escape "$value")"
-  else
-    printf 'null'
-  fi
-}
-
-json_number_or_null() {
-  local value="${1:-}"
-
-  if [[ "$value" =~ ^[0-9]+$ ]]; then
-    printf '%s' "$value"
-  else
-    printf 'null'
-  fi
 }
 
 parse_contour_arg() {
@@ -336,20 +220,6 @@ validate_env_file_for_loading() {
 
   (( (env_mode_octal & 8#137) == 0 )) \
     || die "Env file must not be broader than 640 and must not have execute bits: $env_file (current $env_mode)"
-}
-
-require_destructive_approval() {
-  local operation_name="$1"
-  local force_flag="$2"
-  local confirm_prod="$3"
-  local effective_contour="${RESOLVED_ENV_CONTOUR:-$ESPO_ENV}"
-
-  [[ "$force_flag" == "1" ]] || usage_error "Command $operation_name changes data and requires an explicit --force flag"
-
-  if [[ "$effective_contour" == "prod" ]]; then
-    [[ "$confirm_prod" == "prod" ]] \
-      || usage_error "For the prod contour, command $operation_name requires explicit confirmation via --confirm-prod prod"
-  fi
 }
 
 validate_loaded_env_file_contour() {
@@ -578,46 +448,6 @@ root_path() {
   fi
 }
 
-caller_path() {
-  local path="$1"
-
-  if [[ "$path" = /* ]]; then
-    printf '%s\n' "$path"
-  else
-    printf '%s\n' "$CALLER_DIR/${path#./}"
-  fi
-}
-
-next_unique_stamp() {
-  local stamp template path collision_found=0
-
-  while true; do
-    stamp="$(date +%F_%H-%M-%S)"
-
-    if [[ $# -eq 0 ]]; then
-      printf '%s\n' "$stamp"
-      return 0
-    fi
-
-    collision_found=0
-    for template in "$@"; do
-      path="${template//__STAMP__/$stamp}"
-      if [[ -e "$path" ]]; then
-        collision_found=1
-        break
-      fi
-    done
-
-    if [[ $collision_found -eq 0 ]]; then
-      printf '%s\n' "$stamp"
-      return 0
-    fi
-
-    warn "Detected a name collision on second-level stamp '$stamp', waiting for the next free stamp"
-    sleep 1
-  done
-}
-
 render_env_value() {
   local value="$1"
 
@@ -675,22 +505,4 @@ set_env_value() {
     rm -f -- "$tmp_file"
     die "Could not save env file: $file"
   }
-}
-
-ensure_runtime_dirs() {
-  mkdir -p \
-    "$(root_path "$DB_STORAGE_DIR")" \
-    "$(root_path "$ESPO_STORAGE_DIR")" \
-    "$(root_path "$BACKUP_ROOT")/db" \
-    "$(root_path "$BACKUP_ROOT")/files" \
-    "$(root_path "$BACKUP_ROOT")/locks" \
-    "$(root_path "$BACKUP_ROOT")/manifests" \
-    "$(root_path "$BACKUP_ROOT")/reports" \
-    "$(root_path "$BACKUP_ROOT")/support"
-}
-
-print_context() {
-  note "Contour: $ESPO_ENV"
-  note "Env file: $ENV_FILE"
-  note "Compose project: $COMPOSE_PROJECT_NAME"
 }

@@ -22,7 +22,7 @@ func NewRootCmdWithDeps(deps Dependencies) *cobra.Command {
 func (a *App) NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "espops",
-		Short:         "EspoCRM ops core utilities",
+		Short:         "EspoCRM backup and recovery utilities",
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -47,38 +47,14 @@ func (a *App) NewRootCmd() *cobra.Command {
 		return usageError(err)
 	})
 
+	backupCmd := bindApp(newBackupCmd(), a)
+	backupCmd.AddCommand(bindApp(newVerifyBackupCmd(), a))
+
 	cmd.AddCommand(
 		bindApp(newDoctorCmd(), a),
-		bindApp(newOverviewCmd(), a),
-		bindApp(newStatusReportCmd(), a),
-		bindApp(newHealthSummaryCmd(), a),
-		bindApp(newOperationGateCmd(), a),
-		bindApp(newMaintenanceCmd(), a),
-		bindApp(newSupportBundleCmd(), a),
-		bindApp(newUpdateCmd(), a),
-		bindApp(newRollbackCmd(), a),
+		backupCmd,
 		bindApp(newRestoreCmd(), a),
-		bindApp(newRestoreDrillCmd(), a),
 		bindApp(newMigrateBackupCmd(), a),
-		bindApp(newUpdatePlanCmd(), a),
-		bindApp(newRollbackPlanCmd(), a),
-		bindApp(newBackupCmd(), a),
-		bindApp(newBackupExecuteCmd(), a),
-		bindApp(newBackupAuditCmd(), a),
-		bindApp(newBackupHealthCmd(), a),
-		bindApp(newBackupCatalogCmd(), a),
-		bindApp(newShowBackupCmd(), a),
-		bindApp(newRunOperationCmd(), a),
-		bindApp(newVerifyBackupCmd(), a),
-		bindApp(newRestoreFilesCmd(), a),
-		bindApp(newRestoreDBCmd(), a),
-		bindApp(newUpdateBackupCmd(), a),
-		bindApp(newUpdateRuntimeCmd(), a),
-		bindApp(newHistoryCmd(), a),
-		bindApp(newLastOperationCmd(), a),
-		bindApp(newShowOperationCmd(), a),
-		bindApp(newExportOperationCmd(), a),
-		bindApp(newJournalPruneCmd(), a),
 	)
 
 	return cmd
