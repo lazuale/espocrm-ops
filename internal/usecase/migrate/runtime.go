@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
@@ -25,28 +26,28 @@ func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo
 
 	dbState, err := platformdocker.ComposeServiceStateFor(cfg, "db")
 	if err != nil {
-		return info, wrapExternalError(err)
+		return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 	}
 
 	if dbState.Status != "running" && dbState.Status != "healthy" {
 		info.StartedDBTemporarily = true
 		if err := platformdocker.ComposeUp(cfg, "db"); err != nil {
-			return info, wrapExternalError(err)
+			return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 		}
 	}
 
 	if err := platformdocker.WaitForServicesReady(cfg, defaultReadinessTimeoutSeconds, "db"); err != nil {
-		return info, wrapExternalError(err)
+		return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 	}
 
 	runningServices, err := platformdocker.ComposeRunningServices(cfg)
 	if err != nil {
-		return info, wrapExternalError(err)
+		return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 	}
 	if migrationAppServicesRunning(runningServices) {
 		info.StoppedAppServices = runningAppServices(runningServices)
 		if err := platformdocker.ComposeStop(cfg, migrationAppServices...); err != nil {
-			return info, wrapExternalError(err)
+			return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 		}
 	}
 
@@ -66,10 +67,13 @@ func resolveDBContainer(projectDir, composeFile, envFile string) (string, error)
 
 	container, err := platformdocker.ComposeServiceContainerID(cfg, "db")
 	if err != nil {
-		return "", wrapExternalError(err)
+		return "", executeFailure{Kind: apperr.KindExternal, Err: err}
 	}
 	if strings.TrimSpace(container) == "" {
-		return "", wrapExternalError(fmt.Errorf("could not resolve the db container after target runtime preparation"))
+		return "", executeFailure{
+			Kind: apperr.KindExternal,
+			Err:  fmt.Errorf("could not resolve the db container after target runtime preparation"),
+		}
 	}
 
 	return container, nil

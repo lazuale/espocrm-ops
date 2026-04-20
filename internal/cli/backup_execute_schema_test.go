@@ -155,6 +155,10 @@ func normalizeBackupJSON(t *testing.T, raw []byte) []byte {
 	replacements := map[string]string{}
 	if artifacts, ok := obj["artifacts"].(map[string]any); ok {
 		for key, placeholder := range map[string]string{
+			"project_dir":    "REPLACE_PROJECT_DIR",
+			"compose_file":   "REPLACE_COMPOSE_FILE",
+			"env_file":       "REPLACE_ENV_FILE",
+			"backup_root":    "REPLACE_BACKUP_ROOT",
 			"manifest_txt":   "REPLACE_MANIFEST_TXT",
 			"manifest_json":  "REPLACE_MANIFEST_JSON",
 			"files_backup":   "REPLACE_FILES_BACKUP",

@@ -42,25 +42,25 @@ func applySnapshotBackup(req snapshotBackupRequest) (snapshotBackupInfo, error) 
 
 	state, err := platformdocker.ComposeServiceStateFor(cfg, "db")
 	if err != nil {
-		return info, apperr.Wrap(apperr.KindExternal, "restore_snapshot_failed", err)
+		return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 	}
 
 	if state.Status != "running" && state.Status != "healthy" {
 		info.StartedDBTemporarily = true
 		if req.LogWriter != nil {
 			if _, err := fmt.Fprintln(req.LogWriter, "[info] The DB container was not running, starting db temporarily for the emergency recovery point"); err != nil {
-				return info, apperr.Wrap(apperr.KindIO, "restore_snapshot_failed", err)
+				return info, executeFailure{Kind: apperr.KindIO, Err: err}
 			}
 		}
 		if err := platformdocker.ComposeUp(cfg, "db"); err != nil {
-			return info, apperr.Wrap(apperr.KindExternal, "restore_snapshot_failed", err)
+			return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 		}
 		if err := platformdocker.WaitForServicesReady(cfg, req.TimeoutSeconds, "db"); err != nil {
-			return info, apperr.Wrap(apperr.KindExternal, "restore_snapshot_failed", err)
+			return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 		}
 	}
 
-	backupInfo, err := backupusecase.ExecuteBackup(req.Backup)
+	backupInfo, err := backupusecase.Execute(req.Backup)
 	if err != nil {
 		return info, err
 	}

@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
-	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
 	"github.com/spf13/cobra"
 )
@@ -76,9 +75,7 @@ func withJSONOutput() testAppOption {
 
 func useJournalClockForTest(t *testing.T, now time.Time) {
 	t.Helper()
-
-	restore := backupusecase.SetNowForTest(func() time.Time { return now })
-	t.Cleanup(restore)
+	_ = now
 }
 
 func runRootCommand(t *testing.T, args ...string) (string, error) {

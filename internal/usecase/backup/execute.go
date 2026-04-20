@@ -1,27 +1,22 @@
 package backup
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
-	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
-	platformfs "github.com/lazuale/espocrm-ops/internal/platform/fs"
 )
 
-var backupAppServices = []string{
-	"espocrm",
-	"espocrm-daemon",
-	"espocrm-websocket",
-}
+const (
+	BackupStepStatusCompleted = "completed"
+	BackupStepStatusSkipped   = "skipped"
+	BackupStepStatusFailed    = "failed"
+	BackupStepStatusNotRun    = "not_run"
+)
 
 type ExecuteRequest struct {
 	Scope          string
@@ -41,78 +36,126 @@ type ExecuteRequest struct {
 	SkipDB         bool
 	SkipFiles      bool
 	NoStop         bool
-	LogWriter      io.Writer
-	ErrWriter      io.Writer
+	Now            func() time.Time
+}
+
+type ExecuteStep struct {
+	Code    string
+	Status  string
+	Summary string
+	Details string
+	Action  string
 }
 
 type ExecuteInfo struct {
 	Scope                  string
+	ProjectDir             string
+	ComposeFile            string
+	EnvFile                string
+	BackupRoot             string
 	CreatedAt              string
+	RetentionDays          int
 	ConsistentSnapshot     bool
 	AppServicesWereRunning bool
 	DBBackupCreated        bool
 	FilesBackupCreated     bool
+	SkipDB                 bool
+	SkipFiles              bool
+	NoStop                 bool
 	ManifestTXTPath        string
 	ManifestJSONPath       string
 	DBBackupPath           string
 	FilesBackupPath        string
 	DBSidecarPath          string
 	FilesSidecarPath       string
+	Warnings               []string
+	Steps                  []ExecuteStep
 }
 
-type backupExecutionState struct {
-	createdAt              time.Time
-	set                    domainbackup.BackupSet
-	appServicesWereRunning bool
-	dbChecksum             string
-	filesChecksum          string
-	dbSizeBytes            int64
-	filesSizeBytes         int64
+type executeFailure struct {
+	Kind    apperr.Kind
+	Summary string
+	Action  string
+	Err     error
 }
 
-type backupManifestJSON struct {
-	Version                int                     `json:"version"`
-	Scope                  string                  `json:"scope"`
-	Contour                string                  `json:"contour"`
-	CreatedAt              string                  `json:"created_at"`
-	ComposeProject         string                  `json:"compose_project"`
-	Artifacts              backupManifestArtifacts `json:"artifacts"`
-	Checksums              backupManifestChecksums `json:"checksums"`
-	EnvFile                string                  `json:"env_file"`
-	EspoCRMImage           string                  `json:"espocrm_image"`
-	MariaDBTag             string                  `json:"mariadb_tag"`
-	RetentionDays          int                     `json:"retention_days"`
-	ConsistentSnapshot     bool                    `json:"consistent_snapshot"`
-	AppServicesWereRunning bool                    `json:"app_services_were_running"`
-	DBBackupCreated        bool                    `json:"db_backup_created"`
-	FilesBackupCreated     bool                    `json:"files_backup_created"`
-}
-
-type backupManifestArtifacts struct {
-	DBBackup    string `json:"db_backup"`
-	FilesBackup string `json:"files_backup"`
-}
-
-type backupManifestChecksums struct {
-	DBBackup    string `json:"db_backup"`
-	FilesBackup string `json:"files_backup"`
-}
-
-func ExecuteBackup(req ExecuteRequest) (info ExecuteInfo, err error) {
-	info = ExecuteInfo{
-		Scope:              req.Scope,
-		ConsistentSnapshot: !req.NoStop,
-		DBBackupCreated:    !req.SkipDB,
-		FilesBackupCreated: !req.SkipFiles,
+func (e executeFailure) Error() string {
+	if e.Err == nil {
+		return ""
 	}
+	return e.Err.Error()
+}
+
+func (e executeFailure) Unwrap() error {
+	return e.Err
+}
+
+func Execute(req ExecuteRequest) (info ExecuteInfo, err error) {
+	info = ExecuteInfo{
+		Scope:              strings.TrimSpace(req.Scope),
+		ProjectDir:         filepath.Clean(req.ProjectDir),
+		ComposeFile:        filepath.Clean(req.ComposeFile),
+		EnvFile:            strings.TrimSpace(req.EnvFile),
+		BackupRoot:         strings.TrimSpace(req.BackupRoot),
+		RetentionDays:      req.RetentionDays,
+		ConsistentSnapshot: !req.NoStop,
+		SkipDB:             req.SkipDB,
+		SkipFiles:          req.SkipFiles,
+		NoStop:             req.NoStop,
+		Warnings:           flagWarnings(req),
+	}
+
+	defer func() {
+		info.Warnings = dedupeStrings(info.Warnings)
+	}()
 
 	if req.SkipDB && req.SkipFiles {
-		return info, apperr.Wrap(apperr.KindValidation, "backup_failed", fmt.Errorf("nothing to back up: --skip-db and --skip-files cannot both be set"))
+		err = executeFailure{
+			Kind:    apperr.KindValidation,
+			Summary: "Nothing to back up",
+			Action:  "Keep at least one backup step enabled before rerunning backup.",
+			Err:     fmt.Errorf("nothing to back up: --skip-db and --skip-files cannot both be set"),
+		}
+		info.Steps = append(info.Steps,
+			ExecuteStep{
+				Code:    "input_validation",
+				Status:  BackupStepStatusFailed,
+				Summary: failureSummary(err, "Backup input validation failed"),
+				Details: err.Error(),
+				Action:  failureAction(err, "Fix the backup command flags before rerunning backup."),
+			},
+			notRunBackupStep("artifact_allocation", "Artifact allocation did not run because backup input validation failed"),
+			notRunBackupStep("runtime_prepare", "Runtime preparation did not run because backup input validation failed"),
+			notRunBackupStep("db_backup", "Database backup did not run because backup input validation failed"),
+			notRunBackupStep("files_backup", "Files backup did not run because backup input validation failed"),
+			notRunBackupStep("finalize", "Manifest finalization did not run because backup input validation failed"),
+			notRunBackupStep("retention", "Retention cleanup did not run because backup input validation failed"),
+		)
+		return info, wrapBackupExecuteError(err)
 	}
 
-	state, err := allocateBackupExecutionState(req, req.ErrWriter)
+	state, err := allocateBackupExecutionState(req)
 	if err != nil {
-		return info, wrapBackupIO(err)
+		info.Steps = append(info.Steps,
+			ExecuteStep{
+				Code:    "artifact_allocation",
+				Status:  BackupStepStatusFailed,
+				Summary: "Artifact allocation failed",
+				Details: err.Error(),
+				Action:  "Resolve the backup directory or filesystem failure before rerunning backup.",
+			},
+			notRunBackupStep("runtime_prepare", "Runtime preparation did not run because artifact allocation failed"),
+			notRunBackupStep("db_backup", "Database backup did not run because artifact allocation failed"),
+			notRunBackupStep("files_backup", "Files backup did not run because artifact allocation failed"),
+			notRunBackupStep("finalize", "Manifest finalization did not run because artifact allocation failed"),
+			notRunBackupStep("retention", "Retention cleanup did not run because artifact allocation failed"),
+		)
+		return info, wrapBackupExecuteError(executeFailure{
+			Kind:    apperr.KindIO,
+			Summary: "Artifact allocation failed",
+			Action:  "Resolve the backup directory or filesystem failure before rerunning backup.",
+			Err:     err,
+		})
 	}
 
 	info.CreatedAt = state.createdAt.UTC().Format(time.RFC3339)
@@ -126,455 +169,333 @@ func ExecuteBackup(req ExecuteRequest) (info ExecuteInfo, err error) {
 		info.FilesBackupPath = state.set.FilesBackup.Path
 		info.FilesSidecarPath = state.set.FilesBackup.Path + ".sha256"
 	}
-
-	tmpPaths := []string{
-		state.set.ManifestTXT.Path + ".tmp",
-		state.set.ManifestJSON.Path + ".tmp",
-	}
-	if !req.SkipDB {
-		tmpPaths = append(tmpPaths, state.set.DBBackup.Path+".tmp", state.set.DBBackup.Path+".sha256.tmp")
-	}
-	if !req.SkipFiles {
-		tmpPaths = append(tmpPaths, state.set.FilesBackup.Path+".tmp", state.set.FilesBackup.Path+".sha256.tmp")
-	}
+	info.Steps = append(info.Steps, ExecuteStep{
+		Code:    "artifact_allocation",
+		Status:  BackupStepStatusCompleted,
+		Summary: "Artifact allocation completed",
+		Details: allocationDetails(state, info),
+	})
 
 	cfg := platformdocker.ComposeConfig{
-		ProjectDir:  req.ProjectDir,
-		ComposeFile: req.ComposeFile,
-		EnvFile:     req.EnvFile,
+		ProjectDir:  info.ProjectDir,
+		ComposeFile: info.ComposeFile,
+		EnvFile:     info.EnvFile,
 	}
 
-	restartAppServicesOnFailure := false
-	defer cleanupBackupTemps(tmpPaths)
+	var runtimePrep runtimePrepareInfo
+	runtimeNeedsReturn := false
+	runtimeReturnRecorded := false
+
+	defer cleanupBackupTemps(backupTempPaths(state, req))
 	defer func() {
-		if !restartAppServicesOnFailure || err == nil {
+		if err == nil || !runtimeNeedsReturn || runtimeReturnRecorded {
 			return
 		}
 
-		if warnErr := warnBackup(req.ErrWriter, "Backup failed unexpectedly, restoring application services"); warnErr != nil {
-			err = errors.Join(err, wrapBackupIO(warnErr))
-		}
-		if startErr := platformdocker.ComposeUp(cfg, backupAppServices...); startErr != nil {
-			if warnErr := warnBackup(req.ErrWriter, "Could not automatically restart application services after backup failure"); warnErr != nil {
-				err = errors.Join(err, wrapBackupIO(warnErr))
-			}
-			err = fmt.Errorf("%w; automatic application service restart failed: %v", err, startErr)
+		runtimeReturn, returnErr := returnRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, runtimePrep)
+		if returnErr != nil {
+			info.Steps = append(info.Steps, ExecuteStep{
+				Code:    "runtime_return",
+				Status:  BackupStepStatusFailed,
+				Summary: "Runtime return failed after backup failure",
+				Details: returnErr.Error(),
+				Action:  "Restore the stopped application services manually before relying on the contour state.",
+			})
+			err = errors.Join(err, executeFailure{
+				Kind:    apperr.KindExternal,
+				Summary: "Runtime return failed after backup failure",
+				Action:  "Restore the stopped application services manually before relying on the contour state.",
+				Err:     returnErr,
+			})
 			return
 		}
-		restartAppServicesOnFailure = false
+
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_return",
+			Status:  BackupStepStatusCompleted,
+			Summary: "Runtime return completed after backup failure",
+			Details: runtimeReturnDetails(runtimeReturn),
+		})
+		info.Warnings = append(info.Warnings, "Backup failed after stopping application services; the contour runtime was returned to its prior state.")
+		runtimeReturnRecorded = true
 	}()
 
-	if !req.NoStop {
-		runningServices, err := platformdocker.ComposeRunningServices(cfg)
+	if req.NoStop {
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_prepare",
+			Status:  BackupStepStatusSkipped,
+			Summary: "Runtime preparation skipped",
+			Details: runtimePrepareSkippedDetails(req),
+		})
+	} else {
+		runtimePrep, err = prepareRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile)
 		if err != nil {
-			return info, wrapBackupExternal(err)
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "runtime_prepare",
+					Status:  BackupStepStatusFailed,
+					Summary: "Runtime preparation failed",
+					Details: err.Error(),
+					Action:  "Resolve the runtime preparation failure before rerunning backup.",
+				},
+				notRunBackupStep("db_backup", "Database backup did not run because runtime preparation failed"),
+				notRunBackupStep("files_backup", "Files backup did not run because runtime preparation failed"),
+				notRunBackupStep("finalize", "Manifest finalization did not run because runtime preparation failed"),
+				notRunBackupStep("retention", "Retention cleanup did not run because runtime preparation failed"),
+			)
+			return info, wrapBackupExecuteError(executeFailure{
+				Kind:    apperr.KindExternal,
+				Summary: "Runtime preparation failed",
+				Action:  "Resolve the runtime preparation failure before rerunning backup.",
+				Err:     err,
+			})
 		}
-		if backupAppServicesRunning(runningServices) {
-			state.appServicesWereRunning = true
-			info.AppServicesWereRunning = true
-			restartAppServicesOnFailure = true
-			if err := logBackup(req.LogWriter, "Stopping application services for a consistent backup"); err != nil {
-				return info, wrapBackupIO(err)
-			}
-			if err := platformdocker.ComposeStop(cfg, backupAppServices...); err != nil {
-				return info, wrapBackupExternal(err)
-			}
-		} else {
-			if err := logBackup(req.LogWriter, "Application services are already stopped, no extra stop is required"); err != nil {
-				return info, wrapBackupIO(err)
-			}
-		}
-	} else {
-		if err := warnBackup(req.ErrWriter, "Backup is being created without stopping application services: strict consistency is not guaranteed"); err != nil {
-			return info, wrapBackupIO(err)
-		}
+
+		info.AppServicesWereRunning = runtimePrep.AppServicesWereRunning
+		state.appServicesWereRunning = runtimePrep.AppServicesWereRunning
+		runtimeNeedsReturn = runtimePrep.AppServicesWereRunning
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_prepare",
+			Status:  BackupStepStatusCompleted,
+			Summary: "Runtime preparation completed",
+			Details: runtimePrepareDetails(runtimePrep),
+		})
 	}
 
-	if !req.SkipDB {
-		if err := logBackup(req.LogWriter, "[1/4] Creating database dump: %s", state.set.DBBackup.Path); err != nil {
-			return info, wrapBackupIO(err)
-		}
+	if req.SkipDB {
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "db_backup",
+			Status:  BackupStepStatusSkipped,
+			Summary: "Database backup skipped",
+			Details: "The database backup was skipped because of --skip-db.",
+		})
+	} else {
 		if err := platformdocker.DumpMySQLDumpGz(cfg, "db", req.DBUser, req.DBPassword, req.DBName, state.set.DBBackup.Path+".tmp"); err != nil {
-			return info, wrapBackupExternal(err)
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "db_backup",
+					Status:  BackupStepStatusFailed,
+					Summary: "Database backup failed",
+					Details: err.Error(),
+					Action:  "Resolve the database dump failure before rerunning backup.",
+				},
+				notRunBackupStep("files_backup", "Files backup did not run because database backup failed"),
+				notRunBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
+				notRunBackupStep("retention", "Retention cleanup did not run because database backup failed"),
+			)
+			return info, wrapBackupExecuteError(executeFailure{
+				Kind:    apperr.KindExternal,
+				Summary: "Database backup failed",
+				Action:  "Resolve the database dump failure before rerunning backup.",
+				Err:     err,
+			})
 		}
-		if err := os.Rename(state.set.DBBackup.Path+".tmp", state.set.DBBackup.Path); err != nil {
-			return info, wrapBackupIO(fmt.Errorf("save db backup: %w", err))
+		if err := saveTempFile(state.set.DBBackup.Path+".tmp", state.set.DBBackup.Path, "save db backup"); err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "db_backup",
+					Status:  BackupStepStatusFailed,
+					Summary: "Database backup failed",
+					Details: err.Error(),
+					Action:  "Resolve the database backup write failure before rerunning backup.",
+				},
+				notRunBackupStep("files_backup", "Files backup did not run because database backup failed"),
+				notRunBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
+				notRunBackupStep("retention", "Retention cleanup did not run because database backup failed"),
+			)
+			return info, wrapBackupExecuteError(executeFailure{
+				Kind:    apperr.KindIO,
+				Summary: "Database backup failed",
+				Action:  "Resolve the database backup write failure before rerunning backup.",
+				Err:     err,
+			})
 		}
-	} else {
-		if err := logBackup(req.LogWriter, "[1/4] Database backup skipped because of --skip-db"); err != nil {
-			return info, wrapBackupIO(err)
-		}
+
+		info.DBBackupCreated = true
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "db_backup",
+			Status:  BackupStepStatusCompleted,
+			Summary: "Database backup completed",
+			Details: dbBackupDetails(state),
+		})
 	}
 
-	if !req.SkipFiles {
-		if err := logBackup(req.LogWriter, "[2/4] Archiving application files: %s", state.set.FilesBackup.Path); err != nil {
-			return info, wrapBackupIO(err)
-		}
-		if err := createFilesBackupArchive(req, state.set.FilesBackup.Path+".tmp"); err != nil {
-			return info, err
-		}
-		if err := os.Rename(state.set.FilesBackup.Path+".tmp", state.set.FilesBackup.Path); err != nil {
-			return info, wrapBackupIO(fmt.Errorf("save files backup: %w", err))
-		}
+	if req.SkipFiles {
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "files_backup",
+			Status:  BackupStepStatusSkipped,
+			Summary: "Files backup skipped",
+			Details: "The files backup was skipped because of --skip-files.",
+		})
 	} else {
-		if err := logBackup(req.LogWriter, "[2/4] Files backup skipped because of --skip-files"); err != nil {
-			return info, wrapBackupIO(err)
+		archiveInfo, archiveErr := createFilesBackupArchive(req, state.set.FilesBackup.Path+".tmp")
+		if archiveErr != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "files_backup",
+					Status:  BackupStepStatusFailed,
+					Summary: failureSummary(archiveErr, "Files backup failed"),
+					Details: archiveErr.Error(),
+					Action:  failureAction(archiveErr, "Resolve the files backup failure before rerunning backup."),
+				},
+				notRunBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
+				notRunBackupStep("retention", "Retention cleanup did not run because files backup failed"),
+			)
+			return info, wrapBackupExecuteError(archiveErr)
 		}
+		if err := saveTempFile(state.set.FilesBackup.Path+".tmp", state.set.FilesBackup.Path, "save files backup"); err != nil {
+			info.Steps = append(info.Steps,
+				ExecuteStep{
+					Code:    "files_backup",
+					Status:  BackupStepStatusFailed,
+					Summary: "Files backup failed",
+					Details: err.Error(),
+					Action:  "Resolve the files backup write failure before rerunning backup.",
+				},
+				notRunBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
+				notRunBackupStep("retention", "Retention cleanup did not run because files backup failed"),
+			)
+			return info, wrapBackupExecuteError(executeFailure{
+				Kind:    apperr.KindIO,
+				Summary: "Files backup failed",
+				Action:  "Resolve the files backup write failure before rerunning backup.",
+				Err:     err,
+			})
+		}
+
+		if archiveInfo.UsedDockerHelper {
+			info.Warnings = append(info.Warnings, fmt.Sprintf("Files backup used the Docker helper fallback because local archiving failed for %s.", req.StorageDir))
+		}
+
+		info.FilesBackupCreated = true
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "files_backup",
+			Status:  BackupStepStatusCompleted,
+			Summary: "Files backup completed",
+			Details: filesBackupDetails(state, archiveInfo),
+		})
 	}
 
-	if err := logBackup(req.LogWriter, "[3/4] Generating checksums and manifest files"); err != nil {
-		return info, wrapBackupIO(err)
-	}
 	if err := finalizeBackupArtifacts(req, &state, &info); err != nil {
-		return info, err
+		info.Steps = append(info.Steps,
+			ExecuteStep{
+				Code:    "finalize",
+				Status:  BackupStepStatusFailed,
+				Summary: "Manifest finalization failed",
+				Details: err.Error(),
+				Action:  "Resolve the manifest or checksum write failure before relying on this backup set.",
+			},
+			notRunBackupStep("retention", "Retention cleanup did not run because manifest finalization failed"),
+		)
+		return info, wrapBackupExecuteError(executeFailure{
+			Kind:    apperr.KindIO,
+			Summary: "Manifest finalization failed",
+			Action:  "Resolve the manifest or checksum write failure before relying on this backup set.",
+			Err:     err,
+		})
 	}
+	info.Steps = append(info.Steps, ExecuteStep{
+		Code:    "finalize",
+		Status:  BackupStepStatusCompleted,
+		Summary: "Manifest finalization completed",
+		Details: finalizeDetails(info),
+	})
 
-	if err := logBackup(req.LogWriter, "[4/4] Removing backups older than %d days", req.RetentionDays); err != nil {
-		return info, wrapBackupIO(err)
+	if err := cleanupBackupRetention(info.BackupRoot, req.RetentionDays, executeNow(req.Now)); err != nil {
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "retention",
+			Status:  BackupStepStatusFailed,
+			Summary: "Retention cleanup failed",
+			Details: err.Error(),
+			Action:  "Resolve the retention cleanup failure before relying on the backup root state.",
+		})
+		return info, wrapBackupExecuteError(executeFailure{
+			Kind:    apperr.KindIO,
+			Summary: "Retention cleanup failed",
+			Action:  "Resolve the retention cleanup failure before relying on the backup root state.",
+			Err:     err,
+		})
 	}
-	if err := cleanupBackupRetention(req.BackupRoot, req.RetentionDays); err != nil {
-		return info, wrapBackupIO(err)
-	}
+	info.Steps = append(info.Steps, ExecuteStep{
+		Code:    "retention",
+		Status:  BackupStepStatusCompleted,
+		Summary: "Retention cleanup completed",
+		Details: retentionDetails(info.BackupRoot, req.RetentionDays),
+	})
 
-	if info.AppServicesWereRunning {
-		if err := logBackup(req.LogWriter, "Starting application services after a successful backup"); err != nil {
-			return info, wrapBackupIO(err)
+	if runtimeNeedsReturn {
+		runtimeReturn, returnErr := returnRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, runtimePrep)
+		if returnErr != nil {
+			info.Steps = append(info.Steps, ExecuteStep{
+				Code:    "runtime_return",
+				Status:  BackupStepStatusFailed,
+				Summary: "Runtime return failed",
+				Details: returnErr.Error(),
+				Action:  "Restore the stopped application services manually before relying on the contour state.",
+			})
+			return info, wrapBackupExecuteError(executeFailure{
+				Kind:    apperr.KindExternal,
+				Summary: "Runtime return failed",
+				Action:  "Restore the stopped application services manually before relying on the contour state.",
+				Err:     returnErr,
+			})
 		}
-		if err := platformdocker.ComposeUp(cfg, backupAppServices...); err != nil {
-			return info, wrapBackupExternal(err)
-		}
-		restartAppServicesOnFailure = false
-	}
 
-	if err := logBackup(req.LogWriter, "Backup completed:"); err != nil {
-		return info, wrapBackupIO(err)
-	}
-	if !req.SkipDB {
-		if err := logBackup(req.LogWriter, "  Database: %s", info.DBBackupPath); err != nil {
-			return info, wrapBackupIO(err)
-		}
-		if err := logBackup(req.LogWriter, "  Database checksum: %s", info.DBSidecarPath); err != nil {
-			return info, wrapBackupIO(err)
-		}
-	}
-	if !req.SkipFiles {
-		if err := logBackup(req.LogWriter, "  Files:       %s", info.FilesBackupPath); err != nil {
-			return info, wrapBackupIO(err)
-		}
-		if err := logBackup(req.LogWriter, "  Files checksum: %s", info.FilesSidecarPath); err != nil {
-			return info, wrapBackupIO(err)
-		}
-	}
-	if err := logBackup(req.LogWriter, "  Text manifest: %s", info.ManifestTXTPath); err != nil {
-		return info, wrapBackupIO(err)
-	}
-	if err := logBackup(req.LogWriter, "  JSON manifest:      %s", info.ManifestJSONPath); err != nil {
-		return info, wrapBackupIO(err)
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_return",
+			Status:  BackupStepStatusCompleted,
+			Summary: "Runtime return completed",
+			Details: runtimeReturnDetails(runtimeReturn),
+		})
+		runtimeReturnRecorded = true
+	} else {
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_return",
+			Status:  BackupStepStatusSkipped,
+			Summary: "Runtime return skipped",
+			Details: runtimeReturnSkippedDetails(req, runtimePrep),
+		})
+		runtimeReturnRecorded = true
 	}
 
 	return info, nil
 }
 
-func allocateBackupExecutionState(req ExecuteRequest, errWriter io.Writer) (backupExecutionState, error) {
-	createdAt := nowUTC()
-	for {
-		stamp := createdAt.Format("2006-01-02_15-04-05")
-		set := domainbackup.BuildBackupSet(req.BackupRoot, req.NamePrefix, stamp)
-		for _, dir := range []string{
-			filepath.Dir(set.DBBackup.Path),
-			filepath.Dir(set.FilesBackup.Path),
-			filepath.Dir(set.ManifestTXT.Path),
-			filepath.Dir(set.ManifestJSON.Path),
-		} {
-			if err := os.MkdirAll(dir, 0o755); err != nil {
-				return backupExecutionState{}, fmt.Errorf("ensure backup directory %s: %w", dir, err)
-			}
-		}
-		if !backupSetCollides(set) {
-			return backupExecutionState{
-				createdAt: createdAt,
-				set:       set,
-			}, nil
-		}
-
-		if err := warnBackup(errWriter, "Detected a name collision on second-level stamp '%s', waiting for the next free stamp", stamp); err != nil {
-			return backupExecutionState{}, err
-		}
-		createdAt = createdAt.Add(time.Second)
-	}
-}
-
-func backupSetCollides(set domainbackup.BackupSet) bool {
-	paths := []string{
-		set.DBBackup.Path,
-		set.FilesBackup.Path,
-		set.ManifestTXT.Path,
-		set.ManifestJSON.Path,
-	}
-
-	for _, path := range paths {
-		if _, err := os.Stat(path); err == nil {
-			return true
+func (i ExecuteInfo) Counts() (completed, skipped, failed, notRun int) {
+	for _, step := range i.Steps {
+		switch step.Status {
+		case BackupStepStatusCompleted:
+			completed++
+		case BackupStepStatusSkipped:
+			skipped++
+		case BackupStepStatusFailed:
+			failed++
+		case BackupStepStatusNotRun:
+			notRun++
 		}
 	}
 
-	return false
+	return completed, skipped, failed, notRun
 }
 
-func backupAppServicesRunning(runningServices []string) bool {
-	for _, service := range runningServices {
-		if slices.Contains(backupAppServices, service) {
-			return true
+func (i ExecuteInfo) Ready() bool {
+	for _, step := range i.Steps {
+		if step.Status == BackupStepStatusFailed {
+			return false
 		}
 	}
 
-	return false
+	return true
 }
 
-func createFilesBackupArchive(req ExecuteRequest, archivePath string) error {
-	if err := platformfs.CreateTarGz(req.StorageDir, archivePath); err == nil {
-		return nil
+func wrapBackupExecuteError(err error) error {
+	var failure executeFailure
+	if errors.As(err, &failure) && failure.Kind != "" {
+		return apperr.Wrap(failure.Kind, "backup_failed", err)
+	}
+	if kind, ok := apperr.KindOf(err); ok {
+		return apperr.Wrap(kind, "backup_failed", err)
 	}
 
-	if err := warnBackup(req.ErrWriter, "Local archiving failed, trying Docker fallback: %s", req.StorageDir); err != nil {
-		return wrapBackupIO(err)
-	}
-	if err := platformdocker.CreateTarArchiveViaHelper(req.StorageDir, archivePath, req.MariaDBTag, req.EspoCRMImage); err != nil {
-		return wrapBackupExternal(fmt.Errorf("could not archive application files: %s: %w", req.StorageDir, err))
-	}
-
-	return nil
-}
-
-func finalizeBackupArtifacts(req ExecuteRequest, state *backupExecutionState, info *ExecuteInfo) error {
-	manifestTXTPath := state.set.ManifestTXT.Path
-	manifestJSONPath := state.set.ManifestJSON.Path
-	manifestTXTTmp := manifestTXTPath + ".tmp"
-	manifestJSONTmp := manifestJSONPath + ".tmp"
-
-	if !req.SkipDB {
-		dbChecksum, err := platformfs.SHA256File(state.set.DBBackup.Path)
-		if err != nil {
-			return wrapBackupIO(fmt.Errorf("hash db backup: %w", err))
-		}
-		state.dbChecksum = dbChecksum
-		dbInfo, err := os.Stat(state.set.DBBackup.Path)
-		if err != nil {
-			return wrapBackupIO(fmt.Errorf("stat db backup: %w", err))
-		}
-		state.dbSizeBytes = dbInfo.Size()
-
-		if err := WriteSHA256Sidecar(state.set.DBBackup.Path, state.dbChecksum, info.DBSidecarPath+".tmp"); err != nil {
-			return wrapBackupIO(fmt.Errorf("write db checksum sidecar: %w", err))
-		}
-		if err := os.Rename(info.DBSidecarPath+".tmp", info.DBSidecarPath); err != nil {
-			return wrapBackupIO(fmt.Errorf("save db checksum sidecar: %w", err))
-		}
-	}
-
-	if !req.SkipFiles {
-		filesChecksum, err := platformfs.SHA256File(state.set.FilesBackup.Path)
-		if err != nil {
-			return wrapBackupIO(fmt.Errorf("hash files backup: %w", err))
-		}
-		state.filesChecksum = filesChecksum
-		filesInfo, err := os.Stat(state.set.FilesBackup.Path)
-		if err != nil {
-			return wrapBackupIO(fmt.Errorf("stat files backup: %w", err))
-		}
-		state.filesSizeBytes = filesInfo.Size()
-
-		if err := WriteSHA256Sidecar(state.set.FilesBackup.Path, state.filesChecksum, info.FilesSidecarPath+".tmp"); err != nil {
-			return wrapBackupIO(fmt.Errorf("write files checksum sidecar: %w", err))
-		}
-		if err := os.Rename(info.FilesSidecarPath+".tmp", info.FilesSidecarPath); err != nil {
-			return wrapBackupIO(fmt.Errorf("save files checksum sidecar: %w", err))
-		}
-	}
-
-	if err := writeBackupManifestTXT(req, *state, manifestTXTTmp); err != nil {
-		return wrapBackupIO(err)
-	}
-	if err := os.Rename(manifestTXTTmp, manifestTXTPath); err != nil {
-		return wrapBackupIO(fmt.Errorf("save text manifest: %w", err))
-	}
-
-	if err := writeBackupManifestJSON(req, *state, manifestJSONTmp); err != nil {
-		return wrapBackupIO(err)
-	}
-	if err := os.Rename(manifestJSONTmp, manifestJSONPath); err != nil {
-		return wrapBackupIO(fmt.Errorf("save json manifest: %w", err))
-	}
-
-	return nil
-}
-
-func writeBackupManifestTXT(req ExecuteRequest, state backupExecutionState, path string) error {
-	var body strings.Builder
-	stamp := state.createdAt.UTC().Format("2006-01-02_15-04-05")
-
-	fmt.Fprintf(&body, "created_at=%s\n", stamp)
-	fmt.Fprintf(&body, "contour=%s\n", req.Scope)
-	fmt.Fprintf(&body, "compose_project=%s\n", req.ComposeProject)
-	fmt.Fprintf(&body, "env_file=%s\n", filepath.Base(req.EnvFile))
-	fmt.Fprintf(&body, "espocrm_image=%s\n", req.EspoCRMImage)
-	fmt.Fprintf(&body, "mariadb_tag=%s\n", req.MariaDBTag)
-	fmt.Fprintf(&body, "retention_days=%d\n", req.RetentionDays)
-	fmt.Fprintf(&body, "db_backup_created=%d\n", boolAsInt(!req.SkipDB))
-	fmt.Fprintf(&body, "files_backup_created=%d\n", boolAsInt(!req.SkipFiles))
-	fmt.Fprintf(&body, "consistent_snapshot=%d\n", boolAsInt(!req.NoStop))
-	fmt.Fprintf(&body, "app_services_were_running=%d\n", boolAsInt(state.appServicesWereRunning))
-
-	if !req.SkipDB {
-		fmt.Fprintf(&body, "db_backup_file=%s\n", filepath.Base(state.set.DBBackup.Path))
-		fmt.Fprintf(&body, "db_backup_checksum_file=%s\n", filepath.Base(state.set.DBBackup.Path)+".sha256")
-		fmt.Fprintf(&body, "db_backup_sha256=%s\n", state.dbChecksum)
-		fmt.Fprintf(&body, "db_backup_size_bytes=%d\n", state.dbSizeBytes)
-	}
-	if !req.SkipFiles {
-		fmt.Fprintf(&body, "files_backup_file=%s\n", filepath.Base(state.set.FilesBackup.Path))
-		fmt.Fprintf(&body, "files_backup_checksum_file=%s\n", filepath.Base(state.set.FilesBackup.Path)+".sha256")
-		fmt.Fprintf(&body, "files_backup_sha256=%s\n", state.filesChecksum)
-		fmt.Fprintf(&body, "files_backup_size_bytes=%d\n", state.filesSizeBytes)
-	}
-
-	if err := os.WriteFile(path, []byte(body.String()), 0o644); err != nil {
-		return fmt.Errorf("write text manifest: %w", err)
-	}
-
-	return nil
-}
-
-func writeBackupManifestJSON(req ExecuteRequest, state backupExecutionState, path string) error {
-	manifest := backupManifestJSON{
-		Version:        1,
-		Scope:          req.Scope,
-		Contour:        req.Scope,
-		CreatedAt:      state.createdAt.UTC().Format(time.RFC3339),
-		ComposeProject: req.ComposeProject,
-		Artifacts: backupManifestArtifacts{
-			DBBackup:    maybeBaseName(!req.SkipDB, state.set.DBBackup.Path),
-			FilesBackup: maybeBaseName(!req.SkipFiles, state.set.FilesBackup.Path),
-		},
-		Checksums: backupManifestChecksums{
-			DBBackup:    maybeString(!req.SkipDB, state.dbChecksum),
-			FilesBackup: maybeString(!req.SkipFiles, state.filesChecksum),
-		},
-		EnvFile:                filepath.Base(req.EnvFile),
-		EspoCRMImage:           req.EspoCRMImage,
-		MariaDBTag:             req.MariaDBTag,
-		RetentionDays:          req.RetentionDays,
-		ConsistentSnapshot:     !req.NoStop,
-		AppServicesWereRunning: state.appServicesWereRunning,
-		DBBackupCreated:        !req.SkipDB,
-		FilesBackupCreated:     !req.SkipFiles,
-	}
-
-	raw, err := json.MarshalIndent(manifest, "", "  ")
-	if err != nil {
-		return fmt.Errorf("marshal json manifest: %w", err)
-	}
-	raw = append(raw, '\n')
-
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
-		return fmt.Errorf("write json manifest: %w", err)
-	}
-
-	return nil
-}
-
-func cleanupBackupRetention(root string, retentionDays int) error {
-	if retentionDays < 0 {
-		return fmt.Errorf("retention days must be non-negative")
-	}
-
-	cutoff := nowUTC().Add(-time.Duration(retentionDays+1) * 24 * time.Hour)
-	targets := []struct {
-		dir      string
-		patterns []string
-	}{
-		{dir: filepath.Join(root, "db"), patterns: []string{"*.sql.gz", "*.sql.gz.sha256"}},
-		{dir: filepath.Join(root, "files"), patterns: []string{"*.tar.gz", "*.tar.gz.sha256"}},
-		{dir: filepath.Join(root, "manifests"), patterns: []string{"*.manifest.txt", "*.manifest.json"}},
-	}
-
-	for _, target := range targets {
-		for _, pattern := range target.patterns {
-			matches, err := filepath.Glob(filepath.Join(target.dir, pattern))
-			if err != nil {
-				return fmt.Errorf("cleanup retention glob %s: %w", filepath.Join(target.dir, pattern), err)
-			}
-			for _, match := range matches {
-				info, err := os.Stat(match)
-				if err != nil {
-					if os.IsNotExist(err) {
-						continue
-					}
-					return fmt.Errorf("stat retention candidate %s: %w", match, err)
-				}
-				if info.IsDir() || !info.ModTime().Before(cutoff) {
-					continue
-				}
-				if err := os.Remove(match); err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("remove retention candidate %s: %w", match, err)
-				}
-			}
-		}
-	}
-
-	return nil
-}
-
-func cleanupBackupTemps(paths []string) {
-	for _, path := range paths {
-		if strings.TrimSpace(path) == "" {
-			continue
-		}
-		_ = os.Remove(path)
-	}
-}
-
-func logBackup(w io.Writer, format string, args ...any) error {
-	if w == nil {
-		return nil
-	}
-	_, err := fmt.Fprintf(w, format+"\n", args...)
-	return err
-}
-
-func warnBackup(w io.Writer, format string, args ...any) error {
-	if w == nil {
-		return nil
-	}
-	_, err := fmt.Fprintf(w, "[warn] "+format+"\n", args...)
-	return err
-}
-
-func wrapBackupIO(err error) error {
-	return apperr.Wrap(apperr.KindIO, "backup_failed", err)
-}
-
-func wrapBackupExternal(err error) error {
-	return apperr.Wrap(apperr.KindExternal, "backup_failed", err)
-}
-
-func boolAsInt(v bool) int {
-	if v {
-		return 1
-	}
-	return 0
-}
-
-func maybeBaseName(include bool, path string) string {
-	if !include {
-		return ""
-	}
-	return filepath.Base(path)
-}
-
-func maybeString(include bool, value string) string {
-	if !include {
-		return ""
-	}
-	return value
+	return apperr.Wrap(apperr.KindInternal, "backup_failed", err)
 }

@@ -32,8 +32,7 @@ func buildSnapshotRequest(ctx maintenanceusecase.OperationContext, req ExecuteRe
 			SkipDB:         req.SkipDB,
 			SkipFiles:      req.SkipFiles,
 			NoStop:         req.NoStop,
-			LogWriter:      req.LogWriter,
-			ErrWriter:      req.LogWriter,
+			Now:            req.Now,
 		},
 	}
 }

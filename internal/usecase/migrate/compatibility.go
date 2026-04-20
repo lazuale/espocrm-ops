@@ -1,6 +1,7 @@
 package migrate
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 
@@ -41,6 +42,10 @@ func wrapMigrationEnvError(err error) error {
 }
 
 func wrapExecuteError(err error) error {
+	var failure executeFailure
+	if errors.As(err, &failure) && failure.Kind != "" {
+		return apperr.Wrap(failure.Kind, "migrate_failed", err)
+	}
 	if kind, ok := apperr.KindOf(err); ok {
 		return apperr.Wrap(kind, "migrate_failed", err)
 	}

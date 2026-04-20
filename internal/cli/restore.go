@@ -194,6 +194,7 @@ func runRestore(cmd *cobra.Command, in restoreInput) error {
 		NoStart:         in.noStart,
 		DryRun:          in.dryRun,
 		LogWriter:       cmd.ErrOrStderr(),
+		Now:             appForCommand(cmd).runtime.Now,
 	})
 
 	res := restoreResult(info)

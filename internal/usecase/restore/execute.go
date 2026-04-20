@@ -1,10 +1,12 @@
 package restore
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
@@ -34,6 +36,7 @@ type ExecuteRequest struct {
 	NoStart         bool
 	DryRun          bool
 	LogWriter       io.Writer
+	Now             func() time.Time
 }
 
 type ExecuteStep struct {
@@ -96,6 +99,7 @@ type runtimeReturnInfo struct {
 }
 
 type executeFailure struct {
+	Kind    apperr.Kind
 	Summary string
 	Action  string
 	Err     error
@@ -427,6 +431,10 @@ func (i ExecuteInfo) Ready() bool {
 }
 
 func wrapRestoreExecuteError(err error) error {
+	var failure executeFailure
+	if errors.As(err, &failure) && failure.Kind != "" {
+		return apperr.Wrap(failure.Kind, "restore_failed", err)
+	}
 	if kind, ok := apperr.KindOf(err); ok {
 		return apperr.Wrap(kind, "restore_failed", err)
 	}

@@ -85,6 +85,7 @@ type sourceSelection struct {
 }
 
 type executeFailure struct {
+	Kind    apperr.Kind
 	Summary string
 	Action  string
 	Err     error

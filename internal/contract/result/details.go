@@ -15,13 +15,24 @@ type BackupVerifyDetails struct {
 
 type BackupDetails struct {
 	Scope                  string `json:"scope"`
+	Ready                  bool   `json:"ready"`
 	CreatedAt              string `json:"created_at"`
+	Steps                  int    `json:"steps,omitempty"`
+	Completed              int    `json:"completed,omitempty"`
+	Skipped                int    `json:"skipped,omitempty"`
+	Failed                 int    `json:"failed,omitempty"`
+	NotRun                 int    `json:"not_run,omitempty"`
+	Warnings               int    `json:"warnings,omitempty"`
 	SkipDB                 bool   `json:"skip_db"`
 	SkipFiles              bool   `json:"skip_files"`
 	NoStop                 bool   `json:"no_stop"`
 	ConsistentSnapshot     bool   `json:"consistent_snapshot"`
 	AppServicesWereRunning bool   `json:"app_services_were_running"`
 	RetentionDays          int    `json:"retention_days"`
+}
+
+type BackupItem struct {
+	SectionItem
 }
 
 type BackupVerifyArtifacts struct {
@@ -31,6 +42,10 @@ type BackupVerifyArtifacts struct {
 }
 
 type BackupArtifacts struct {
+	ProjectDir    string `json:"project_dir,omitempty"`
+	ComposeFile   string `json:"compose_file,omitempty"`
+	EnvFile       string `json:"env_file,omitempty"`
+	BackupRoot    string `json:"backup_root,omitempty"`
 	ManifestTXT   string `json:"manifest_txt"`
 	ManifestJSON  string `json:"manifest_json"`
 	DBBackup      string `json:"db_backup,omitempty"`
