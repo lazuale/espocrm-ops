@@ -201,6 +201,88 @@ func TestVerify_FailsOnSymlinkEntry(t *testing.T) {
 	}
 }
 
+func TestVerify_FailsOnIncompleteBackupPair(t *testing.T) {
+	tmp := t.TempDir()
+
+	dbName := "espocrm-prod_2026-04-15_12-34-56.sql.gz"
+	filesName := "espocrm-prod_files_2026-04-15_12-34-56.tar.gz"
+
+	dbPath := filepath.Join(tmp, "db", dbName)
+	manifestPath := filepath.Join(tmp, "manifests", "espocrm-prod_2026-04-15_12-34-56.manifest.json")
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeGzipFile(t, dbPath, []byte("select 1;"))
+	writeManifest(t, manifestPath, domainbackup.Manifest{
+		Version:   1,
+		Scope:     "prod",
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		Artifacts: domainbackup.ManifestArtifacts{
+			DBBackup:    dbName,
+			FilesBackup: filesName,
+		},
+		Checksums: domainbackup.ManifestChecksums{
+			DBBackup:    sha256OfFile(t, dbPath),
+			FilesBackup: stringsOf("ab", 32),
+		},
+	})
+
+	if err := Verify(VerifyRequest{ManifestPath: manifestPath}); err == nil {
+		t.Fatal("expected incomplete backup pair to fail verification")
+	}
+}
+
+func TestVerify_FailsOnCanonicalManifestArtifactMismatch(t *testing.T) {
+	tmp := t.TempDir()
+
+	dbName := "espocrm-prod_2026-04-15_12-34-56.sql.gz"
+	filesName := "espocrm-prod_files_2026-04-16_12-34-56.tar.gz"
+	dbPath := filepath.Join(tmp, "db", dbName)
+	filesPath := filepath.Join(tmp, "files", filesName)
+	manifestPath := filepath.Join(tmp, "manifests", "espocrm-prod_2026-04-15_12-34-56.manifest.json")
+
+	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(filesPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeGzipFile(t, dbPath, []byte("select 1;"))
+	writeTarGz(t, filesPath, map[string]string{
+		"storage/test.txt": "hello",
+	})
+	writeManifest(t, manifestPath, domainbackup.Manifest{
+		Version:   1,
+		Scope:     "prod",
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		Artifacts: domainbackup.ManifestArtifacts{
+			DBBackup:    dbName,
+			FilesBackup: filesName,
+		},
+		Checksums: domainbackup.ManifestChecksums{
+			DBBackup:    sha256OfFile(t, dbPath),
+			FilesBackup: sha256OfFile(t, filesPath),
+		},
+	})
+
+	err := Verify(VerifyRequest{ManifestPath: manifestPath})
+	if err == nil {
+		t.Fatal("expected canonical manifest mismatch to fail")
+	}
+	if !strings.Contains(err.Error(), "manifest backup set is inconsistent") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadManifest_FailsOnPathArtifact(t *testing.T) {
 	tmp := t.TempDir()
 	manifestPath := filepath.Join(tmp, "manifest.json")

@@ -7,7 +7,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
@@ -379,12 +378,23 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			})
 			return info, wrapExternalError(err)
 		}
+		validatedServices := expectedStartedTargetServices()
+		if err := platformdocker.WaitForServicesReady(cfg, defaultReadinessTimeoutSeconds, validatedServices...); err != nil {
+			info.Steps = append(info.Steps, ExecuteStep{
+				Code:    "target_start",
+				Status:  MigrateStepStatusFailed,
+				Summary: "Target contour start failed",
+				Details: err.Error(),
+				Action:  "Repair the target contour runtime health before treating this migration as successful.",
+			})
+			return info, wrapExternalError(err)
+		}
 
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "target_start",
 			Status:  MigrateStepStatusCompleted,
 			Summary: "Target contour start completed",
-			Details: fmt.Sprintf("Started the target contour %s with docker compose up -d.", info.TargetScope),
+			Details: fmt.Sprintf("Started the target contour %s with docker compose up -d and confirmed runtime health for: %s.", info.TargetScope, strings.Join(validatedServices, ", ")),
 		})
 	}
 
@@ -484,7 +494,9 @@ func resolveLatestCompleteSelection(backupRoot string) (sourceSelection, error) 
 			DBBackup:      set.DBBackup.Path,
 			FilesBackup:   set.FilesBackup.Path,
 		}
-		selection.Warnings = append(selection.Warnings, attachMatchingManifest(backupRoot, &selection)...)
+		if err := attachMatchingManifest(backupRoot, &selection); err != nil {
+			return sourceSelection{}, err
+		}
 		return selection, nil
 	}
 
@@ -545,7 +557,9 @@ func resolveFullPairSelection(backupRoot, dbPath, filesPath, mode string) (sourc
 		DBBackup:      dbPath,
 		FilesBackup:   filesPath,
 	}
-	selection.Warnings = append(selection.Warnings, attachMatchingManifest(backupRoot, &selection)...)
+	if err := attachMatchingManifest(backupRoot, &selection); err != nil {
+		return sourceSelection{}, err
+	}
 	return selection, nil
 }
 
@@ -659,7 +673,7 @@ func resolveFilesOnlySelection(backupRoot, explicitFiles string) (sourceSelectio
 	}
 }
 
-func attachMatchingManifest(backupRoot string, selection *sourceSelection) []string {
+func attachMatchingManifest(backupRoot string, selection *sourceSelection) error {
 	if selection == nil || strings.TrimSpace(selection.DBBackup) == "" || strings.TrimSpace(selection.FilesBackup) == "" {
 		return nil
 	}
@@ -675,7 +689,11 @@ func attachMatchingManifest(backupRoot string, selection *sourceSelection) []str
 
 	info, err := backupusecase.VerifyDetailed(backupusecase.VerifyRequest{ManifestPath: set.ManifestJSON.Path})
 	if err != nil {
-		return []string{fmt.Sprintf("The matching manifest under BACKUP_ROOT did not verify cleanly: %v. Migration will use the selected backup archives directly.", err)}
+		return executeFailure{
+			Summary: "The matching manifest for the selected backup set is not valid",
+			Action:  "Repair or remove the invalid manifest under BACKUP_ROOT before rerunning migrate.",
+			Err:     err,
+		}
 	}
 
 	selection.ManifestJSON = info.ManifestPath
@@ -736,7 +754,7 @@ func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo
 		}
 	}
 
-	if err := waitForServiceReady(cfg, "db", defaultReadinessTimeoutSeconds); err != nil {
+	if err := platformdocker.WaitForServicesReady(cfg, defaultReadinessTimeoutSeconds, "db"); err != nil {
 		return info, wrapExternalError(err)
 	}
 
@@ -754,33 +772,8 @@ func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo
 	return info, nil
 }
 
-func waitForServiceReady(cfg platformdocker.ComposeConfig, service string, timeoutSeconds int) error {
-	deadline := time.Now().UTC().Add(time.Duration(timeoutSeconds) * time.Second)
-
-	for {
-		state, err := platformdocker.ComposeServiceStateFor(cfg, service)
-		if err != nil {
-			return err
-		}
-
-		switch state.Status {
-		case "healthy", "running":
-			return nil
-		case "exited", "dead":
-			return fmt.Errorf("service %q crashed while waiting for readiness", service)
-		case "unhealthy":
-			if strings.TrimSpace(state.HealthMessage) != "" {
-				return fmt.Errorf("service %q became unhealthy while waiting for readiness: %s", service, state.HealthMessage)
-			}
-			return fmt.Errorf("service %q became unhealthy while waiting for readiness", service)
-		}
-
-		if time.Until(deadline) <= 0 {
-			return fmt.Errorf("timed out while waiting for service readiness %q (%d sec.)", service, timeoutSeconds)
-		}
-
-		time.Sleep(5 * time.Second)
-	}
+func expectedStartedTargetServices() []string {
+	return append([]string{"db"}, migrationAppServices...)
 }
 
 func resolveDBContainer(projectDir, composeFile, envFile string) (string, error) {

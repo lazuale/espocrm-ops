@@ -127,3 +127,15 @@ func (e ArchiveValidationError) Unwrap() error {
 func (e ArchiveValidationError) ErrorCode() string {
 	return "backup_verification_failed"
 }
+
+type ManifestCoherenceError struct {
+	Details string
+}
+
+func (e ManifestCoherenceError) Error() string {
+	return fmt.Sprintf("manifest backup set is inconsistent: %s", e.Details)
+}
+
+func (e ManifestCoherenceError) ErrorCode() string {
+	return "backup_verification_failed"
+}

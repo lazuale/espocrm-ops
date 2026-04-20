@@ -3,6 +3,7 @@ package backupstore
 import (
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
 
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
@@ -35,6 +36,10 @@ func VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error) {
 	dbPath := domainbackup.ResolveArtifactPath(manifestPath, "db", manifest.Artifacts.DBBackup)
 	filesPath := domainbackup.ResolveArtifactPath(manifestPath, "files", manifest.Artifacts.FilesBackup)
 
+	if err := verifyManifestCoherence(manifestPath, manifest); err != nil {
+		return VerifiedBackup{}, ValidationError{Err: err}
+	}
+
 	if err := verifyManifestArtifact("db backup", dbPath, ".sql.gz", manifest.Checksums.DBBackup, verifyGzipReadable("db backup")); err != nil {
 		return VerifiedBackup{}, err
 	}
@@ -49,6 +54,69 @@ func VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error) {
 		DBBackupPath: dbPath,
 		FilesPath:    filesPath,
 	}, nil
+}
+
+func verifyManifestCoherence(manifestPath string, manifest domainbackup.Manifest) error {
+	dbGroup, dbErr := domainbackup.ParseDBBackupName(manifest.Artifacts.DBBackup)
+	filesGroup, filesErr := domainbackup.ParseFilesBackupName(manifest.Artifacts.FilesBackup)
+
+	if dbErr == nil && filesErr == nil && dbGroup != filesGroup {
+		return ManifestCoherenceError{
+			Details: fmt.Sprintf(
+				"database backup %q resolves to %s_%s, but files backup %q resolves to %s_%s",
+				manifest.Artifacts.DBBackup,
+				dbGroup.Prefix,
+				dbGroup.Stamp,
+				manifest.Artifacts.FilesBackup,
+				filesGroup.Prefix,
+				filesGroup.Stamp,
+			),
+		}
+	}
+
+	manifestGroup, _, manifestErr := domainbackup.ParseManifestName(manifestPath)
+	if manifestErr != nil {
+		return nil
+	}
+
+	if dbErr != nil {
+		return ManifestCoherenceError{
+			Details: fmt.Sprintf("database backup %q does not match the canonical manifest-backed backup naming contract", manifest.Artifacts.DBBackup),
+		}
+	}
+	if filesErr != nil {
+		return ManifestCoherenceError{
+			Details: fmt.Sprintf("files backup %q does not match the canonical manifest-backed backup naming contract", manifest.Artifacts.FilesBackup),
+		}
+	}
+	if dbGroup != manifestGroup {
+		return ManifestCoherenceError{
+			Details: fmt.Sprintf(
+				"manifest %q resolves to %s_%s, but database backup %q resolves to %s_%s",
+				filepath.Base(manifestPath),
+				manifestGroup.Prefix,
+				manifestGroup.Stamp,
+				manifest.Artifacts.DBBackup,
+				dbGroup.Prefix,
+				dbGroup.Stamp,
+			),
+		}
+	}
+	if filesGroup != manifestGroup {
+		return ManifestCoherenceError{
+			Details: fmt.Sprintf(
+				"manifest %q resolves to %s_%s, but files backup %q resolves to %s_%s",
+				filepath.Base(manifestPath),
+				manifestGroup.Prefix,
+				manifestGroup.Stamp,
+				manifest.Artifacts.FilesBackup,
+				filesGroup.Prefix,
+				filesGroup.Stamp,
+			),
+		}
+	}
+
+	return nil
 }
 
 func VerifyDirectDBBackup(dbPath string) error {

@@ -55,7 +55,7 @@ func applySnapshotBackup(req snapshotBackupRequest) (snapshotBackupInfo, error) 
 		if err := platformdocker.ComposeUp(cfg, "db"); err != nil {
 			return info, apperr.Wrap(apperr.KindExternal, "restore_snapshot_failed", err)
 		}
-		if err := waitForServiceReady(cfg, "db", req.TimeoutSeconds); err != nil {
+		if err := platformdocker.WaitForServicesReady(cfg, req.TimeoutSeconds, "db"); err != nil {
 			return info, apperr.Wrap(apperr.KindExternal, "restore_snapshot_failed", err)
 		}
 	}

@@ -7,7 +7,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
@@ -391,11 +390,27 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		})
 		return info, wrapRestoreExternalError(err)
 	}
+	validatedServices, err := validatePostRestoreRuntimeHealth(
+		info.ProjectDir,
+		info.ComposeFile,
+		info.EnvFile,
+		expectedPostRestoreServices(req, runtimePrep, runtimeReturn),
+	)
+	if err != nil {
+		info.Steps = append(info.Steps, ExecuteStep{
+			Code:    "runtime_return",
+			Status:  RestoreStepStatusFailed,
+			Summary: "Runtime return failed",
+			Details: err.Error(),
+			Action:  "Repair the restored contour health before treating this restore as successful.",
+		})
+		return info, wrapRestoreExternalError(err)
+	}
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "runtime_return",
-		Status:  runtimeReturnStatus(runtimePrep, runtimeReturn, req.NoStart),
-		Summary: runtimeReturnSummary(runtimePrep, runtimeReturn, req.NoStart),
-		Details: runtimeReturnDetails(runtimePrep, runtimeReturn, req.NoStart),
+		Status:  runtimeReturnStatus(req, runtimePrep, runtimeReturn, validatedServices),
+		Summary: runtimeReturnSummary(req, runtimePrep, runtimeReturn, validatedServices),
+		Details: runtimeReturnDetails(req, runtimePrep, runtimeReturn, validatedServices),
 	})
 
 	info.Warnings = reporting.DedupeStrings(info.Warnings)
@@ -659,7 +674,7 @@ func prepareRuntime(projectDir, composeFile, envFile string, needDB bool, noStop
 				return info, err
 			}
 		}
-		if err := waitForServiceReady(cfg, "db", defaultRestoreReadinessTimeoutSeconds); err != nil {
+		if err := platformdocker.WaitForServicesReady(cfg, defaultRestoreReadinessTimeoutSeconds, "db"); err != nil {
 			return info, err
 		}
 		container, err := platformdocker.ComposeServiceContainerID(cfg, "db")
@@ -942,40 +957,51 @@ func dryRunFilesDetails(ctx maintenanceusecase.OperationContext, source executeS
 	return fmt.Sprintf("Would replace %s from %s and then reconcile the storage permissions to the runtime image contract.", targetDir, source.FilesBackup)
 }
 
-func runtimeReturnStatus(prep runtimePrepareInfo, ret runtimeReturnInfo, noStart bool) string {
-	if len(ret.RestartedAppServices) != 0 || ret.StoppedDB {
+func runtimeReturnStatus(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo, validatedServices []string) string {
+	if len(validatedServices) != 0 || len(ret.RestartedAppServices) != 0 || ret.StoppedDB {
 		return RestoreStepStatusCompleted
 	}
-	if len(prep.StoppedAppServices) != 0 && noStart {
+	if len(prep.StoppedAppServices) != 0 && req.NoStart && !req.NoStop {
 		return RestoreStepStatusSkipped
 	}
 	return RestoreStepStatusSkipped
 }
 
-func runtimeReturnSummary(prep runtimePrepareInfo, ret runtimeReturnInfo, noStart bool) string {
+func runtimeReturnSummary(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo, validatedServices []string) string {
 	switch {
+	case len(validatedServices) != 0:
+		return "Runtime return completed"
 	case len(ret.RestartedAppServices) != 0:
 		return "Runtime return completed"
 	case ret.StoppedDB:
 		return "Runtime return completed"
-	case len(prep.StoppedAppServices) != 0 && noStart:
+	case len(prep.StoppedAppServices) != 0 && req.NoStart && !req.NoStop:
 		return "Runtime return skipped"
 	default:
 		return "Runtime return skipped"
 	}
 }
 
-func runtimeReturnDetails(prep runtimePrepareInfo, ret runtimeReturnInfo, noStart bool) string {
+func runtimeReturnDetails(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo, validatedServices []string) string {
+	var details string
 	switch {
 	case len(ret.RestartedAppServices) != 0:
-		return fmt.Sprintf("Restarted application services after restore: %s.", strings.Join(ret.RestartedAppServices, ", "))
+		details = fmt.Sprintf("Restarted application services after restore: %s.", strings.Join(ret.RestartedAppServices, ", "))
+	case req.NoStop && len(prep.StoppedAppServices) != 0:
+		details = fmt.Sprintf("Application services remained running because of --no-stop: %s.", strings.Join(prep.StoppedAppServices, ", "))
 	case ret.StoppedDB:
-		return "Stopped the db service again because restore had started it temporarily and the contour had been stopped beforehand."
-	case len(prep.StoppedAppServices) != 0 && noStart:
-		return "Application services were left stopped because of --no-start."
+		details = "Stopped the db service again because restore had started it temporarily and the contour had been stopped beforehand."
+	case len(prep.StoppedAppServices) != 0 && req.NoStart && !req.NoStop:
+		details = "Application services were left stopped because of --no-start."
 	default:
-		return "The contour runtime state already matched the requested post-restore state."
+		details = "The contour runtime state already matched the requested post-restore state."
 	}
+
+	if len(validatedServices) != 0 {
+		details += fmt.Sprintf(" Post-restore health validation passed for: %s.", strings.Join(validatedServices, ", "))
+	}
+
+	return details
 }
 
 func dryRunRuntimeReturnStatus(runtimeInfo runtimePrepareInfo, noStart bool) string {
@@ -1027,35 +1053,47 @@ func resolvedRetentionDays(env platformconfig.OperationEnv) int {
 	return days
 }
 
-func waitForServiceReady(cfg platformdocker.ComposeConfig, service string, timeoutSeconds int) error {
-	deadline := time.Now().UTC().Add(time.Duration(timeoutSeconds) * time.Second)
-	for {
-		state, err := platformdocker.ComposeServiceStateFor(cfg, service)
-		if err != nil {
-			return err
-		}
-		switch state.Status {
-		case "healthy", "running":
-			return nil
-		case "exited", "dead":
-			return fmt.Errorf("service '%s' crashed while waiting for readiness", service)
-		case "unhealthy":
-			if strings.TrimSpace(state.HealthMessage) != "" {
-				return fmt.Errorf("service '%s' became unhealthy while waiting for readiness: %s", service, state.HealthMessage)
-			}
-			return fmt.Errorf("service '%s' became unhealthy while waiting for readiness", service)
-		}
+func expectedPostRestoreServices(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo) []string {
+	services := []string{}
 
-		remaining := time.Until(deadline)
-		if remaining <= 0 {
-			return fmt.Errorf("timed out while waiting for service readiness '%s' (%d sec.)", service, timeoutSeconds)
-		}
-		sleepFor := 5 * time.Second
-		if remaining < sleepFor {
-			sleepFor = remaining
-		}
-		time.Sleep(sleepFor)
+	switch {
+	case req.NoStop:
+		services = append(services, prep.StoppedAppServices...)
+	default:
+		services = append(services, ret.RestartedAppServices...)
 	}
+
+	if len(services) != 0 || (!req.SkipDB && !prep.StartedDBTemporarily) {
+		services = append(services, "db")
+	}
+
+	out := make([]string, 0, len(services))
+	for _, service := range services {
+		service = strings.TrimSpace(service)
+		if service == "" || slices.Contains(out, service) {
+			continue
+		}
+		out = append(out, service)
+	}
+
+	return out
+}
+
+func validatePostRestoreRuntimeHealth(projectDir, composeFile, envFile string, services []string) ([]string, error) {
+	if len(services) == 0 {
+		return nil, nil
+	}
+
+	cfg := platformdocker.ComposeConfig{
+		ProjectDir:  projectDir,
+		ComposeFile: composeFile,
+		EnvFile:     envFile,
+	}
+	if err := platformdocker.WaitForServicesReady(cfg, defaultRestoreReadinessTimeoutSeconds, services...); err != nil {
+		return nil, err
+	}
+
+	return append([]string(nil), services...), nil
 }
 
 func runningAppServices(services []string) []string {

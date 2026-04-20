@@ -76,7 +76,7 @@
     },
     {
       "code": "target_start",
-      "details": "Started the target contour prod with docker compose up -d.",
+      "details": "Started the target contour prod with docker compose up -d and confirmed runtime health for: db, espocrm, espocrm-daemon, espocrm-websocket.",
       "status": "completed",
       "summary": "Target contour start completed"
     }

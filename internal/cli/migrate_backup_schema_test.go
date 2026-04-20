@@ -230,6 +230,210 @@ func TestSchema_MigrateBackup_JSON_Success_SkipDBNoStart(t *testing.T) {
 	}
 }
 
+func TestSchema_MigrateBackup_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T) {
+	isolateRollbackPlanLocks(t)
+
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "project")
+	journalDir := filepath.Join(tmp, "journal")
+
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	writeDoctorEnvFile(t, projectDir, "dev", nil)
+	writeDoctorEnvFile(t, projectDir, "prod", nil)
+
+	backupRoot := filepath.Join(projectDir, "backups", "dev")
+	writeRollbackBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeRollbackBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_07-00-00", "dev")
+
+	currentDB := filepath.Join(backupRoot, "db", "espocrm-dev_2026-04-19_08-00-00.sql.gz")
+	otherFiles := filepath.Join(backupRoot, "files", "espocrm-dev_files_2026-04-19_07-00-00.tar.gz")
+	manifestPath := filepath.Join(backupRoot, "manifests", "espocrm-dev_2026-04-19_08-00-00.manifest.json")
+	writeJSON(t, manifestPath, map[string]any{
+		"version":    1,
+		"scope":      "dev",
+		"created_at": "2026-04-19T08:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(currentDB),
+			"files_backup": filepath.Base(otherFiles),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, currentDB),
+			"files_backup": sha256OfFile(t, otherFiles),
+		},
+	})
+
+	outcome := executeCLI(
+		"--journal-dir", journalDir,
+		"--json",
+		"migrate",
+		"--from", "dev",
+		"--to", "prod",
+		"--project-dir", projectDir,
+		"--force",
+		"--confirm-prod", "prod",
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "migrate_failed", "manifest backup set is inconsistent")
+}
+
+func TestSchema_MigrateBackup_JSON_Failure_TargetHealthValidation(t *testing.T) {
+	isolateRollbackPlanLocks(t)
+
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "project")
+	journalDir := filepath.Join(tmp, "journal")
+	stateDir := filepath.Join(tmp, "docker-state")
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
+
+	useJournalClockForTest(t, fixedNow)
+
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
+	writeUpdateRuntimeStatusFile(t, stateDir, "espocrm", "unhealthy")
+
+	writeDoctorEnvFile(t, projectDir, "dev", nil)
+	writeDoctorEnvFile(t, projectDir, "prod", nil)
+	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+
+	prependFakeDockerForRollbackCLITest(t)
+	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", stateDir)
+	t.Setenv("DOCKER_MOCK_ROLLBACK_HEALTH_MESSAGE", "target health failed")
+
+	outcome := executeCLIWithOptions(
+		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-health-fail")},
+		"--journal-dir", journalDir,
+		"--json",
+		"migrate",
+		"--from", "dev",
+		"--to", "prod",
+		"--project-dir", projectDir,
+		"--force",
+		"--confirm-prod", "prod",
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.RestoreError, "migrate_failed", "target health failed")
+}
+
+func TestSchema_MigrateBackup_JSON_RepeatedDeterministicState(t *testing.T) {
+	isolateRollbackPlanLocks(t)
+
+	tmp := t.TempDir()
+	projectDir := filepath.Join(tmp, "project")
+	journalDir := filepath.Join(tmp, "journal")
+	stateDir := filepath.Join(tmp, "docker-state")
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
+
+	useJournalClockForTest(t, fixedNow)
+
+	if err := os.MkdirAll(projectDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
+
+	writeDoctorEnvFile(t, projectDir, "dev", nil)
+	writeDoctorEnvFile(t, projectDir, "prod", nil)
+	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+
+	prependFakeDockerForRollbackCLITest(t)
+	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", stateDir)
+
+	first := executeCLIWithOptions(
+		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-repeat-1")},
+		"--journal-dir", journalDir,
+		"--json",
+		"migrate",
+		"--from", "dev",
+		"--to", "prod",
+		"--project-dir", projectDir,
+		"--force",
+		"--confirm-prod", "prod",
+	)
+	if first.ExitCode != 0 {
+		t.Fatalf("first migrate failed\nstdout=%s\nstderr=%s", first.Stdout, first.Stderr)
+	}
+
+	if err := os.WriteFile(filepath.Join(storageDir, "test.txt"), []byte("drift\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "stale.txt"), []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	second := executeCLIWithOptions(
+		[]testAppOption{withFixedTestRuntime(fixedNow.Add(time.Minute), "op-migrate-repeat-2")},
+		"--journal-dir", journalDir,
+		"--json",
+		"migrate",
+		"--from", "dev",
+		"--to", "prod",
+		"--project-dir", projectDir,
+		"--force",
+		"--confirm-prod", "prod",
+	)
+	if second.ExitCode != 0 {
+		t.Fatalf("second migrate failed\nstdout=%s\nstderr=%s", second.Stdout, second.Stderr)
+	}
+
+	var firstObj map[string]any
+	if err := json.Unmarshal([]byte(first.Stdout), &firstObj); err != nil {
+		t.Fatal(err)
+	}
+	var secondObj map[string]any
+	if err := json.Unmarshal([]byte(second.Stdout), &secondObj); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := requireJSONPath(t, firstObj, "details", "selection_mode"); got != requireJSONPath(t, secondObj, "details", "selection_mode") {
+		t.Fatalf("selection_mode drifted across migrations: first=%v second=%v", requireJSONPath(t, firstObj, "details", "selection_mode"), got)
+	}
+	if got := requireJSONPath(t, firstObj, "details", "completed"); got != requireJSONPath(t, secondObj, "details", "completed") {
+		t.Fatalf("completed count drifted across migrations: first=%v second=%v", requireJSONPath(t, firstObj, "details", "completed"), got)
+	}
+
+	if restoredContent, err := os.ReadFile(filepath.Join(storageDir, "test.txt")); err != nil {
+		t.Fatal(err)
+	} else if string(restoredContent) != "hello" {
+		t.Fatalf("unexpected restored file content after repeat migrate: %q", string(restoredContent))
+	}
+	if _, err := os.Stat(filepath.Join(storageDir, "stale.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected stale file removed after repeated migrate, stat err=%v", err)
+	}
+}
+
 func TestSchema_MigrateBackup_JSON_Failure_CompatibilityDrift(t *testing.T) {
 	isolateRollbackPlanLocks(t)
 

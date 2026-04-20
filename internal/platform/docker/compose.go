@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"slices"
 	"strings"
+	"time"
 )
 
 type ComposeConfig struct {
@@ -136,6 +137,61 @@ func ComposeServiceStateFor(cfg ComposeConfig, service string) (ComposeServiceSt
 
 func ComposeServiceContainerID(cfg ComposeConfig, service string) (string, error) {
 	return composeServiceContainerID(cfg, service)
+}
+
+func WaitForServicesReady(cfg ComposeConfig, timeoutSeconds int, services ...string) error {
+	targets := make([]string, 0, len(services))
+	for _, service := range services {
+		service = strings.TrimSpace(service)
+		if service == "" || composeServiceListContains(targets, service) {
+			continue
+		}
+		targets = append(targets, service)
+	}
+	if len(targets) == 0 {
+		return nil
+	}
+
+	deadline := time.Now().UTC().Add(time.Duration(timeoutSeconds) * time.Second)
+	for {
+		pending := []string{}
+		for _, service := range targets {
+			state, err := ComposeServiceStateFor(cfg, service)
+			if err != nil {
+				return err
+			}
+
+			switch state.Status {
+			case "healthy", "running":
+			case "", "created", "starting", "restarting":
+				pending = append(pending, service)
+			case "exited", "dead":
+				return fmt.Errorf("service %q crashed while waiting for readiness", service)
+			case "unhealthy":
+				if strings.TrimSpace(state.HealthMessage) != "" {
+					return fmt.Errorf("service %q became unhealthy while waiting for readiness: %s", service, state.HealthMessage)
+				}
+				return fmt.Errorf("service %q became unhealthy while waiting for readiness", service)
+			default:
+				return fmt.Errorf("service %q reported unexpected status %q while waiting for readiness", service, state.Status)
+			}
+		}
+
+		if len(pending) == 0 {
+			return nil
+		}
+
+		remaining := time.Until(deadline)
+		if remaining <= 0 {
+			return fmt.Errorf("timed out while waiting for service readiness %q (%d sec.)", strings.Join(targets, ", "), timeoutSeconds)
+		}
+
+		sleepFor := 5 * time.Second
+		if remaining < sleepFor {
+			sleepFor = remaining
+		}
+		time.Sleep(sleepFor)
+	}
 }
 
 func composeServiceContainerID(cfg ComposeConfig, service string) (string, error) {

@@ -70,7 +70,7 @@
     },
     {
       "code": "runtime_return",
-      "details": "Restarted application services after restore: espocrm, espocrm-daemon, espocrm-websocket.",
+      "details": "Restarted application services after restore: espocrm, espocrm-daemon, espocrm-websocket. Post-restore health validation passed for: espocrm, espocrm-daemon, espocrm-websocket, db.",
       "status": "completed",
       "summary": "Runtime return completed"
     }

@@ -7,6 +7,9 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+	"time"
+
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 )
 
 func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
@@ -123,6 +126,160 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 		"compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" up -d espocrm espocrm-daemon espocrm-websocket",
 	) {
 		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+}
+
+func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
+	isolateRollbackPlanLocks(t)
+
+	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
+		"espo/data/nested/file.txt": "hello",
+	})
+
+	otherSet := writeRestoreBackupSet(t, fixture.backupRoot, "espocrm-prod", "2026-04-19_07-00-00", "prod", map[string]string{
+		"espo/data/nested/file.txt": "other",
+	})
+	writeJSON(t, fixture.backupSet.ManifestJSON, map[string]any{
+		"version":    1,
+		"scope":      "prod",
+		"created_at": "2026-04-19T08:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(fixture.backupSet.DBBackup),
+			"files_backup": filepath.Base(otherSet.FilesBackup),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, fixture.backupSet.DBBackup),
+			"files_backup": sha256OfFile(t, otherSet.FilesBackup),
+		},
+	})
+
+	outcome := executeCLI(
+		"--journal-dir", fixture.journalDir,
+		"--json",
+		"restore",
+		"--scope", "prod",
+		"--project-dir", fixture.projectDir,
+		"--manifest", fixture.backupSet.ManifestJSON,
+		"--force",
+		"--confirm-prod", "prod",
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "restore_failed", "manifest backup set is inconsistent")
+}
+
+func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
+	isolateRollbackPlanLocks(t)
+
+	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
+		"espo/data/nested/file.txt": "hello",
+	})
+	useJournalClockForTest(t, fixture.fixedNow)
+
+	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
+	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "espocrm", "unhealthy")
+
+	prependFakeDockerForRollbackCLITest(t)
+	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
+	t.Setenv("DOCKER_MOCK_ROLLBACK_LOG", fixture.logPath)
+	t.Setenv("DOCKER_MOCK_ROLLBACK_HEALTH_MESSAGE", "app health failed")
+	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
+	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
+
+	outcome := executeCLIWithOptions(
+		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-health-fail")},
+		"--journal-dir", fixture.journalDir,
+		"--json",
+		"restore",
+		"--scope", "prod",
+		"--project-dir", fixture.projectDir,
+		"--manifest", fixture.backupSet.ManifestJSON,
+		"--force",
+		"--confirm-prod", "prod",
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.RestoreError, "restore_failed", "app health failed")
+}
+
+func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testing.T) {
+	isolateRollbackPlanLocks(t)
+
+	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
+		"espo/data/nested/file.txt": "hello",
+		"espo/upload/blob.txt":      "blob",
+	})
+	useJournalClockForTest(t, fixture.fixedNow)
+
+	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
+
+	prependFakeDockerForRollbackCLITest(t)
+	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
+	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
+	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
+
+	first := executeCLIWithOptions(
+		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-repeat-1")},
+		"--journal-dir", fixture.journalDir,
+		"--json",
+		"restore",
+		"--scope", "dev",
+		"--project-dir", fixture.projectDir,
+		"--manifest", fixture.backupSet.ManifestJSON,
+		"--force",
+	)
+	if first.ExitCode != 0 {
+		t.Fatalf("first restore failed\nstdout=%s\nstderr=%s", first.Stdout, first.Stderr)
+	}
+
+	if err := os.WriteFile(filepath.Join(fixture.storageDir, "data", "nested", "file.txt"), []byte("drift\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(fixture.storageDir, "stale.txt"), []byte("stale\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	second := executeCLIWithOptions(
+		[]testAppOption{withFixedTestRuntime(fixture.fixedNow.Add(time.Minute), "op-restore-repeat-2")},
+		"--journal-dir", fixture.journalDir,
+		"--json",
+		"restore",
+		"--scope", "dev",
+		"--project-dir", fixture.projectDir,
+		"--manifest", fixture.backupSet.ManifestJSON,
+		"--force",
+	)
+	if second.ExitCode != 0 {
+		t.Fatalf("second restore failed\nstdout=%s\nstderr=%s", second.Stdout, second.Stderr)
+	}
+
+	var firstObj map[string]any
+	if err := json.Unmarshal([]byte(first.Stdout), &firstObj); err != nil {
+		t.Fatal(err)
+	}
+	var secondObj map[string]any
+	if err := json.Unmarshal([]byte(second.Stdout), &secondObj); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := requireJSONPath(t, firstObj, "details", "selection_mode"); got != requireJSONPath(t, secondObj, "details", "selection_mode") {
+		t.Fatalf("selection_mode drifted across restores: first=%v second=%v", requireJSONPath(t, firstObj, "details", "selection_mode"), got)
+	}
+	if got := requireJSONPath(t, firstObj, "details", "completed"); got != requireJSONPath(t, secondObj, "details", "completed") {
+		t.Fatalf("completed count drifted across restores: first=%v second=%v", requireJSONPath(t, firstObj, "details", "completed"), got)
+	}
+
+	if got, err := os.ReadFile(filepath.Join(fixture.storageDir, "data", "nested", "file.txt")); err != nil {
+		t.Fatal(err)
+	} else if string(got) != "hello" {
+		t.Fatalf("unexpected restored file content after repeat: %q", string(got))
+	}
+	if _, err := os.Stat(filepath.Join(fixture.storageDir, "stale.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected stale file removed after repeated restore, stat err=%v", err)
 	}
 }
 
