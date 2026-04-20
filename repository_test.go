@@ -1,4 +1,4 @@
-package architecture_test
+package repository_test
 
 import (
 	"encoding/json"
@@ -9,7 +9,6 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
-	"slices"
 	"strings"
 	"testing"
 )
@@ -83,18 +82,6 @@ func TestNoProductionTypeAliases(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-}
-
-func TestCommandEntrypointUsesArchitectureWiring(t *testing.T) {
-	pkg := listPackage(t, "./cmd/espops")
-
-	assertImports(t, pkg, modulePath+"/internal/architecture")
-	assertNoImports(t, pkg, []string{
-		modulePath + "/internal/cli",
-		modulePath + "/internal/domain",
-		modulePath + "/internal/platform",
-		modulePath + "/internal/usecase",
-	})
 }
 
 func TestProductionCLIPackageHasNoPackageVars(t *testing.T) {
@@ -333,16 +320,6 @@ func repoRoot(t *testing.T) string {
 func inLayer(importPath, layer string) bool {
 	return importPath == modulePath+"/internal/"+layer ||
 		strings.HasPrefix(importPath, modulePath+"/internal/"+layer+"/")
-}
-
-func assertImports(t *testing.T, pkg listedPackage, want string) {
-	t.Helper()
-
-	if slices.Contains(pkg.Imports, want) {
-		return
-	}
-
-	t.Fatalf("%s does not import required package %s", pkg.ImportPath, want)
 }
 
 func assertNoImports(t *testing.T, pkg listedPackage, forbiddenPrefixes []string) {

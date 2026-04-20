@@ -1,7 +1,0 @@
-{
-  "backup_ok.golden.json": "e7d411017b836d90e8e49f343e616c02f626e7bb6c626620f801f2af9b521416",
-  "backup_verify_ok.golden.json": "d475cef0851b54c42ebf7769e75150808b68accdd3f96bc658ee93e3fd6cb06d",
-  "doctor_ok.golden.json": "b6d74ee29ee025e39dff70e18a95d3db82a414515b3289326d88aa82575401fc",
-  "migrate_ok.golden.json": "487ae53c989ccc5e8622fbf701280704bcf0e457311e21346603d714e240ebdf",
-  "restore_ok.golden.json": "e93d608c3226fb0ae3e97d5cbb68da4de00617e08c48acdb16879f7e08f9aae8"
-}

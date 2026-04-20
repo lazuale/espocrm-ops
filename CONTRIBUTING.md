@@ -2,7 +2,7 @@
 
 ## Core Expectation
 
-The Go code is the product core.
+The Go code is the product.
 
 Retained product behavior belongs in:
 
@@ -10,8 +10,9 @@ Retained product behavior belongs in:
 - `internal/cli/` for flags, command wiring, and result rendering
 - `internal/usecase/` for retained workflows
 - `internal/platform/` for side-effecting adapters
+- `internal/opsconfig/` for shared operational semantics that must stay Go-owned
 
-Do not move product behavior into shell wrappers.
+Do not add a second runtime. Do not reintroduce shell-owned behavior.
 
 ## Local Setup
 
@@ -50,26 +51,14 @@ Run the default repository health check:
 make ci
 ```
 
-`make ci` is intentionally Go-focused. It validates the retained product directly without making shell wrappers or AI/governance machinery part of the mandatory path.
-
 ## Working Rules
 
 - Keep the retained product surface limited to `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
 - Prefer deletion over compatibility shims.
 - Prefer one source of truth over mirrored validation layers.
-- Keep shell thin. Do not add parsing, validation, path resolution, or fallback behavior to `scripts/`.
+- Keep operational semantics in Go.
 - Preflight should inspect. Execution should mutate.
 - Do not claim reliability improvements without end-to-end evidence.
-
-## Transitional Areas
-
-These paths still exist, but they are legacy or transitional:
-
-- `scripts/`: deprecated shell wrappers
-- `ops/systemd/`: deprecated units that still target shell entrypoints
-- `AI/`: optional governance machinery, not part of default CI
-
-If you touch those areas, treat the work as containment or cleanup. Do not grow them.
 
 ## Typical Change Flow
 
@@ -80,6 +69,6 @@ If you touch those areas, treat the work as containment or cleanup. Do not grow 
 
 ## Repo Notes
 
-- Example contour env files live under `ops/env/`.
+- Example contour env files live under `env/`.
 - `compose.yaml` and `deploy/` describe the runtime the tool operates against.
 - Repository rules and cleanup constraints live in [AGENTS.md](AGENTS.md).

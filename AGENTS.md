@@ -6,8 +6,7 @@
 - The retained product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
 
 ## Authority
-- Repository authority for the retained product is `AGENTS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ai-governance.yml`.
-- `AI/*` is transitional governance machinery. It is not part of the default CI path and does not define the runtime product contract.
+- Repository authority is `AGENTS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ci.yml`.
 - `README.md` and `CONTRIBUTING.md` are practical docs. If they drift from the retained Go product, fix them.
 - If an archived doc conflicts with `AGENTS.md` or the retained Go product, ignore the archived doc.
 
@@ -15,12 +14,12 @@
 - Block unless clearly safe.
 - Fail closed.
 - Delete drift instead of wrapping drift.
-- Shell is thin execution only.
+- No second runtime.
 - No success before explicit post-check or health-check.
 
 ## Rules
 - `internal/` owns retained-core behavior.
-- `cmd/espops/` owns CLI entrypoints and command surface only.
+- `cmd/espops/` owns the program entrypoint and command surface only.
 - No hidden fallback.
 - No auto-repair.
 - No auto-normalization.
@@ -46,4 +45,3 @@
 ## Done
 - Keep authority surfaces in sync.
 - Run `make ci` before claiming repository health after product, workflow, or contributor-path changes.
-- Use shell or AI checks only when intentionally working on those transitional paths.

@@ -18,14 +18,6 @@ type ComposeServiceState struct {
 	HealthMessage string
 }
 
-func ComposePull(cfg ComposeConfig) error {
-	if _, err := runCompose(cfg, "pull"); err != nil {
-		return fmt.Errorf("compose pull: %w", err)
-	}
-
-	return nil
-}
-
 func ComposeUp(cfg ComposeConfig, services ...string) error {
 	args := append([]string{"up", "-d"}, services...)
 	if _, err := runCompose(cfg, args...); err != nil {
@@ -44,14 +36,6 @@ func ComposeStop(cfg ComposeConfig, services ...string) error {
 	return nil
 }
 
-func ComposeDown(cfg ComposeConfig) error {
-	if _, err := runCompose(cfg, "down"); err != nil {
-		return fmt.Errorf("compose down: %w", err)
-	}
-
-	return nil
-}
-
 func ComposeConfigText(cfg ComposeConfig) (string, error) {
 	res, err := runCompose(cfg, "config")
 	if err != nil {
@@ -65,20 +49,6 @@ func ComposePSText(cfg ComposeConfig) (string, error) {
 	res, err := runCompose(cfg, "ps")
 	if err != nil {
 		return "", fmt.Errorf("compose ps: %w", err)
-	}
-
-	return res.Stdout, nil
-}
-
-func ComposeLogsText(cfg ComposeConfig, tailLines int) (string, error) {
-	args := []string{"logs", "--no-color"}
-	if tailLines > 0 {
-		args = append(args, "--tail", fmt.Sprintf("%d", tailLines))
-	}
-
-	res, err := runCompose(cfg, args...)
-	if err != nil {
-		return "", fmt.Errorf("compose logs: %w", err)
 	}
 
 	return res.Stdout, nil

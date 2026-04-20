@@ -1,5 +1,0 @@
-Deprecated transitional shell wrappers.
-
-- `scripts/` is not part of the default CI path.
-- Do not add product parsing, validation, path resolution, or fallback behavior here.
-- New retained-core behavior must live in Go under `cmd/espops/` and `internal/`.

@@ -577,7 +577,7 @@ func sameResolvedPath(projectDir, left, right string) bool {
 func envAction(err error, projectDir, scope string) string {
 	switch err.(type) {
 	case platformconfig.MissingEnvFileError:
-		return fmt.Sprintf("Create %s/.env.%s from ops/env/.env.%s.example or pass --env-file to point doctor at the correct file.", projectDir, scope, scope)
+		return fmt.Sprintf("Create %s/.env.%s from env/.env.%s.example or pass --env-file to point doctor at the correct file.", projectDir, scope, scope)
 	case platformconfig.InvalidEnvFileError, platformconfig.EnvParseError, platformconfig.MissingEnvValueError:
 		return "Fix the env file contents and rerun doctor."
 	default:

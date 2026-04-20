@@ -1,6 +1,6 @@
 # espocrm-ops
 
-`espops` is a Go CLI for backup, verification, restore, and migration work around an EspoCRM Docker Compose deployment.
+`espops` is a Go CLI for strict backup and recovery work around an EspoCRM Docker Compose deployment.
 
 The retained product surface is intentionally small:
 
@@ -10,18 +10,16 @@ The retained product surface is intentionally small:
 - `restore`
 - `migrate`
 
-The Go binary is the product core. Legacy shell wrappers still exist in `scripts/`, but they are deprecated compatibility scaffolding and are no longer part of the default CI path.
-
 ## What It Does
 
-`espops` exists to make stateful operations explicit and strict:
+`espops` exists to make stateful operations explicit and fail closed:
 
 - resolve and validate operational inputs
-- inspect runtime readiness
-- run backup and recovery actions
+- inspect runtime readiness before stateful work
+- run backup, verification, restore, and migration flows
 - perform explicit post-checks before reporting success
 
-The tool is designed for the retained workflow only. This repository is not trying to be a general EspoCRM management toolkit.
+This repository is not a general EspoCRM management toolkit. It is a small operational CLI.
 
 ## Prerequisites
 
@@ -30,10 +28,10 @@ The tool is designed for the retained workflow only. This repository is not tryi
 - An EspoCRM project layout that matches `compose.yaml`
 - A contour env file at the repo root such as `.env.dev` or `.env.prod`
 
-Example env files live under `ops/env/`:
+Example env files live under `env/`:
 
-- `ops/env/.env.dev.example`
-- `ops/env/.env.prod.example`
+- `env/.env.dev.example`
+- `env/.env.prod.example`
 
 ## Build
 
@@ -116,15 +114,10 @@ Run a migration:
 - `internal/cli/`: Cobra command surface, input validation, result rendering
 - `internal/usecase/`: retained product behavior
 - `internal/platform/`: filesystem, Docker, config, backup storage, and lock adapters
+- `internal/opsconfig/`: shared Go authority for path and env-derived runtime semantics
 - `internal/contract/`: JSON/output contract and exit codes
 - `deploy/`: container tuning files used by `compose.yaml`
-- `ops/env/`: example env files
-
-## Transitional Paths
-
-- `scripts/` is deprecated. Do not add new product behavior there.
-- `ops/systemd/` is deprecated in its current form because it still targets shell entrypoints.
-- `AI/` is transitional governance machinery and is not part of the default CI path.
+- `env/`: example env files
 
 ## More Context
 

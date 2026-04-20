@@ -14,14 +14,10 @@ concurrency:
 permissions:
   contents: read
 
-defaults:
-  run:
-    shell: bash
-
 jobs:
   go-core:
-    timeout-minutes: 30
     runs-on: ubuntu-latest
+    timeout-minutes: 30
     env:
       HEALTH_TOOLS_BIN: ${{ runner.temp }}/go-bin
     steps:
@@ -34,17 +30,11 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Install Go health tools
-        run: |
-          set -Eeuo pipefail
-          make install-ci-health-tools
+      - name: Install health tools
+        run: make install-ci-health-tools
 
-      - name: Add Go health tools to PATH
-        run: |
-          set -Eeuo pipefail
-          echo "${HEALTH_TOOLS_BIN}" >> "$GITHUB_PATH"
+      - name: Add health tools to PATH
+        run: echo "${HEALTH_TOOLS_BIN}" >> "$GITHUB_PATH"
 
       - name: Run Go CI
-        run: |
-          set -Eeuo pipefail
-          make ci
+        run: make ci
