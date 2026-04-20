@@ -238,7 +238,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Status:  MigrateStepStatusFailed,
 				Summary: failureSummary(err, "Migration compatibility contract failed"),
 				Details: err.Error(),
-				Action:  failureAction(err, "Align the shared settings first and rerun ./scripts/doctor.sh all."),
+				Action:  failureAction(err, "Align the shared settings first and rerun espops doctor --scope all --project-dir <repo>."),
 			},
 			notRunMigrateStep("runtime_prepare", "Target runtime preparation did not run because migration compatibility checks failed"),
 			notRunMigrateStep("db_restore", "Database restore did not run because migration compatibility checks failed"),
@@ -723,19 +723,19 @@ func attachMatchingManifest(backupRoot string, selection *sourceSelection) error
 }
 
 func requireMigrationCompatibility(sourceEnv, targetEnv platformconfig.OperationEnv, sourceScope, targetScope string) error {
-	mismatches := []string{}
-	collectMigrationMismatch("ESPOCRM_IMAGE", sourceEnv.Value("ESPOCRM_IMAGE"), targetEnv.Value("ESPOCRM_IMAGE"), &mismatches)
-	collectMigrationMismatch("MARIADB_TAG", sourceEnv.Value("MARIADB_TAG"), targetEnv.Value("MARIADB_TAG"), &mismatches)
-	collectMigrationMismatch("ESPO_DEFAULT_LANGUAGE", sourceEnv.Value("ESPO_DEFAULT_LANGUAGE"), targetEnv.Value("ESPO_DEFAULT_LANGUAGE"), &mismatches)
-	collectMigrationMismatch("ESPO_TIME_ZONE", sourceEnv.Value("ESPO_TIME_ZONE"), targetEnv.Value("ESPO_TIME_ZONE"), &mismatches)
-
-	if len(mismatches) == 0 {
+	rawMismatches := platformconfig.MigrationCompatibilityMismatches(sourceEnv, targetEnv)
+	if len(rawMismatches) == 0 {
 		return nil
+	}
+
+	mismatches := make([]string, 0, len(rawMismatches))
+	for _, mismatch := range rawMismatches {
+		mismatches = append(mismatches, fmt.Sprintf("%s ('%s' vs '%s')", mismatch.Name, mismatch.LeftValue, mismatch.RightValue))
 	}
 
 	return executeFailure{
 		Summary: "Migration compatibility contract failed",
-		Action:  "Align the shared settings first and rerun ./scripts/doctor.sh all.",
+		Action:  "Align the shared settings first and rerun espops doctor --scope all --project-dir <repo>.",
 		Err: fmt.Errorf(
 			"configs %q and %q conflict with the migration compatibility contract: %s",
 			sourceScope,
@@ -743,13 +743,6 @@ func requireMigrationCompatibility(sourceEnv, targetEnv platformconfig.Operation
 			strings.Join(mismatches, "; "),
 		),
 	}
-}
-
-func collectMigrationMismatch(name, sourceValue, targetValue string, mismatches *[]string) {
-	if sourceValue == targetValue {
-		return
-	}
-	*mismatches = append(*mismatches, fmt.Sprintf("%s ('%s' vs '%s')", name, sourceValue, targetValue))
 }
 
 func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo, error) {

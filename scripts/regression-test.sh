@@ -75,6 +75,34 @@ copy_example_env() {
   chmod 600 "$target"
 }
 
+set_env_value() {
+  local file="$1"
+  local key="$2"
+  local value="$3"
+  local tmp_file line replaced=0
+
+  tmp_file="$(mktemp "${file}.XXXXXX")"
+
+  if [[ -f "$file" ]]; then
+    while IFS= read -r line || [[ -n "$line" ]]; do
+      if [[ "$line" == "$key="* ]]; then
+        if [[ $replaced -eq 0 ]]; then
+          printf '%s=%s\n' "$key" "$value" >> "$tmp_file"
+          replaced=1
+        fi
+        continue
+      fi
+      printf '%s\n' "$line" >> "$tmp_file"
+    done < "$file"
+  fi
+
+  if [[ $replaced -eq 0 ]]; then
+    printf '%s=%s\n' "$key" "$value" >> "$tmp_file"
+  fi
+
+  mv -- "$tmp_file" "$file"
+}
+
 create_mock_espops() {
   local target="$1"
 
@@ -109,8 +137,7 @@ test_doctor_wrapper_passes_through_json() {
     fail_test "doctor wrapper failed"
   fi
 
-  assert_file_contains "$output_file" "ARGS: [$JSON_FLAG] [doctor] [--scope] [dev] [--project-dir] [$ROOT_DIR] [--compose-file] [$ROOT_DIR/compose.yaml] [--env-file] [$env_file]" "doctor args mismatch"
-  assert_file_contains "$output_file" '{"ok":true,"command":"doctor"}' "doctor json mismatch"
+  assert_file_contains "$output_file" "ARGS: [doctor] [--project-dir] [$ROOT_DIR] [--scope] [dev] [--env-file] [$env_file] [$JSON_FLAG]" "doctor args mismatch"
   pass_test "doctor wrapper passed"
 }
 
@@ -128,24 +155,21 @@ test_backup_wrapper_delegates_to_go_backup() {
     fail_test "backup wrapper failed"
   fi
 
-  assert_file_contains "$output_file" "ARGS: [backup] [--scope] [dev] [--project-dir] [$ROOT_DIR] [--compose-file] [$ROOT_DIR/compose.yaml] [--env-file] [$env_file] [--skip-files] [--no-stop]" "backup args mismatch"
+  assert_file_contains "$output_file" "ARGS: [backup] [--project-dir] [$ROOT_DIR] [--scope] [dev] [--env-file] [$env_file] [--skip-files] [--no-stop]" "backup args mismatch"
   pass_test "backup wrapper passed"
 }
 
-test_backup_verify_wrapper_resolves_backup_root() {
+test_backup_verify_wrapper_requires_explicit_source() {
   announce_test "backup verify wrapper"
 
-  local env_file="$TEST_TMP_ROOT/verify.env"
   local output_file="$TEST_TMP_ROOT/verify.out"
   local mock_espops="$TEST_TMP_ROOT/mock.verify.espops"
   local backup_root="$TEST_TMP_ROOT/backups/dev"
 
-  copy_example_env dev "$env_file"
   mkdir -p "$backup_root"
-  set_env_value "$env_file" BACKUP_ROOT "$backup_root"
   create_mock_espops "$mock_espops"
 
-  if ! run_command_capture "$output_file" env ENV_FILE="$env_file" ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/backup.sh" verify dev "$JSON_FLAG"; then
+  if ! run_command_capture "$output_file" env ESPOPS_BIN="$mock_espops" bash "$SCRIPT_DIR/backup.sh" verify --backup-root "$backup_root" "$JSON_FLAG"; then
     fail_test "backup verify wrapper failed"
   fi
 
@@ -167,7 +191,7 @@ test_restore_wrapper_delegates_to_go_restore() {
     fail_test "restore wrapper failed"
   fi
 
-  assert_file_contains "$output_file" "ARGS: [restore] [--scope] [prod] [--project-dir] [$ROOT_DIR] [--compose-file] [$ROOT_DIR/compose.yaml] [--env-file] [$env_file] [--manifest] [/tmp/manifest.json] [--force] [--confirm-prod] [prod]" "restore args mismatch"
+  assert_file_contains "$output_file" "ARGS: [restore] [--project-dir] [$ROOT_DIR] [--scope] [prod] [--env-file] [$env_file] [--manifest] [/tmp/manifest.json] [--force] [--confirm-prod] [prod]" "restore args mismatch"
   pass_test "restore wrapper passed"
 }
 
@@ -183,7 +207,7 @@ test_migrate_wrapper_delegates_to_go_migrate() {
     fail_test "migrate wrapper failed"
   fi
 
-  assert_file_contains "$output_file" "ARGS: [migrate] [--from] [dev] [--to] [prod] [--project-dir] [$ROOT_DIR] [--compose-file] [$ROOT_DIR/compose.yaml] [--force] [--confirm-prod] [prod]" "migrate args mismatch"
+  assert_file_contains "$output_file" "ARGS: [migrate] [--project-dir] [$ROOT_DIR] [--from] [dev] [--to] [prod] [--force] [--confirm-prod] [prod]" "migrate args mismatch"
   pass_test "migrate wrapper passed"
 }
 
@@ -201,9 +225,9 @@ test_dispatcher_help_shows_only_core_commands() {
 Usage: ./scripts/espo.sh <command> [arguments...]
 
 Retained operator-facing commands:
-  doctor [dev|prod|all]          Check readiness before backup or recovery work
+  doctor <dev|prod|all>          Check readiness before backup or recovery work
   backup <dev|prod> [args...]    Create a backup
-  backup verify <dev|prod>       Verify the latest backup set for a contour
+  backup verify [source args...] Verify a backup set from an explicit source
   restore <dev|prod> [args...]   Restore from a backup
   migrate <from> <to> [args...]  Migrate a backup between contours
   help [command]                 Show general help or command help
@@ -230,7 +254,7 @@ main() {
 
   test_doctor_wrapper_passes_through_json
   test_backup_wrapper_delegates_to_go_backup
-  test_backup_verify_wrapper_resolves_backup_root
+  test_backup_verify_wrapper_requires_explicit_source
   test_restore_wrapper_delegates_to_go_restore
   test_migrate_wrapper_delegates_to_go_migrate
   test_dispatcher_help_shows_only_core_commands

@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
@@ -101,75 +100,23 @@ type restoreInput struct {
 }
 
 func validateRestoreInput(cmd *cobra.Command, in *restoreInput) error {
-	in.scope = strings.TrimSpace(in.scope)
-	in.projectDir = strings.TrimSpace(in.projectDir)
-	in.composeFile = strings.TrimSpace(in.composeFile)
-	in.envFile = strings.TrimSpace(in.envFile)
-	in.manifestPath = strings.TrimSpace(in.manifestPath)
-	in.dbBackup = strings.TrimSpace(in.dbBackup)
-	in.filesBackup = strings.TrimSpace(in.filesBackup)
-	in.confirmProd = strings.TrimSpace(in.confirmProd)
-
-	switch in.scope {
-	case "dev", "prod":
-	default:
-		return usageError(fmt.Errorf("--scope must be dev or prod"))
-	}
-
-	if err := requireNonBlankFlag("--project-dir", in.projectDir); err != nil {
+	if err := normalizeContourFlag("--scope", &in.scope); err != nil {
 		return err
 	}
-
-	projectAbs, err := filepath.Abs(filepath.Clean(in.projectDir))
-	if err != nil {
-		return usageError(fmt.Errorf("resolve --project-dir: %w", err))
-	}
-	in.projectDir = projectAbs
-
-	if err := normalizeOptionalStringFlag(cmd, "compose-file", &in.composeFile); err != nil {
+	if err := normalizeProjectContext(cmd, &in.projectDir, &in.composeFile, &in.envFile); err != nil {
 		return err
 	}
-	if in.composeFile == "" {
-		in.composeFile = filepath.Join(in.projectDir, "compose.yaml")
-	} else if !filepath.IsAbs(in.composeFile) {
-		in.composeFile = filepath.Join(in.projectDir, in.composeFile)
-	}
-	in.composeFile = filepath.Clean(in.composeFile)
-
-	if err := normalizeOptionalStringFlag(cmd, "env-file", &in.envFile); err != nil {
+	if err := normalizeOptionalAbsolutePathFlag(cmd, "manifest", &in.manifestPath); err != nil {
 		return err
 	}
-	if in.envFile != "" && !filepath.IsAbs(in.envFile) {
-		in.envFile = filepath.Join(in.projectDir, in.envFile)
-	}
-	if in.envFile != "" {
-		in.envFile = filepath.Clean(in.envFile)
-	}
-
-	if err := normalizeOptionalStringFlag(cmd, "manifest", &in.manifestPath); err != nil {
+	if err := normalizeOptionalAbsolutePathFlag(cmd, "db-backup", &in.dbBackup); err != nil {
 		return err
 	}
-	if in.manifestPath != "" {
-		manifestAbs, err := filepath.Abs(filepath.Clean(in.manifestPath))
-		if err != nil {
-			return usageError(fmt.Errorf("resolve --manifest: %w", err))
-		}
-		in.manifestPath = manifestAbs
+	if err := normalizeOptionalAbsolutePathFlag(cmd, "files-backup", &in.filesBackup); err != nil {
+		return err
 	}
-
-	if in.dbBackup != "" {
-		dbAbs, err := filepath.Abs(filepath.Clean(in.dbBackup))
-		if err != nil {
-			return usageError(fmt.Errorf("resolve --db-backup: %w", err))
-		}
-		in.dbBackup = dbAbs
-	}
-	if in.filesBackup != "" {
-		filesAbs, err := filepath.Abs(filepath.Clean(in.filesBackup))
-		if err != nil {
-			return usageError(fmt.Errorf("resolve --files-backup: %w", err))
-		}
-		in.filesBackup = filesAbs
+	if err := normalizeOptionalStringFlag(cmd, "confirm-prod", &in.confirmProd); err != nil {
+		return err
 	}
 
 	if in.skipDB && in.skipFiles {

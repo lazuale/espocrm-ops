@@ -16,29 +16,16 @@ Examples:
 EOF
 }
 
-parse_contour_arg "$@"
+args=(restore --project-dir "$ROOT_DIR")
 
-for arg in "${POSITIONAL_ARGS[@]}"; do
-  case "$arg" in
-    -h|--help)
-      usage
-      exit 0
-      ;;
-  esac
-done
-
-require_explicit_contour
-
-args=(
-  restore
-  --scope "$ESPO_ENV"
-  --project-dir "$ROOT_DIR"
-  --compose-file "$ROOT_DIR/compose.yaml"
-)
+if [[ $# -gt 0 && "$1" != -* ]]; then
+  args+=(--scope "$1")
+  shift
+fi
 
 if [[ -n "${ENV_FILE:-}" ]]; then
   args+=(--env-file "$ENV_FILE")
 fi
 
-args+=("${POSITIONAL_ARGS[@]}")
+args+=("$@")
 run_espops "${args[@]}"

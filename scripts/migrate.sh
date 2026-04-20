@@ -15,11 +15,6 @@ Examples:
 EOF
 }
 
-if [[ $# -eq 0 ]]; then
-  usage >&2
-  exit 1
-fi
-
 case "${1:-}" in
   -h|--help)
     usage
@@ -27,38 +22,16 @@ case "${1:-}" in
     ;;
 esac
 
-if [[ $# -lt 2 ]]; then
-  usage >&2
-  exit 1
+args=(migrate --project-dir "$ROOT_DIR")
+
+if [[ $# -gt 0 && "$1" != -* ]]; then
+  args+=(--from "$1")
+  shift
 fi
-
-SOURCE_CONTOUR="$1"
-TARGET_CONTOUR="$2"
-shift 2
-
-case "$SOURCE_CONTOUR" in
-  dev|prod)
-    ;;
-  *)
-    usage_error "Source contour must be dev or prod"
-    ;;
-esac
-
-case "$TARGET_CONTOUR" in
-  dev|prod)
-    ;;
-  *)
-    usage_error "Target contour must be dev or prod"
-    ;;
-esac
-
-args=(
-  migrate
-  --from "$SOURCE_CONTOUR"
-  --to "$TARGET_CONTOUR"
-  --project-dir "$ROOT_DIR"
-  --compose-file "$ROOT_DIR/compose.yaml"
-)
+if [[ $# -gt 0 && "$1" != -* ]]; then
+  args+=(--to "$1")
+  shift
+fi
 
 args+=("$@")
 run_espops "${args[@]}"

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
@@ -90,52 +89,14 @@ type doctorInput struct {
 }
 
 func validateDoctorInput(cmd *cobra.Command, in *doctorInput) error {
-	in.scope = strings.TrimSpace(in.scope)
-	in.projectDir = strings.TrimSpace(in.projectDir)
-	in.composeFile = strings.TrimSpace(in.composeFile)
-	in.envFile = strings.TrimSpace(in.envFile)
-
-	if err := requireNonBlankFlag("--scope", in.scope); err != nil {
+	if err := normalizeDoctorScopeFlag(&in.scope); err != nil {
 		return err
 	}
-
-	switch in.scope {
-	case "dev", "prod", "all":
-	default:
-		return usageError(fmt.Errorf("--scope must be dev, prod, or all"))
-	}
-
-	if err := requireNonBlankFlag("--project-dir", in.projectDir); err != nil {
-		return err
-	}
-
-	projectAbs, err := filepath.Abs(filepath.Clean(in.projectDir))
-	if err != nil {
-		return usageError(fmt.Errorf("resolve --project-dir: %w", err))
-	}
-	in.projectDir = projectAbs
-
-	if err := normalizeOptionalStringFlag(cmd, "compose-file", &in.composeFile); err != nil {
-		return err
-	}
-	if in.composeFile == "" {
-		in.composeFile = filepath.Join(in.projectDir, "compose.yaml")
-	} else if !filepath.IsAbs(in.composeFile) {
-		in.composeFile = filepath.Join(in.projectDir, in.composeFile)
-	}
-	in.composeFile = filepath.Clean(in.composeFile)
-
-	if err := normalizeOptionalStringFlag(cmd, "env-file", &in.envFile); err != nil {
+	if err := normalizeProjectContext(cmd, &in.projectDir, &in.composeFile, &in.envFile); err != nil {
 		return err
 	}
 	if in.scope == "all" && in.envFile != "" {
 		return usageError(fmt.Errorf("--env-file cannot be used with --scope all"))
-	}
-	if in.envFile != "" && !filepath.IsAbs(in.envFile) {
-		in.envFile = filepath.Join(in.projectDir, in.envFile)
-	}
-	if in.envFile != "" {
-		in.envFile = filepath.Clean(in.envFile)
 	}
 
 	return nil

@@ -18,9 +18,9 @@ usage() {
 Usage: ./scripts/espo.sh <command> [arguments...]
 
 Retained operator-facing commands:
-  doctor [dev|prod|all]          Check readiness before backup or recovery work
+  doctor <dev|prod|all>          Check readiness before backup or recovery work
   backup <dev|prod> [args...]    Create a backup
-  backup verify <dev|prod>       Verify the latest backup set for a contour
+  backup verify [source args...] Verify a backup set from an explicit source
   restore <dev|prod> [args...]   Restore from a backup
   migrate <from> <to> [args...]  Migrate a backup between contours
   help [command]                 Show general help or command help

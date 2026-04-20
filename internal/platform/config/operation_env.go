@@ -9,6 +9,8 @@ import (
 	"sort"
 	"strings"
 	"syscall"
+
+	"github.com/lazuale/espocrm-ops/internal/opsconfig"
 )
 
 var knownOperationalEnvVars = []string{
@@ -171,15 +173,7 @@ func KnownOperationalEnvVars() []string {
 }
 
 func ResolveProjectPath(projectDir, value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return ""
-	}
-	if filepath.IsAbs(value) {
-		return filepath.Clean(value)
-	}
-
-	return filepath.Clean(filepath.Join(projectDir, strings.TrimPrefix(value, "./")))
+	return opsconfig.ResolveProjectPath(projectDir, value)
 }
 
 func resolveOperationEnvFile(projectDir, scope, overridePath string) (string, error) {

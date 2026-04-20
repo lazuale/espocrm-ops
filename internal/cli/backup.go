@@ -3,12 +3,11 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"path/filepath"
-	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	"github.com/lazuale/espocrm-ops/internal/opsconfig"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
 	"github.com/spf13/cobra"
@@ -67,45 +66,11 @@ type backupInput struct {
 }
 
 func validateBackupInput(cmd *cobra.Command, in *backupInput) error {
-	in.scope = strings.TrimSpace(in.scope)
-	in.projectDir = strings.TrimSpace(in.projectDir)
-	in.composeFile = strings.TrimSpace(in.composeFile)
-	in.envFile = strings.TrimSpace(in.envFile)
-
-	switch in.scope {
-	case "dev", "prod":
-	default:
-		return usageError(fmt.Errorf("--scope must be dev or prod"))
-	}
-
-	if err := requireNonBlankFlag("--project-dir", in.projectDir); err != nil {
+	if err := normalizeContourFlag("--scope", &in.scope); err != nil {
 		return err
 	}
-
-	projectAbs, err := filepath.Abs(filepath.Clean(in.projectDir))
-	if err != nil {
-		return usageError(fmt.Errorf("resolve --project-dir: %w", err))
-	}
-	in.projectDir = projectAbs
-
-	if err := normalizeOptionalStringFlag(cmd, "compose-file", &in.composeFile); err != nil {
+	if err := normalizeProjectContext(cmd, &in.projectDir, &in.composeFile, &in.envFile); err != nil {
 		return err
-	}
-	if in.composeFile == "" {
-		in.composeFile = filepath.Join(in.projectDir, "compose.yaml")
-	} else if !filepath.IsAbs(in.composeFile) {
-		in.composeFile = filepath.Join(in.projectDir, in.composeFile)
-	}
-	in.composeFile = filepath.Clean(in.composeFile)
-
-	if err := normalizeOptionalStringFlag(cmd, "env-file", &in.envFile); err != nil {
-		return err
-	}
-	if in.envFile != "" && !filepath.IsAbs(in.envFile) {
-		in.envFile = filepath.Join(in.projectDir, in.envFile)
-	}
-	if in.envFile != "" {
-		in.envFile = filepath.Clean(in.envFile)
 	}
 
 	if in.skipDB && in.skipFiles {
@@ -153,12 +118,9 @@ func runBackup(cmd *cobra.Command, in backupInput) error {
 			}
 		}()
 
-		cfg, err := loadBackupExecutionConfigFromValues(in.projectDir, ctx.Env.Values)
+		cfg, err := opsconfig.LoadBackupExecutionConfig(in.projectDir, ctx.Env.FilePath, ctx.Env.Values, !in.skipDB)
 		if err != nil {
-			return res, err
-		}
-		if err := validateBackupExecutionConfig(cfg, !in.skipDB); err != nil {
-			return res, err
+			return res, apperr.Wrap(apperr.KindValidation, "backup_failed", err)
 		}
 
 		req := backupusecase.ExecuteRequest{

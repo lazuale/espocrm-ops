@@ -45,7 +45,7 @@ func PrepareOperation(req OperationContextRequest) (OperationContext, error) {
 	ctx.ComposeProject = env.ComposeProject()
 	ctx.BackupRoot = platformconfig.ResolveProjectPath(ctx.ProjectDir, env.BackupRoot())
 
-	if err := ensureRuntimeDirs(ctx.ProjectDir, env); err != nil {
+	if err := verifyRuntimePaths(ctx.ProjectDir, env); err != nil {
 		return ctx, apperr.Wrap(apperr.KindIO, "operation_execute_failed", err)
 	}
 

@@ -457,17 +457,8 @@ func checkCrossScopeIsolation(report *Report, projectDir string, prodEnv, devEnv
 func checkCrossScopeCompatibility(report *Report, prodEnv, devEnv platformconfig.OperationEnv) {
 	problems := []string{}
 
-	if prodEnv.Value("ESPOCRM_IMAGE") != devEnv.Value("ESPOCRM_IMAGE") {
-		problems = append(problems, fmt.Sprintf("ESPOCRM_IMAGE differs: prod=%s dev=%s", prodEnv.Value("ESPOCRM_IMAGE"), devEnv.Value("ESPOCRM_IMAGE")))
-	}
-	if prodEnv.Value("MARIADB_TAG") != devEnv.Value("MARIADB_TAG") {
-		problems = append(problems, fmt.Sprintf("MARIADB_TAG differs: prod=%s dev=%s", prodEnv.Value("MARIADB_TAG"), devEnv.Value("MARIADB_TAG")))
-	}
-	if prodEnv.Value("ESPO_DEFAULT_LANGUAGE") != devEnv.Value("ESPO_DEFAULT_LANGUAGE") {
-		problems = append(problems, fmt.Sprintf("ESPO_DEFAULT_LANGUAGE differs: prod=%s dev=%s", prodEnv.Value("ESPO_DEFAULT_LANGUAGE"), devEnv.Value("ESPO_DEFAULT_LANGUAGE")))
-	}
-	if prodEnv.Value("ESPO_TIME_ZONE") != devEnv.Value("ESPO_TIME_ZONE") {
-		problems = append(problems, fmt.Sprintf("ESPO_TIME_ZONE differs: prod=%s dev=%s", prodEnv.Value("ESPO_TIME_ZONE"), devEnv.Value("ESPO_TIME_ZONE")))
+	for _, mismatch := range platformconfig.MigrationCompatibilityMismatches(prodEnv, devEnv) {
+		problems = append(problems, fmt.Sprintf("%s differs: prod=%s dev=%s", mismatch.Name, mismatch.LeftValue, mismatch.RightValue))
 	}
 
 	if len(problems) != 0 {

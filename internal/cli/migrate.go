@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
@@ -82,50 +81,18 @@ type migrateInput struct {
 }
 
 func validateMigrateInput(cmd *cobra.Command, in *migrateInput) error {
-	in.fromScope = strings.TrimSpace(in.fromScope)
-	in.toScope = strings.TrimSpace(in.toScope)
-	in.projectDir = strings.TrimSpace(in.projectDir)
-	in.composeFile = strings.TrimSpace(in.composeFile)
-	in.dbBackup = strings.TrimSpace(in.dbBackup)
-	in.filesBackup = strings.TrimSpace(in.filesBackup)
-	in.confirmProd = strings.TrimSpace(in.confirmProd)
-
-	switch in.fromScope {
-	case "dev", "prod":
-	default:
-		return usageError(fmt.Errorf("--from must be dev or prod"))
+	if err := normalizeChoiceFlag("--from", &in.fromScope, "--from must be dev or prod", "dev", "prod"); err != nil {
+		return err
 	}
-
-	switch in.toScope {
-	case "dev", "prod":
-	default:
-		return usageError(fmt.Errorf("--to must be dev or prod"))
+	if err := normalizeChoiceFlag("--to", &in.toScope, "--to must be dev or prod", "dev", "prod"); err != nil {
+		return err
 	}
-
 	if in.fromScope == in.toScope {
 		return usageError(fmt.Errorf("source and target contours must differ"))
 	}
-
-	if err := requireNonBlankFlag("--project-dir", in.projectDir); err != nil {
+	if err := normalizeProjectContext(cmd, &in.projectDir, &in.composeFile, nil); err != nil {
 		return err
 	}
-
-	projectAbs, err := filepath.Abs(filepath.Clean(in.projectDir))
-	if err != nil {
-		return usageError(fmt.Errorf("resolve --project-dir: %w", err))
-	}
-	in.projectDir = projectAbs
-
-	if err := normalizeOptionalStringFlag(cmd, "compose-file", &in.composeFile); err != nil {
-		return err
-	}
-	if in.composeFile == "" {
-		in.composeFile = filepath.Join(in.projectDir, "compose.yaml")
-	} else if !filepath.IsAbs(in.composeFile) {
-		in.composeFile = filepath.Join(in.projectDir, in.composeFile)
-	}
-	in.composeFile = filepath.Clean(in.composeFile)
-
 	if err := normalizeOptionalStringFlag(cmd, "confirm-prod", &in.confirmProd); err != nil {
 		return err
 	}
@@ -143,19 +110,11 @@ func validateMigrateInput(cmd *cobra.Command, in *migrateInput) error {
 		return usageError(fmt.Errorf("--files-backup cannot be used with --skip-files"))
 	}
 
-	if in.dbBackup != "" {
-		dbAbs, err := filepath.Abs(filepath.Clean(in.dbBackup))
-		if err != nil {
-			return usageError(fmt.Errorf("resolve --db-backup: %w", err))
-		}
-		in.dbBackup = dbAbs
+	if err := normalizeOptionalAbsolutePathFlag(cmd, "db-backup", &in.dbBackup); err != nil {
+		return err
 	}
-	if in.filesBackup != "" {
-		filesAbs, err := filepath.Abs(filepath.Clean(in.filesBackup))
-		if err != nil {
-			return usageError(fmt.Errorf("resolve --files-backup: %w", err))
-		}
-		in.filesBackup = filesAbs
+	if err := normalizeOptionalAbsolutePathFlag(cmd, "files-backup", &in.filesBackup); err != nil {
+		return err
 	}
 
 	if !in.force {
