@@ -11,8 +11,8 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 )
 
-func TestSchema_MigrateBackup_JSON_Success(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+func TestSchema_Migrate_JSON_Success(t *testing.T) {
+	isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -42,15 +42,15 @@ func TestSchema_MigrateBackup_JSON_Success(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
 
 	writeDoctorEnvFile(t, projectDir, "dev", nil)
 	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", stateDir)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_LOG", logPath)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
+	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", logPath)
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-1")},
@@ -151,8 +151,8 @@ func TestSchema_MigrateBackup_JSON_Success(t *testing.T) {
 	}
 }
 
-func TestSchema_MigrateBackup_JSON_Success_SkipDBNoStart(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+func TestSchema_Migrate_JSON_Success_SkipDBNoStart(t *testing.T) {
+	isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -179,15 +179,15 @@ func TestSchema_MigrateBackup_JSON_Success_SkipDBNoStart(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
 
 	writeDoctorEnvFile(t, projectDir, "dev", nil)
 	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", stateDir)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_LOG", logPath)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
+	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", logPath)
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
@@ -230,8 +230,8 @@ func TestSchema_MigrateBackup_JSON_Success_SkipDBNoStart(t *testing.T) {
 	}
 }
 
-func TestSchema_MigrateBackup_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+func TestSchema_Migrate_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T) {
+	isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -248,8 +248,8 @@ func TestSchema_MigrateBackup_JSON_Failure_InvalidMatchingManifestBlocked(t *tes
 	writeDoctorEnvFile(t, projectDir, "prod", nil)
 
 	backupRoot := filepath.Join(projectDir, "backups", "dev")
-	writeRollbackBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_08-00-00", "dev")
-	writeRollbackBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_07-00-00", "dev")
+	writeBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_07-00-00", "dev")
 
 	currentDB := filepath.Join(backupRoot, "db", "espocrm-dev_2026-04-19_08-00-00.sql.gz")
 	otherFiles := filepath.Join(backupRoot, "files", "espocrm-dev_files_2026-04-19_07-00-00.tar.gz")
@@ -282,8 +282,8 @@ func TestSchema_MigrateBackup_JSON_Failure_InvalidMatchingManifestBlocked(t *tes
 	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "migrate_failed", "manifest backup set is inconsistent")
 }
 
-func TestSchema_MigrateBackup_JSON_Failure_TargetHealthValidation(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+func TestSchema_Migrate_JSON_Failure_TargetHealthValidation(t *testing.T) {
+	isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -309,16 +309,16 @@ func TestSchema_MigrateBackup_JSON_Failure_TargetHealthValidation(t *testing.T) 
 	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
-	writeUpdateRuntimeStatusFile(t, stateDir, "espocrm", "unhealthy")
+	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, stateDir, "espocrm", "unhealthy")
 
 	writeDoctorEnvFile(t, projectDir, "dev", nil)
 	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", stateDir)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_HEALTH_MESSAGE", "target health failed")
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
+	t.Setenv("DOCKER_MOCK_RECOVERY_HEALTH_MESSAGE", "target health failed")
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-health-fail")},
@@ -335,8 +335,8 @@ func TestSchema_MigrateBackup_JSON_Failure_TargetHealthValidation(t *testing.T) 
 	assertCLIErrorOutput(t, outcome, exitcode.RestoreError, "migrate_failed", "target health failed")
 }
 
-func TestSchema_MigrateBackup_JSON_RepeatedDeterministicState(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
+	isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -362,14 +362,14 @@ func TestSchema_MigrateBackup_JSON_RepeatedDeterministicState(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
 
 	writeDoctorEnvFile(t, projectDir, "dev", nil)
 	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", stateDir)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
 
 	first := executeCLIWithOptions(
 		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-repeat-1")},
@@ -434,8 +434,8 @@ func TestSchema_MigrateBackup_JSON_RepeatedDeterministicState(t *testing.T) {
 	}
 }
 
-func TestSchema_MigrateBackup_JSON_Failure_CompatibilityDrift(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+func TestSchema_Migrate_JSON_Failure_CompatibilityDrift(t *testing.T) {
+	isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -454,7 +454,7 @@ func TestSchema_MigrateBackup_JSON_Failure_CompatibilityDrift(t *testing.T) {
 	writeDoctorEnvFile(t, projectDir, "prod", map[string]string{
 		"ESPOCRM_IMAGE": "espocrm/espocrm:9.4.0-apache",
 	})
-	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,

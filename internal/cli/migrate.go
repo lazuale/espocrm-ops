@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newMigrateBackupCmd() *cobra.Command {
+func newMigrateCmd() *cobra.Command {
 	var fromScope string
 	var toScope string
 	var projectDir string
@@ -31,7 +31,7 @@ func newMigrateBackupCmd() *cobra.Command {
 		Short: "Migrate a backup between contours",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			in := migrateBackupInput{
+			in := migrateInput{
 				fromScope:   fromScope,
 				toScope:     toScope,
 				projectDir:  projectDir,
@@ -44,11 +44,11 @@ func newMigrateBackupCmd() *cobra.Command {
 				force:       force,
 				confirmProd: confirmProd,
 			}
-			if err := validateMigrateBackupInput(cmd, &in); err != nil {
+			if err := validateMigrateInput(cmd, &in); err != nil {
 				return err
 			}
 
-			return runMigrateBackupExecute(cmd, in)
+			return runMigrateExecute(cmd, in)
 		},
 	}
 
@@ -67,7 +67,7 @@ func newMigrateBackupCmd() *cobra.Command {
 	return cmd
 }
 
-type migrateBackupInput struct {
+type migrateInput struct {
 	fromScope   string
 	toScope     string
 	projectDir  string
@@ -81,7 +81,7 @@ type migrateBackupInput struct {
 	confirmProd string
 }
 
-func validateMigrateBackupInput(cmd *cobra.Command, in *migrateBackupInput) error {
+func validateMigrateInput(cmd *cobra.Command, in *migrateInput) error {
 	in.fromScope = strings.TrimSpace(in.fromScope)
 	in.toScope = strings.TrimSpace(in.toScope)
 	in.projectDir = strings.TrimSpace(in.projectDir)
@@ -168,12 +168,12 @@ func validateMigrateBackupInput(cmd *cobra.Command, in *migrateBackupInput) erro
 	return nil
 }
 
-func runMigrateBackupExecute(cmd *cobra.Command, in migrateBackupInput) error {
+func runMigrateExecute(cmd *cobra.Command, in migrateInput) error {
 	spec := CommandSpec{
 		Name:       "migrate",
 		ErrorCode:  "migrate_failed",
 		ExitCode:   exitcode.InternalError,
-		RenderText: renderMigrateBackupText,
+		RenderText: renderMigrateText,
 	}
 	exec := operationusecase.Begin(
 		appForCommand(cmd).runtime,
@@ -194,7 +194,7 @@ func runMigrateBackupExecute(cmd *cobra.Command, in migrateBackupInput) error {
 		LogWriter:   cmd.ErrOrStderr(),
 	})
 
-	res := migrateBackupResult(info)
+	res := migrateResult(info)
 	res.Command = spec.Name
 
 	if err != nil {
@@ -204,7 +204,7 @@ func runMigrateBackupExecute(cmd *cobra.Command, in migrateBackupInput) error {
 	return finishJournaledCommandSuccess(cmd, spec, exec, res)
 }
 
-func migrateBackupResult(info migrateusecase.ExecuteInfo) result.Result {
+func migrateResult(info migrateusecase.ExecuteInfo) result.Result {
 	completed, skipped, failed, notRun := info.Counts()
 	message := "backup migration completed"
 	if !info.Ready() {
@@ -266,7 +266,7 @@ func migrateBackupResult(info migrateusecase.ExecuteInfo) result.Result {
 	}
 }
 
-func renderMigrateBackupText(w io.Writer, res result.Result) error {
+func renderMigrateText(w io.Writer, res result.Result) error {
 	details, ok := res.Details.(result.MigrateDetails)
 	if !ok {
 		return result.Render(w, res, false)

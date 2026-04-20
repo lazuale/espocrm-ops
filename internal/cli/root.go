@@ -48,13 +48,13 @@ func (a *App) NewRootCmd() *cobra.Command {
 	})
 
 	backupCmd := bindApp(newBackupCmd(), a)
-	backupCmd.AddCommand(bindApp(newVerifyBackupCmd(), a))
+	backupCmd.AddCommand(bindApp(newBackupVerifyCmd(), a))
 
 	cmd.AddCommand(
 		bindApp(newDoctorCmd(), a),
 		backupCmd,
 		bindApp(newRestoreCmd(), a),
-		bindApp(newMigrateBackupCmd(), a),
+		bindApp(newMigrateCmd(), a),
 	)
 
 	return cmd

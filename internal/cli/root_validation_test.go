@@ -2,6 +2,8 @@ package cli
 
 import (
 	"path/filepath"
+	"reflect"
+	"slices"
 	"testing"
 )
 
@@ -37,39 +39,15 @@ func TestSchema_Root_JSON_Error_UnknownFlag_NoJournal(t *testing.T) {
 func TestRootExposesOnlyBackupRecoveryCommands(t *testing.T) {
 	root := newTestRootCmd()
 
-	commands := map[string]struct{}{}
+	commands := make([]string, 0, len(root.Commands()))
 	for _, cmd := range root.Commands() {
-		commands[cmd.Name()] = struct{}{}
+		commands = append(commands, cmd.Name())
 	}
+	slices.Sort(commands)
 
-	for _, expected := range []string{"doctor", "backup", "restore", "migrate"} {
-		if _, ok := commands[expected]; !ok {
-			t.Fatalf("expected command %q to be present", expected)
-		}
-	}
-	for _, forbidden := range []string{
-		"overview",
-		"status-report",
-		"health-summary",
-		"operation-gate",
-		"history",
-		"show-operation",
-		"last-operation",
-		"export-operation",
-		"support-bundle",
-		"maintenance",
-		"backup-health",
-		"backup-catalog",
-		"show-backup",
-		"restore-drill",
-		"rollback",
-		"update",
-		"verify-backup",
-		"migrate-backup",
-	} {
-		if _, ok := commands[forbidden]; ok {
-			t.Fatalf("expected removed command %q to be absent", forbidden)
-		}
+	expected := []string{"backup", "doctor", "migrate", "restore"}
+	if !reflect.DeepEqual(commands, expected) {
+		t.Fatalf("unexpected root commands: got %v want %v", commands, expected)
 	}
 }
 
@@ -79,16 +57,12 @@ func TestBackupCommandExposesOnlyVerifySubcommand(t *testing.T) {
 	if err != nil {
 		t.Fatalf("find backup command: %v", err)
 	}
-	subcommands := map[string]struct{}{}
+	subcommands := make([]string, 0, len(backup.Commands()))
 	for _, cmd := range backup.Commands() {
-		subcommands[cmd.Name()] = struct{}{}
+		subcommands = append(subcommands, cmd.Name())
 	}
-	if _, ok := subcommands["verify"]; !ok {
-		t.Fatalf("expected backup verify subcommand to be present")
-	}
-	for _, forbidden := range []string{"audit", "catalog", "show"} {
-		if _, ok := subcommands[forbidden]; ok {
-			t.Fatalf("expected removed backup subcommand %q to be absent", forbidden)
-		}
+	slices.Sort(subcommands)
+	if !reflect.DeepEqual(subcommands, []string{"verify"}) {
+		t.Fatalf("unexpected backup subcommands: got %v want [verify]", subcommands)
 	}
 }

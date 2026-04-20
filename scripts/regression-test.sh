@@ -53,13 +53,15 @@ assert_file_contains() {
   fi
 }
 
-assert_file_not_contains() {
+assert_file_equals() {
   local file="$1"
-  local unexpected="$2"
+  local expected_file="$2"
   local label="$3"
 
-  if rg -Fq -- "$unexpected" "$file"; then
-    echo "[debug] File output $file:" >&2
+  if ! cmp -s "$file" "$expected_file"; then
+    echo "[debug] Expected output $expected_file:" >&2
+    sed -n '1,220p' "$expected_file" >&2 || true
+    echo "[debug] Actual output $file:" >&2
     sed -n '1,220p' "$file" >&2 || true
     fail_test "$label"
   fi
@@ -189,18 +191,24 @@ test_dispatcher_help_shows_only_core_commands() {
   announce_test "dispatcher help"
 
   local output_file="$TEST_TMP_ROOT/espo-help.out"
+  local expected_file="$TEST_TMP_ROOT/espo-help.expected"
 
   if ! run_command_capture "$output_file" bash "$SCRIPT_DIR/espo.sh" help; then
     fail_test "dispatcher help failed"
   fi
 
-  assert_file_contains "$output_file" "doctor [dev|prod|all]" "missing doctor help"
-  assert_file_contains "$output_file" "backup <dev|prod>" "missing backup help"
-  assert_file_contains "$output_file" "restore <dev|prod>" "missing restore help"
-  assert_file_contains "$output_file" "migrate <from> <to>" "missing migrate help"
-  assert_file_not_contains "$output_file" "update" "dispatcher still exposes removed update help"
-  assert_file_not_contains "$output_file" "rollback" "dispatcher still exposes removed rollback help"
-  assert_file_not_contains "$output_file" "support" "dispatcher still exposes removed support help"
+  cat > "$expected_file" <<'EOF'
+Usage: ./scripts/espo.sh <command> [arguments...]
+
+Retained operator-facing commands:
+  doctor [dev|prod|all]          Check readiness before backup or recovery work
+  backup <dev|prod> [args...]    Create a backup
+  backup verify <dev|prod>       Verify the latest backup set for a contour
+  restore <dev|prod> [args...]   Restore from a backup
+  migrate <from> <to> [args...]  Migrate a backup between contours
+  help [command]                 Show general help or command help
+EOF
+  assert_file_equals "$output_file" "$expected_file" "dispatcher help mismatch"
   pass_test "dispatcher help passed"
 }
 

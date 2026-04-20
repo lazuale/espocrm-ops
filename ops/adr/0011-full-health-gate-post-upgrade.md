@@ -2,6 +2,8 @@
 
 Historical ADR. Non-authoritative. Repository authority lives in `AGENTS.md`, `AI/spec/*`, generated enforcement under `AI/compiled/*`, `Makefile`, and `.github/workflows/ai-governance.yml`.
 
+This ADR was later narrowed by ADR 0015 for `govulncheck` handling. Use `AGENTS.md`, `Makefile`, and `.github/workflows/ai-governance.yml` for the current blocking gate.
+
 ## Status
 
 Accepted
@@ -29,7 +31,7 @@ Introduce and enforce a two-tier health standard:
 - `make ci` remains an alias for the fast gate so existing fast-entrypoint usage keeps working
 - `make check-full` is the authoritative full repository health gate for post-upgrade health claims
 
-`make check-full` must run, in order:
+At acceptance time, the intended `make check-full` order was:
 
 1. `make ai-refresh`
 2. `make ai-check`

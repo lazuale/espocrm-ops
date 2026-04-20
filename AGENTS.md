@@ -13,6 +13,7 @@ Bootstrap order:
 Repository truth:
 - Go is the strategic core.
 - Shell is transitional legacy.
+- The retained operator-facing product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
 - Canonical machine contract belongs to Go CLI JSON and exit-code surfaces.
 - Shell JSON is either thin passthrough to Go or explicitly non-canonical shell data.
 - Delete drift instead of wrapping drift.
@@ -25,6 +26,7 @@ Authority:
 - If an archived doc conflicts with `AGENTS.md`, `AI/spec/*`, or generated enforcement artifacts, ignore the archived doc.
 
 Builder rules:
+- Do not reintroduce removed product surfaces, aliases, or help text outside the retained command set.
 - Do not add new shell-owned destructive plan, selection, policy, or stable report logic.
 - Do not add new shell `--json` surfaces without classifying them as explicit passthrough wrappers or explicit non-canonical shell data.
 - Do not add new generic packages or layers named `common`, `utils`, `helpers`, `services`, `builders`, `factories`, `managers`, `shared`, `facade`, `wrapper`, or `core`.

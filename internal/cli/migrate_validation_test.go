@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func TestMigrateBackup_Validation_RequiresForce(t *testing.T) {
+func TestMigrate_Validation_RequiresForce(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 
@@ -20,7 +20,7 @@ func TestMigrateBackup_Validation_RequiresForce(t *testing.T) {
 	assertUsageErrorOutput(t, outcome, "migrate requires an explicit --force flag")
 }
 
-func TestMigrateBackup_Validation_RequiresProdConfirmation(t *testing.T) {
+func TestMigrate_Validation_RequiresProdConfirmation(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 

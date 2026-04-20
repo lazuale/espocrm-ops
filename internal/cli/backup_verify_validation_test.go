@@ -8,7 +8,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 )
 
-func TestSchema_VerifyBackup_JSON_Error_MissingManifest_NoJournal(t *testing.T) {
+func TestSchema_BackupVerify_JSON_Error_MissingManifest_NoJournal(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 
@@ -23,7 +23,7 @@ func TestSchema_VerifyBackup_JSON_Error_MissingManifest_NoJournal(t *testing.T) 
 	assertNoJournalFiles(t, journalDir)
 }
 
-func TestSchema_VerifyBackup_JSON_Error_BlankManifest_NoJournal(t *testing.T) {
+func TestSchema_BackupVerify_JSON_Error_BlankManifest_NoJournal(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 
@@ -39,7 +39,7 @@ func TestSchema_VerifyBackup_JSON_Error_BlankManifest_NoJournal(t *testing.T) {
 	assertNoJournalFiles(t, journalDir)
 }
 
-func TestSchema_VerifyBackup_JSON_Error_ManifestBackupRootConflict_NoJournal(t *testing.T) {
+func TestSchema_BackupVerify_JSON_Error_ManifestBackupRootConflict_NoJournal(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 
@@ -56,7 +56,7 @@ func TestSchema_VerifyBackup_JSON_Error_ManifestBackupRootConflict_NoJournal(t *
 	assertNoJournalFiles(t, journalDir)
 }
 
-func TestSchema_VerifyBackup_JSON_Error_BlankBackupRoot_NoJournal(t *testing.T) {
+func TestSchema_BackupVerify_JSON_Error_BlankBackupRoot_NoJournal(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 
@@ -72,7 +72,7 @@ func TestSchema_VerifyBackup_JSON_Error_BlankBackupRoot_NoJournal(t *testing.T) 
 	assertNoJournalFiles(t, journalDir)
 }
 
-func TestSchema_VerifyBackup_JSON_Error_InvalidManifestContract(t *testing.T) {
+func TestSchema_BackupVerify_JSON_Error_InvalidManifestContract(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 	manifestPath := filepath.Join(tmp, "manifest.json")
@@ -91,7 +91,7 @@ func TestSchema_VerifyBackup_JSON_Error_InvalidManifestContract(t *testing.T) {
 	assertCLIErrorOutput(t, outcome, exitcode.ManifestError, "manifest_invalid", "validate manifest")
 }
 
-func TestSchema_VerifyBackup_JSON_Error_ChecksumMismatchContract(t *testing.T) {
+func TestSchema_BackupVerify_JSON_Error_ChecksumMismatchContract(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 

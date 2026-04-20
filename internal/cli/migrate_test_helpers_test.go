@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-func normalizeMigrateBackupJSON(t *testing.T, raw []byte) []byte {
+func normalizeMigrateJSON(t *testing.T, raw []byte) []byte {
 	t.Helper()
 
 	var obj map[string]any

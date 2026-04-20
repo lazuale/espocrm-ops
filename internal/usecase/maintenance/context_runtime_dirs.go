@@ -18,8 +18,6 @@ func ensureRuntimeDirs(projectDir string, env platformconfig.OperationEnv) error
 		filepath.Join(platformconfig.ResolveProjectPath(projectDir, env.BackupRoot()), "files"),
 		filepath.Join(platformconfig.ResolveProjectPath(projectDir, env.BackupRoot()), "locks"),
 		filepath.Join(platformconfig.ResolveProjectPath(projectDir, env.BackupRoot()), "manifests"),
-		filepath.Join(platformconfig.ResolveProjectPath(projectDir, env.BackupRoot()), "reports"),
-		filepath.Join(platformconfig.ResolveProjectPath(projectDir, env.BackupRoot()), "support"),
 	}
 
 	for _, path := range paths {

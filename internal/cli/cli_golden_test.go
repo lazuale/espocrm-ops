@@ -12,7 +12,7 @@ import (
 	"time"
 )
 
-func TestGolden_VerifyBackup_JSON(t *testing.T) {
+func TestGolden_BackupVerify_JSON(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 
@@ -56,11 +56,11 @@ func TestGolden_VerifyBackup_JSON(t *testing.T) {
 		t.Fatalf("command failed: %v\noutput=%s", err, out)
 	}
 
-	normalized := normalizeVerifyBackupJSON(t, []byte(out))
-	assertGoldenJSON(t, normalized, filepath.Join("testdata", "verify_backup_ok.golden.json"))
+	normalized := normalizeBackupVerifyJSON(t, []byte(out))
+	assertGoldenJSON(t, normalized, filepath.Join("testdata", "backup_verify_ok.golden.json"))
 }
 
-func normalizeVerifyBackupJSON(t *testing.T, raw []byte) []byte {
+func normalizeBackupVerifyJSON(t *testing.T, raw []byte) []byte {
 	t.Helper()
 
 	var obj map[string]any

@@ -8,7 +8,7 @@ import (
 	"time"
 )
 
-func TestSchema_VerifyBackup_JSON_BackupRoot_SelectsLatestCompleteSet(t *testing.T) {
+func TestSchema_BackupVerify_JSON_BackupRoot_SelectsLatestCompleteSet(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
 	backupRoot := filepath.Join(tmp, "backups")

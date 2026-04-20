@@ -7,8 +7,8 @@ import (
 	"time"
 )
 
-func TestGolden_MigrateBackup_JSON(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+func TestGolden_Migrate_JSON(t *testing.T) {
+	isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -37,14 +37,14 @@ func TestGolden_MigrateBackup_JSON(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
 
 	writeDoctorEnvFile(t, projectDir, "dev", nil)
 	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeRollbackBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
+	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", stateDir)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-1")},
@@ -61,6 +61,6 @@ func TestGolden_MigrateBackup_JSON(t *testing.T) {
 		t.Fatalf("command failed\nstdout=%s\nstderr=%s", outcome.Stdout, outcome.Stderr)
 	}
 
-	normalized := normalizeMigrateBackupJSON(t, []byte(outcome.Stdout))
-	assertGoldenJSON(t, normalized, filepath.Join("testdata", "migrate_backup_ok.golden.json"))
+	normalized := normalizeMigrateJSON(t, []byte(outcome.Stdout))
+	assertGoldenJSON(t, normalized, filepath.Join("testdata", "migrate_ok.golden.json"))
 }

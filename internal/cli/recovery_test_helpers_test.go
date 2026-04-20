@@ -9,7 +9,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/platform/locks"
 )
 
-func prependFakeDockerForRollbackCLITest(t *testing.T) {
+func prependFakeDockerForRecoveryCLITest(t *testing.T) {
 	t.Helper()
 
 	binDir := t.TempDir()
@@ -17,11 +17,11 @@ func prependFakeDockerForRollbackCLITest(t *testing.T) {
 	script := `#!/usr/bin/env bash
 set -Eeuo pipefail
 
-state_dir="${DOCKER_MOCK_ROLLBACK_STATE_DIR:-}"
+state_dir="${DOCKER_MOCK_RECOVERY_STATE_DIR:-}"
 
 log_call() {
-  if [[ -n "${DOCKER_MOCK_ROLLBACK_LOG:-}" ]]; then
-    printf '%s\n' "$*" >> "${DOCKER_MOCK_ROLLBACK_LOG}"
+  if [[ -n "${DOCKER_MOCK_RECOVERY_LOG:-}" ]]; then
+    printf '%s\n' "$*" >> "${DOCKER_MOCK_RECOVERY_LOG}"
   fi
 }
 
@@ -112,8 +112,8 @@ if [[ "${1:-}" == "compose" ]]; then
 			continue
 			;;
 		config)
-			if [[ -n "${DOCKER_MOCK_ROLLBACK_CONFIG_ERROR:-}" ]]; then
-				echo "${DOCKER_MOCK_ROLLBACK_CONFIG_ERROR}" >&2
+			if [[ -n "${DOCKER_MOCK_RECOVERY_CONFIG_ERROR:-}" ]]; then
+				echo "${DOCKER_MOCK_RECOVERY_CONFIG_ERROR}" >&2
 				exit 23
 			fi
 			exit 0
@@ -176,7 +176,7 @@ fi
 
 if [[ "${1:-}" == "inspect" ]]; then
   if [[ "$*" == *".State.Health.Log"* ]]; then
-    printf '%s\n' "${DOCKER_MOCK_ROLLBACK_HEALTH_MESSAGE:-mock health failure}"
+    printf '%s\n' "${DOCKER_MOCK_RECOVERY_HEALTH_MESSAGE:-mock health failure}"
     exit 0
   fi
 
@@ -226,7 +226,7 @@ if [[ "${1:-}" == "exec" ]]; then
   fi
 
   if [[ "$args" == *" mariadb-dump "* || "$args" == *" mysqldump "* ]]; then
-    printf '%s' "${DOCKER_MOCK_ROLLBACK_DUMP_STDOUT:-select 1;}"
+    printf '%s' "${DOCKER_MOCK_RECOVERY_DUMP_STDOUT:-select 1;}"
     exit 0
   fi
 
@@ -273,14 +273,14 @@ exit 98
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-func isolateRollbackPlanLocks(t *testing.T) {
+func isolateRecoveryLocks(t *testing.T) {
 	t.Helper()
 
 	restore := locks.SetLockDirForTest(t.TempDir())
 	t.Cleanup(restore)
 }
 
-func writeRollbackBackupSet(t *testing.T, backupRoot, prefix, stamp, scope string) {
+func writeBackupSet(t *testing.T, backupRoot, prefix, stamp, scope string) {
 	t.Helper()
 
 	dbPath := filepath.Join(backupRoot, "db", prefix+"_"+stamp+".sql.gz")
@@ -326,7 +326,7 @@ func writeRollbackBackupSet(t *testing.T, backupRoot, prefix, stamp, scope strin
 	})
 }
 
-func writeUpdateRuntimeStatusFile(t *testing.T, stateDir, service string, statuses ...string) {
+func writeRuntimeStatusFile(t *testing.T, stateDir, service string, statuses ...string) {
 	t.Helper()
 
 	body := strings.Join(statuses, "\n") + "\n"

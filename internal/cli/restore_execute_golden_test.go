@@ -8,7 +8,7 @@ import (
 )
 
 func TestGolden_Restore_JSON(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+	isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt":      "hello",
@@ -21,10 +21,10 @@ func TestGolden_Restore_JSON(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 

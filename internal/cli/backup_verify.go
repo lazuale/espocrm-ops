@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-func newVerifyBackupCmd() *cobra.Command {
+func newBackupVerifyCmd() *cobra.Command {
 	var manifestPath string
 	var backupRoot string
 
@@ -19,7 +19,7 @@ func newVerifyBackupCmd() *cobra.Command {
 		Short: "Verify backup set from manifest",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateVerifyBackupInput(manifestPath, backupRoot); err != nil {
+			if err := validateBackupVerifyInput(manifestPath, backupRoot); err != nil {
 				return err
 			}
 
@@ -27,7 +27,7 @@ func newVerifyBackupCmd() *cobra.Command {
 				Name:       "backup verify",
 				ErrorCode:  "backup_verification_failed",
 				ExitCode:   exitcode.ValidationError,
-				RenderText: renderVerifyBackupText,
+				RenderText: renderBackupVerifyText,
 			}, func() (result.Result, error) {
 				res := result.Result{
 					Artifacts: result.BackupVerifyArtifacts{
@@ -76,7 +76,7 @@ func newVerifyBackupCmd() *cobra.Command {
 	return cmd
 }
 
-func validateVerifyBackupInput(manifestPath, backupRoot string) error {
+func validateBackupVerifyInput(manifestPath, backupRoot string) error {
 	hasManifest := manifestPath != ""
 	hasBackupRoot := backupRoot != ""
 	if hasManifest && hasBackupRoot {
@@ -92,7 +92,7 @@ func validateVerifyBackupInput(manifestPath, backupRoot string) error {
 	return usageError(fmt.Errorf("--manifest or --backup-root is required"))
 }
 
-func renderVerifyBackupText(w io.Writer, res result.Result) error {
+func renderBackupVerifyText(w io.Writer, res result.Result) error {
 	artifacts, ok := res.Artifacts.(result.BackupVerifyArtifacts)
 	if !ok {
 		return result.Render(w, res, false)

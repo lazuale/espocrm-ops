@@ -14,16 +14,8 @@ Accepted
 
 ## Context
 
-The repository had grown a broad ops-platform surface around backup and
-recovery:
-
-- dashboards and status summaries
-- operation history and export surfaces
-- support and maintenance flows
-- rollback and update families
-- extra backup inspection and health nouns
-
-That breadth created drift, duplicate command selection paths, extra help and
+The repository had grown beyond the retained backup and recovery core. That
+breadth created drift, duplicate command selection paths, extra help and
 registration noise, and a larger governed contract surface than the retained
 product actually needs.
 
@@ -50,7 +42,7 @@ is directly required for the retained flows.
   restore, and migrate.
 - Removed commands do not keep aliases, deprecation shims, or compatibility
   wrappers.
-- Historical ADR memory is pruned so the repository no longer documents removed
+- Historical ADR memory is pruned so the active tree no longer carries removed
   product nouns as if they were current.
 
 ## Rules

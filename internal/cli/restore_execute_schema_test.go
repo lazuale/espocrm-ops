@@ -13,7 +13,7 @@ import (
 )
 
 func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+	isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt":      "hello",
@@ -26,11 +26,11 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_LOG", fixture.logPath)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
+	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", fixture.logPath)
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
@@ -130,7 +130,7 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+	isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt": "hello",
@@ -168,7 +168,7 @@ func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+	isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt": "hello",
@@ -178,13 +178,13 @@ func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
-	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "espocrm", "unhealthy")
+	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, fixture.stateDir, "espocrm", "unhealthy")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_LOG", fixture.logPath)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_HEALTH_MESSAGE", "app health failed")
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
+	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", fixture.logPath)
+	t.Setenv("DOCKER_MOCK_RECOVERY_HEALTH_MESSAGE", "app health failed")
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
@@ -204,7 +204,7 @@ func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+	isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/nested/file.txt": "hello",
@@ -215,10 +215,10 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
@@ -284,16 +284,16 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 }
 
 func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+	isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/restored.txt": "files-only",
 	})
 	useJournalClockForTest(t, fixture.fixedNow)
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_LOG", fixture.logPath)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
+	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", fixture.logPath)
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
@@ -355,7 +355,7 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_DryRun(t *testing.T) {
-	isolateRollbackPlanLocks(t)
+	isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/dry-run.txt": "dry-run",
@@ -365,10 +365,10 @@ func TestSchema_Restore_JSON_DryRun(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeUpdateRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
+	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
 
-	prependFakeDockerForRollbackCLITest(t)
-	t.Setenv("DOCKER_MOCK_ROLLBACK_STATE_DIR", fixture.stateDir)
+	prependFakeDockerForRecoveryCLITest(t)
+	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
