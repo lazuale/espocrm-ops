@@ -19,7 +19,7 @@ func TestInspectBackupArtifact_ReturnsStructuredChecksumErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		inspection, err := InspectBackupArtifact(filesPath, "files backup", true)
+		inspection, err := inspectBackupArtifact(filesPath, "files backup", true)
 		if err != nil {
 			t.Fatalf("InspectBackupArtifact failed: %v", err)
 		}
@@ -27,9 +27,9 @@ func TestInspectBackupArtifact_ReturnsStructuredChecksumErrors(t *testing.T) {
 			t.Fatal("expected checksum to be unverified")
 		}
 
-		var typed ChecksumSidecarFormatError
+		var typed checksumSidecarFormatError
 		if !errors.As(inspection.ChecksumError, &typed) {
-			t.Fatalf("expected ChecksumSidecarFormatError, got %T", inspection.ChecksumError)
+			t.Fatalf("expected checksumSidecarFormatError, got %T", inspection.ChecksumError)
 		}
 	})
 
@@ -42,14 +42,14 @@ func TestInspectBackupArtifact_ReturnsStructuredChecksumErrors(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		inspection, err := InspectBackupArtifact(dbPath, "db backup", false)
+		inspection, err := inspectBackupArtifact(dbPath, "db backup", false)
 		if err != nil {
 			t.Fatalf("InspectBackupArtifact failed: %v", err)
 		}
 
-		var typed ChecksumSidecarFormatError
+		var typed checksumSidecarFormatError
 		if !errors.As(inspection.ChecksumError, &typed) {
-			t.Fatalf("expected ChecksumSidecarFormatError, got %T", inspection.ChecksumError)
+			t.Fatalf("expected checksumSidecarFormatError, got %T", inspection.ChecksumError)
 		}
 	})
 }

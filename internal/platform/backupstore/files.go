@@ -5,7 +5,7 @@ import (
 	"time"
 )
 
-type FileInfo struct {
+type fileInfo struct {
 	Path    string
 	Exists  bool
 	IsDir   bool
@@ -13,16 +13,16 @@ type FileInfo struct {
 	ModTime time.Time
 }
 
-func InspectFile(path string) (FileInfo, error) {
+func inspectFile(path string) (fileInfo, error) {
 	stat, err := os.Stat(path)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return FileInfo{Path: path}, nil
+			return fileInfo{Path: path}, nil
 		}
-		return FileInfo{}, err
+		return fileInfo{}, err
 	}
 
-	return FileInfo{
+	return fileInfo{
 		Path:    path,
 		Exists:  true,
 		IsDir:   stat.IsDir(),

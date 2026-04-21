@@ -74,7 +74,7 @@ func classifyBackupStoreError(err error) error {
 	switch err.(type) {
 	case platformbackupstore.ManifestError:
 		return domainfailure.Failure{Kind: domainfailure.KindManifest, Code: "manifest_invalid", Err: err}
-	case platformbackupstore.ValidationError:
+	case platformbackupstore.VerificationError:
 		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "backup_verification_failed", Err: err}
 	default:
 		return err
