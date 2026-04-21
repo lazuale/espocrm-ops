@@ -17,10 +17,10 @@ If a future change intentionally moves the repository away from this baseline, t
 ## Audit Metadata
 
 - Date: `2026-04-21`
-- Commit / branch: `934fe77a4ed713197ba0d0d7332182a89c47f096` on `main`
+- Commit / branch: `c683fe8a0b7c5d59a6ce2ee8ab192d6ddb582dd6` on `main`
 - Reviewer: `Codex`
 - Scope: full repository audit against `REPO_COMPLIANCE_CHECKLIST.md`
-- Final verdict: `PASS`
+- Final verdict: `PARTIAL`
 
 ---
 
@@ -31,17 +31,21 @@ If a future change intentionally moves the repository away from this baseline, t
 3. Local Architectural Guards: `PASS`
 4. Layer Ownership Audit: `PASS`
 5. Mutating Workflow Model: `PASS`
-6. Workflow Status Canon: `PASS`
+6. Mutating Workflow Status Canon: `PASS`
 7. Error Ownership Audit: `PASS`
 8. Ports and Adapter Boundaries: `PASS`
 9. Policy Ownership Audit: `PASS`
 10. Duplicate Workflow Assembly Audit: `PASS`
 11. Access Surface Audit: `PASS`
-12. Testability Discipline Audit: `PASS`
+12. Testability Discipline Audit: `PARTIAL`
 13. Anti-Legacy Audit: `PASS`
 14. Result Contract Audit: `PASS`
 15. Final Gate: `PASS`
-16. Final Compliance Summary: `PASS`
+16. Final Compliance Summary: `PARTIAL`
+
+Current non-PASS item:
+
+- `internal/platform/locks/file_lock.go` retains the mutable package-global `lockDir` test hook via `SetLockDirForTest`, so testability discipline is not yet fully compliant.
 
 ---
 

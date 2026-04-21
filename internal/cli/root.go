@@ -26,6 +26,9 @@ func (a *App) NewRootCmd() *cobra.Command {
 		Args:          cobra.ArbitraryArgs,
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: true,
+		},
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if len(args) > 0 {
 				return usageError(fmt.Errorf("unknown command %q for %q", args[0], cmd.CommandPath()))

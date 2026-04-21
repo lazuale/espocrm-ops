@@ -257,6 +257,7 @@ Diagnostic/report-oriented modules may expose a diagnostic boundary such as:
 This exists because diagnostic queries are not mutating workflows.
 It is not a legacy exception.
 It is a separate canonical family.
+Diagnostic/report boundaries may keep an explicit diagnostic result vocabulary when that vocabulary stays local to the diagnostic family and does not create a parallel mutating workflow dialect.
 
 No other boundary families are allowed without explicit architectural justification.
 
@@ -293,12 +294,14 @@ The canonical mutating workflow vocabulary is:
 - `blocked`
 - `failed`
 
-No other workflow status literals are allowed in production code or output.
+No other workflow status literals are allowed in mutating workflow production code, mutating result contracts, or mutating output.
 
 Forbidden:
 - `would_run`
 - `not_run`
 - any parallel legacy vocabulary
+
+Diagnostic/report boundaries may use an explicit diagnostic status vocabulary if that vocabulary remains local to the diagnostic family and does not redefine mutating workflow semantics.
 
 ---
 
@@ -322,6 +325,8 @@ Error ownership is strict.
 - final external error code mapping
 
 The boundary is the only place where final external error semantics may be decided.
+
+For diagnostic/report boundaries, the boundary owns the report model and readiness semantics. The CLI edge may map a completed but non-ready diagnostic report to exit/error transport semantics when it does not introduce a second diagnostic policy owner.
 
 ---
 
@@ -393,9 +398,11 @@ Therefore:
 - there must be no command-specific privileged shortcuts
 - there must be no duplicate access surfaces
 - there must be no hidden operational side channels
-- there must be no CLI-only privileged logic separate from application logic
+- there must be no CLI-only privileged runtime behavior separate from application logic
 
-All privileged behavior must be explicit and centrally owned.
+Explicit destructive confirmation flags may be enforced at the CLI edge as input validation when they only gate entry to the canonical application boundary and do not create an alternate runtime or recovery path.
+
+All privileged runtime behavior must be explicit and centrally owned.
 
 ---
 
@@ -408,7 +415,7 @@ Any of the following is a defect and must be removed:
 - duplicated operational policy
 - adapter-owned product rules
 - mixed mutating workflow models
-- mixed workflow status vocabularies
+- mixed mutating workflow status vocabularies
 - helper-owned final error wrapping
 - package-global mutable hooks
 - command-specific privilege paths

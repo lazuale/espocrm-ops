@@ -229,10 +229,10 @@ All mutating workflows follow the same family of rules.
 
 ---
 
-## 6. Workflow Status Canon
+## 6. Mutating Workflow Status Canon
 
 ### Goal
-Verify that only one workflow status vocabulary exists.
+Verify that mutating workflows use only one workflow status vocabulary.
 
 ### Canonical statuses
 - `planned`
@@ -249,17 +249,19 @@ Verify that only one workflow status vocabulary exists.
 ### Check
 Inspect:
 - domain vocabulary
-- app workflow code
-- CLI rendering
-- result contracts
+- mutating app workflow code
+- mutating CLI rendering
+- mutating result contracts
 - schema tests
 - golden outputs
 - root repo guard
 
+Diagnostic/report boundaries may keep an explicit local diagnostic status vocabulary if they do not introduce a parallel mutating workflow dialect.
+
 ### Pass Criteria
 - Canonical statuses only
 - No compatibility translation remains
-- No legacy literals remain in production code or output
+- No legacy mutating status literals remain in production mutating workflow code or output
 
 ### Findings
 - Status:
@@ -270,7 +272,7 @@ Inspect:
 ## 7. Error Ownership Audit
 
 ### Goal
-Verify that final external/app error mapping belongs only to application boundaries.
+Verify that final external/app error mapping keeps one explicit owner.
 
 ### Check
 Helpers may:
@@ -286,9 +288,12 @@ Application boundaries must own:
 - final error classification
 - final external/app wrapping
 
+Diagnostic/report boundaries may return a structured report that the CLI maps to exit semantics when the report is non-ready, as long as helpers and adapters do not own that mapping.
+
 ### Pass Criteria
 - No helper-level final error wrapping remains
-- Boundary-owned wrapping is consistent across workflows
+- Boundary-owned wrapping is consistent across mutating workflows
+- Diagnostic query readiness-to-exit mapping does not create a second helper/adapter policy owner
 
 ### Findings
 - Status:
@@ -392,7 +397,9 @@ Confirm:
 - no command-specific privileged shortcuts
 - no hidden env-driven control paths
 - no duplicate runtime access paths
-- no CLI-only privileged behavior separate from app logic
+- no CLI-only privileged runtime behavior separate from app logic
+
+Explicit CLI confirmation flags may gate destructive commands only as edge input validation; they must not bypass the canonical boundary or create a second runtime access path.
 
 ### Forbidden
 - hidden operational side channels
