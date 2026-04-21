@@ -74,11 +74,6 @@ func withJSONOutput() testAppOption {
 	}
 }
 
-func useJournalClockForTest(t *testing.T, now time.Time) {
-	t.Helper()
-	_ = now
-}
-
 func runRootCommand(t *testing.T, args ...string) (string, error) {
 	return runRootCommandWithOptions(t, nil, args...)
 }

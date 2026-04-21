@@ -15,7 +15,6 @@ const (
 	GroupModeAny GroupMode = iota
 	GroupModeDB
 	GroupModeFiles
-	GroupModeManifests
 )
 
 func Groups(backupRoot string, mode GroupMode) ([]domainbackup.BackupGroup, error) {
@@ -52,7 +51,7 @@ func Groups(backupRoot string, mode GroupMode) ([]domainbackup.BackupGroup, erro
 			return nil, err
 		}
 	}
-	if mode == GroupModeAny || mode == GroupModeManifests {
+	if mode == GroupModeAny {
 		if err := collect(filepath.Join(backupRoot, "manifests"), func(name string) (domainbackup.BackupGroup, error) {
 			group, _, err := domainbackup.ParseManifestName(name)
 			return group, err

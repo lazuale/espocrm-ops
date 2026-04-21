@@ -21,8 +21,6 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 		"espo/client/custom/app.js":      "client",
 		"espo/upload/blob.txt":           "upload",
 	})
-	useJournalClockForTest(t, fixture.fixedNow)
-
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -173,8 +171,6 @@ func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt": "hello",
 	})
-	useJournalClockForTest(t, fixture.fixedNow)
-
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -210,8 +206,6 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 		"espo/data/nested/file.txt": "hello",
 		"espo/upload/blob.txt":      "blob",
 	})
-	useJournalClockForTest(t, fixture.fixedNow)
-
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -289,8 +283,6 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/restored.txt": "files-only",
 	})
-	useJournalClockForTest(t, fixture.fixedNow)
-
 	prependFakeDockerForRecoveryCLITest(t)
 	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
 	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", fixture.logPath)
@@ -360,8 +352,6 @@ func TestSchema_Restore_JSON_DryRun(t *testing.T) {
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/dry-run.txt": "dry-run",
 	})
-	useJournalClockForTest(t, fixture.fixedNow)
-
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

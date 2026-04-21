@@ -15,14 +15,6 @@ func (Runtime) Stop(target runtimeport.Target, services ...string) error {
 	return platformdocker.ComposeStop(composeTarget(target), services...)
 }
 
-func (Runtime) ConfigText(target runtimeport.Target) (string, error) {
-	return platformdocker.ComposeConfigText(composeTarget(target))
-}
-
-func (Runtime) PSText(target runtimeport.Target) (string, error) {
-	return platformdocker.ComposePSText(composeTarget(target))
-}
-
 func (Runtime) DockerClientVersion() (string, error) {
 	return platformdocker.DockerClientVersion()
 }

@@ -19,8 +19,6 @@ func TestSchema_BackupExecute_JSON_FilesOnlyNoStop(t *testing.T) {
 	storageDir := filepath.Join(projectDir, "runtime", "dev", "espo")
 	mockBinDir := filepath.Join(tmp, "bin")
 
-	useJournalClockForTest(t, time.Date(2026, 4, 15, 11, 0, 0, 0, time.UTC))
-
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

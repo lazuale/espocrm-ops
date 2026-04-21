@@ -16,8 +16,6 @@ func TestGolden_Restore_JSON(t *testing.T) {
 		"espo/client/custom/app.js":      "client",
 		"espo/upload/blob.txt":           "upload",
 	})
-	useJournalClockForTest(t, fixture.fixedNow)
-
 	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}

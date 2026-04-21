@@ -22,11 +22,9 @@ const (
 	GroupModeAny GroupMode = iota
 	GroupModeDB
 	GroupModeFiles
-	GroupModeManifests
 )
 
 type Store interface {
-	VerifyManifest(manifestPath string) error
 	VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error)
 	VerifyDirectDBBackup(dbPath string) error
 	VerifyDirectFilesBackup(filesPath string) error

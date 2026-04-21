@@ -9,10 +9,6 @@ import (
 
 type BackupStore struct{}
 
-func (BackupStore) VerifyManifest(manifestPath string) error {
-	return classifyBackupStoreError(platformbackupstore.VerifyManifest(manifestPath))
-}
-
 func (BackupStore) VerifyManifestDetailed(manifestPath string) (backupstoreport.VerifiedBackup, error) {
 	info, err := platformbackupstore.VerifyManifestDetailed(manifestPath)
 	if err != nil {

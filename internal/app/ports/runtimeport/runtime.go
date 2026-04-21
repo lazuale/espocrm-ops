@@ -14,8 +14,6 @@ type ServiceState struct {
 type Runtime interface {
 	Up(target Target, services ...string) error
 	Stop(target Target, services ...string) error
-	ConfigText(target Target) (string, error)
-	PSText(target Target) (string, error)
 	DockerClientVersion() (string, error)
 	DockerServerVersion() (string, error)
 	ComposeVersion() (string, error)

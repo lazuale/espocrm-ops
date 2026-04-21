@@ -22,8 +22,6 @@ func TestSchema_Migrate_JSON_Success(t *testing.T) {
 	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
 	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
 
-	useJournalClockForTest(t, fixedNow)
-
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -292,8 +290,6 @@ func TestSchema_Migrate_JSON_Failure_TargetHealthValidation(t *testing.T) {
 	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
 	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
 
-	useJournalClockForTest(t, fixedNow)
-
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -344,8 +340,6 @@ func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 	stateDir := filepath.Join(tmp, "docker-state")
 	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
 	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
-
-	useJournalClockForTest(t, fixedNow)
 
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)

@@ -17,8 +17,6 @@ func TestGolden_Migrate_JSON(t *testing.T) {
 	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
 	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
 
-	useJournalClockForTest(t, fixedNow)
-
 	if err := os.MkdirAll(projectDir, 0o755); err != nil {
 		t.Fatal(err)
 	}

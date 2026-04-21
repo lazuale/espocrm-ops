@@ -18,11 +18,6 @@ type VerifiedBackup struct {
 	FilesPath    string
 }
 
-func VerifyManifest(manifestPath string) error {
-	_, err := VerifyManifestDetailed(manifestPath)
-	return err
-}
-
 func VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error) {
 	if strings.TrimSpace(manifestPath) == "" {
 		return VerifiedBackup{}, ManifestError{Err: fmt.Errorf("manifest path is required")}
