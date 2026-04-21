@@ -28,13 +28,30 @@ func testRestoreService() Service {
 	return NewService(Dependencies{
 		Operations: testOperationService(),
 		Backup:     testBackupService(),
+		Env:        appadapter.EnvLoader{},
+		Runtime:    appadapter.Runtime{},
+		Files:      appadapter.Files{},
+		Locks:      appadapter.Locks{},
+		Store:      appadapter.BackupStore{},
 	})
 }
 
-func Execute(req ExecuteRequest) (ExecuteInfo, error)                  { return testRestoreService().Execute(req) }
-func RestoreDB(req RestoreDBRequest) (DBRestorePlan, error)            { return testRestoreService().RestoreDB(req) }
-func RestoreFiles(req RestoreFilesRequest) (FilesRestorePlan, error)   { return testRestoreService().RestoreFiles(req) }
-func PlanDBRestore(req RestoreDBRequest) (DBRestorePlan, error)        { return testRestoreService().PlanDBRestore(req) }
-func PlanFilesRestore(req RestoreFilesRequest) (FilesRestorePlan, error) { return testRestoreService().PlanFilesRestore(req) }
-func PreflightDBRestore(req DBPreflightRequest) (string, error)        { return testRestoreService().PreflightDBRestore(req) }
-func PreflightFilesRestore(req FilesPreflightRequest) (string, error)  { return testRestoreService().PreflightFilesRestore(req) }
+func Execute(req ExecuteRequest) (ExecuteInfo, error) { return testRestoreService().Execute(req) }
+func RestoreDB(req RestoreDBRequest) (DBRestorePlan, error) {
+	return testRestoreService().RestoreDB(req)
+}
+func RestoreFiles(req RestoreFilesRequest) (FilesRestorePlan, error) {
+	return testRestoreService().RestoreFiles(req)
+}
+func PlanDBRestore(req RestoreDBRequest) (DBRestorePlan, error) {
+	return testRestoreService().PlanDBRestore(req)
+}
+func PlanFilesRestore(req RestoreFilesRequest) (FilesRestorePlan, error) {
+	return testRestoreService().PlanFilesRestore(req)
+}
+func PreflightDBRestore(req DBPreflightRequest) (string, error) {
+	return testRestoreService().PreflightDBRestore(req)
+}
+func PreflightFilesRestore(req FilesPreflightRequest) (string, error) {
+	return testRestoreService().PreflightFilesRestore(req)
+}

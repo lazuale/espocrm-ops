@@ -12,7 +12,6 @@ type Readiness struct {
 const (
 	Ready  = "ready"
 	Active = "active"
-	Legacy = "legacy"
 	Stale  = "stale"
 )
 

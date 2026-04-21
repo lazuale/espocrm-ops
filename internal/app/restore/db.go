@@ -4,16 +4,14 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/lazuale/espocrm-ops/internal/platform/config"
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
-	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
 type preparedDBRestore struct {
 	plan         DBRestorePlan
 	dbPath       string
 	rootPassword string
-	lock         *platformlocks.FileLock
+	lock         restoreLock
 }
 
 func (s Service) PlanDBRestore(req RestoreDBRequest) (plan DBRestorePlan, err error) {
@@ -32,8 +30,7 @@ func (s Service) PlanDBRestore(req RestoreDBRequest) (plan DBRestorePlan, err er
 		}
 	}()
 
-	plan = prepared.plan
-	return plan, nil
+	return prepared.plan, nil
 }
 
 func (s Service) RestoreDB(req RestoreDBRequest) (plan DBRestorePlan, err error) {
@@ -53,16 +50,14 @@ func (s Service) RestoreDB(req RestoreDBRequest) (plan DBRestorePlan, err error)
 	}()
 
 	if req.DryRun {
-		plan = prepared.plan
-		return plan, nil
+		return prepared.plan, nil
 	}
 
-	if err := platformdocker.ResetAndRestoreMySQLDumpGz(prepared.dbPath, req.DBContainer, prepared.rootPassword, req.DBName, req.DBUser); err != nil {
-		return DBRestorePlan{}, OperationError{Err: err}
+	if err := s.runtime.ResetAndRestoreMySQLDumpGz(prepared.dbPath, req.DBContainer, prepared.rootPassword, req.DBName, req.DBUser); err != nil {
+		return DBRestorePlan{}, restoreFailure(domainfailure.KindExternal, "restore_db_failed", err)
 	}
 
-	plan = prepared.plan
-	return plan, nil
+	return prepared.plan, nil
 }
 
 func (s Service) prepareDBRestore(req RestoreDBRequest) (preparedDBRestore, error) {
@@ -70,14 +65,8 @@ func (s Service) prepareDBRestore(req RestoreDBRequest) (preparedDBRestore, erro
 		return preparedDBRestore{}, err
 	}
 
-	if _, err := config.ResolveDBPassword(config.DBConfig{
-		Container:    req.DBContainer,
-		Name:         req.DBName,
-		User:         req.DBUser,
-		Password:     req.DBPassword,
-		PasswordFile: req.DBPasswordFile,
-	}); err != nil {
-		return preparedDBRestore{}, PreflightError{Err: fmt.Errorf("resolve db password: %w", err)}
+	if _, err := s.resolveDBPassword(req); err != nil {
+		return preparedDBRestore{}, restoreFailure(domainfailure.KindValidation, "preflight_failed", fmt.Errorf("resolve db password: %w", err))
 	}
 
 	dbPath, err := s.PreflightDBRestore(DBPreflightRequest{
@@ -89,14 +78,14 @@ func (s Service) prepareDBRestore(req RestoreDBRequest) (preparedDBRestore, erro
 		return preparedDBRestore{}, err
 	}
 
-	rootPassword, rootPasswordCheck, err := resolveDBRootPasswordForPlan(req)
+	rootPassword, rootPasswordCheck, err := s.resolveDBRootPasswordForPlan(req)
 	if err != nil {
 		return preparedDBRestore{}, err
 	}
 
-	lock, err := platformlocks.AcquireRestoreDBLock()
+	lock, err := s.locks.AcquireRestoreDBLock()
 	if err != nil {
-		return preparedDBRestore{}, LockError{Err: fmt.Errorf("db restore lock failed: %w", err)}
+		return preparedDBRestore{}, restoreFailure(domainfailure.KindConflict, "lock_acquire_failed", fmt.Errorf("db restore lock failed: %w", err))
 	}
 
 	return preparedDBRestore{

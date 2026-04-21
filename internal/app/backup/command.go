@@ -43,6 +43,14 @@ type Request struct {
 	Now             func() time.Time
 }
 
+type PreparedOptions struct {
+	ComposeFile string
+	SkipDB      bool
+	SkipFiles   bool
+	NoStop      bool
+	Now         func() time.Time
+}
+
 func NewService(deps Dependencies) Service {
 	return Service{
 		operations: deps.Operations,
@@ -78,10 +86,15 @@ func (s Service) Execute(req Request) (info ExecuteInfo, err error) {
 		return info, wrapBackupBoundaryError(err)
 	}
 
-	return s.ExecutePrepared(prepared)
+	info, err = s.ExecutePrepared(prepared)
+	if err != nil {
+		return info, wrapBackupBoundaryError(err)
+	}
+
+	return info, nil
 }
 
-func (s Service) buildPreparedRequest(ctx operationapp.OperationContext, req Request) (PreparedRequest, error) {
+func (s Service) BuildPreparedRequest(ctx operationapp.OperationContext, opts PreparedOptions) (PreparedRequest, error) {
 	retentionDays, err := domainenv.BackupRetentionDays(ctx.Env)
 	if err != nil {
 		return PreparedRequest{}, domainfailure.Failure{
@@ -94,7 +107,7 @@ func (s Service) buildPreparedRequest(ctx operationapp.OperationContext, req Req
 	prepared := PreparedRequest{
 		Scope:          ctx.Scope,
 		ProjectDir:     ctx.ProjectDir,
-		ComposeFile:    filepath.Clean(req.ComposeFile),
+		ComposeFile:    filepath.Clean(opts.ComposeFile),
 		EnvFile:        ctx.Env.FilePath,
 		BackupRoot:     ctx.BackupRoot,
 		StorageDir:     s.env.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir()),
@@ -106,13 +119,13 @@ func (s Service) buildPreparedRequest(ctx operationapp.OperationContext, req Req
 		DBName:         strings.TrimSpace(ctx.Env.Value("DB_NAME")),
 		EspoCRMImage:   strings.TrimSpace(ctx.Env.Value("ESPOCRM_IMAGE")),
 		MariaDBTag:     strings.TrimSpace(ctx.Env.Value("MARIADB_TAG")),
-		SkipDB:         req.SkipDB,
-		SkipFiles:      req.SkipFiles,
-		NoStop:         req.NoStop,
-		Now:            req.Now,
+		SkipDB:         opts.SkipDB,
+		SkipFiles:      opts.SkipFiles,
+		NoStop:         opts.NoStop,
+		Now:            opts.Now,
 	}
 
-	if req.SkipDB {
+	if opts.SkipDB {
 		return prepared, nil
 	}
 
@@ -134,4 +147,14 @@ func (s Service) buildPreparedRequest(ctx operationapp.OperationContext, req Req
 	}
 
 	return prepared, nil
+}
+
+func (s Service) buildPreparedRequest(ctx operationapp.OperationContext, req Request) (PreparedRequest, error) {
+	return s.BuildPreparedRequest(ctx, PreparedOptions{
+		ComposeFile: req.ComposeFile,
+		SkipDB:      req.SkipDB,
+		SkipFiles:   req.SkipFiles,
+		NoStop:      req.NoStop,
+		Now:         req.Now,
+	})
 }

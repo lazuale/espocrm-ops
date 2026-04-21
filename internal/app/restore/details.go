@@ -6,8 +6,8 @@ import (
 	"strings"
 
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
 func runtimePrepareDetails(info runtimePrepareInfo, req ExecuteRequest) string {
@@ -49,8 +49,7 @@ func dbRestoreDetails(ctx maintenanceusecase.OperationContext, source executeSou
 	return details
 }
 
-func filesRestoreDetails(ctx maintenanceusecase.OperationContext, source executeSource) string {
-	targetDir := platformconfig.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir())
+func filesRestoreDetails(source executeSource, targetDir string) string {
 	details := fmt.Sprintf("Replaced %s from %s and reconciled the storage permissions to the runtime image contract.", targetDir, source.FilesBackup)
 	if strings.TrimSpace(source.ManifestJSON) != "" {
 		details += fmt.Sprintf(" The manifest %s anchored the selected backup set.", source.ManifestJSON)
@@ -138,6 +137,10 @@ func failureSummary(err error, fallback string) string {
 	if errors.As(err, &failure) && strings.TrimSpace(failure.Summary) != "" {
 		return failure.Summary
 	}
+	var typed domainfailure.Failure
+	if errors.As(err, &typed) && strings.TrimSpace(typed.Summary) != "" {
+		return typed.Summary
+	}
 	return fallback
 }
 
@@ -145,6 +148,10 @@ func failureAction(err error, fallback string) string {
 	var failure executeFailure
 	if errors.As(err, &failure) && strings.TrimSpace(failure.Action) != "" {
 		return failure.Action
+	}
+	var typed domainfailure.Failure
+	if errors.As(err, &typed) && strings.TrimSpace(typed.Action) != "" {
+		return typed.Action
 	}
 	return fallback
 }

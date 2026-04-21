@@ -5,10 +5,9 @@ import (
 	"strings"
 
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
-func checkCrossScopeIsolation(report *Report, projectDir string, prodEnv, devEnv domainenv.OperationEnv) {
+func (s Service) checkCrossScopeIsolation(report *Report, projectDir string, prodEnv, devEnv domainenv.OperationEnv) {
 	problems := []string{}
 
 	if prodEnv.ComposeProject() == devEnv.ComposeProject() {
@@ -20,14 +19,14 @@ func checkCrossScopeIsolation(report *Report, projectDir string, prodEnv, devEnv
 	if prodEnv.Value("WS_PORT") == devEnv.Value("WS_PORT") {
 		problems = append(problems, fmt.Sprintf("WS_PORT matches in dev and prod: %s", prodEnv.Value("WS_PORT")))
 	}
-	if sameResolvedPath(projectDir, prodEnv.DBStorageDir(), devEnv.DBStorageDir()) {
-		problems = append(problems, fmt.Sprintf("DB_STORAGE_DIR resolves to the same path in dev and prod: %s", platformconfig.ResolveProjectPath(projectDir, prodEnv.DBStorageDir())))
+	if s.sameResolvedPath(projectDir, prodEnv.DBStorageDir(), devEnv.DBStorageDir()) {
+		problems = append(problems, fmt.Sprintf("DB_STORAGE_DIR resolves to the same path in dev and prod: %s", s.env.ResolveProjectPath(projectDir, prodEnv.DBStorageDir())))
 	}
-	if sameResolvedPath(projectDir, prodEnv.ESPOStorageDir(), devEnv.ESPOStorageDir()) {
-		problems = append(problems, fmt.Sprintf("ESPO_STORAGE_DIR resolves to the same path in dev and prod: %s", platformconfig.ResolveProjectPath(projectDir, prodEnv.ESPOStorageDir())))
+	if s.sameResolvedPath(projectDir, prodEnv.ESPOStorageDir(), devEnv.ESPOStorageDir()) {
+		problems = append(problems, fmt.Sprintf("ESPO_STORAGE_DIR resolves to the same path in dev and prod: %s", s.env.ResolveProjectPath(projectDir, prodEnv.ESPOStorageDir())))
 	}
-	if sameResolvedPath(projectDir, prodEnv.BackupRoot(), devEnv.BackupRoot()) {
-		problems = append(problems, fmt.Sprintf("BACKUP_ROOT resolves to the same path in dev and prod: %s", platformconfig.ResolveProjectPath(projectDir, prodEnv.BackupRoot())))
+	if s.sameResolvedPath(projectDir, prodEnv.BackupRoot(), devEnv.BackupRoot()) {
+		problems = append(problems, fmt.Sprintf("BACKUP_ROOT resolves to the same path in dev and prod: %s", s.env.ResolveProjectPath(projectDir, prodEnv.BackupRoot())))
 	}
 
 	if len(problems) != 0 {
@@ -53,6 +52,6 @@ func checkCrossScopeCompatibility(report *Report, prodEnv, devEnv domainenv.Oper
 	report.ok("cross", "cross_scope_compatibility", "Dev and prod satisfy the migration compatibility contract", "")
 }
 
-func sameResolvedPath(projectDir, left, right string) bool {
-	return platformconfig.ResolveProjectPath(projectDir, left) == platformconfig.ResolveProjectPath(projectDir, right)
+func (s Service) sameResolvedPath(projectDir, left, right string) bool {
+	return s.env.ResolveProjectPath(projectDir, left) == s.env.ResolveProjectPath(projectDir, right)
 }

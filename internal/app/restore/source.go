@@ -6,18 +6,19 @@ import (
 	"strings"
 
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
-	"github.com/lazuale/espocrm-ops/internal/platform/backupstore"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
-func resolveExecuteSource(backupRoot string, req ExecuteRequest) (executeSource, error) {
+func (s Service) resolveExecuteSource(backupRoot string, req ExecuteRequest) (executeSource, error) {
 	manifestPath := strings.TrimSpace(req.ManifestPath)
 	dbBackup := strings.TrimSpace(req.DBBackup)
 	filesBackup := strings.TrimSpace(req.FilesBackup)
 
 	if manifestPath != "" {
-		info, err := backupstore.VerifyManifestDetailed(manifestPath)
+		info, err := s.store.VerifyManifestDetailed(manifestPath)
 		if err != nil {
 			return executeSource{}, executeFailure{
+				Kind:    domainfailure.KindValidation,
 				Summary: "The selected restore manifest is not valid",
 				Action:  "Choose a valid manifest JSON that references readable, verified backup artifacts.",
 				Err:     err,
@@ -36,8 +37,9 @@ func resolveExecuteSource(backupRoot string, req ExecuteRequest) (executeSource,
 	switch {
 	case req.SkipDB:
 		filesBackup = filepath.Clean(filesBackup)
-		if err := backupstore.VerifyDirectFilesBackup(filesBackup); err != nil {
+		if err := s.store.VerifyDirectFilesBackup(filesBackup); err != nil {
 			return executeSource{}, executeFailure{
+				Kind:    domainfailure.KindValidation,
 				Summary: "The selected files backup is not valid",
 				Action:  "Choose a readable .tar.gz files backup with a valid .sha256 sidecar.",
 				Err:     err,
@@ -50,8 +52,9 @@ func resolveExecuteSource(backupRoot string, req ExecuteRequest) (executeSource,
 		}, nil
 	case req.SkipFiles:
 		dbBackup = filepath.Clean(dbBackup)
-		if err := backupstore.VerifyDirectDBBackup(dbBackup); err != nil {
+		if err := s.store.VerifyDirectDBBackup(dbBackup); err != nil {
 			return executeSource{}, executeFailure{
+				Kind:    domainfailure.KindValidation,
 				Summary: "The selected database backup is not valid",
 				Action:  "Choose a readable .sql.gz database backup with a valid .sha256 sidecar.",
 				Err:     err,
@@ -65,15 +68,17 @@ func resolveExecuteSource(backupRoot string, req ExecuteRequest) (executeSource,
 	default:
 		dbBackup = filepath.Clean(dbBackup)
 		filesBackup = filepath.Clean(filesBackup)
-		if err := backupstore.VerifyDirectDBBackup(dbBackup); err != nil {
+		if err := s.store.VerifyDirectDBBackup(dbBackup); err != nil {
 			return executeSource{}, executeFailure{
+				Kind:    domainfailure.KindValidation,
 				Summary: "The selected database backup is not valid",
 				Action:  "Choose a readable .sql.gz database backup with a valid .sha256 sidecar.",
 				Err:     err,
 			}
 		}
-		if err := backupstore.VerifyDirectFilesBackup(filesBackup); err != nil {
+		if err := s.store.VerifyDirectFilesBackup(filesBackup); err != nil {
 			return executeSource{}, executeFailure{
+				Kind:    domainfailure.KindValidation,
 				Summary: "The selected files backup is not valid",
 				Action:  "Choose a readable .tar.gz files backup with a valid .sha256 sidecar.",
 				Err:     err,

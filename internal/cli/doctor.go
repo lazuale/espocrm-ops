@@ -6,10 +6,10 @@ import (
 	"io"
 	"strings"
 
+	doctorusecase "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	doctorusecase "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	"github.com/spf13/cobra"
 )
 
@@ -34,7 +34,7 @@ func newDoctorCmd() *cobra.Command {
 				return err
 			}
 
-			report, err := doctorusecase.Diagnose(doctorusecase.Request{
+			report, err := appForCommand(cmd).doctor.Diagnose(doctorusecase.Request{
 				Scope:           in.scope,
 				ProjectDir:      in.projectDir,
 				ComposeFile:     in.composeFile,

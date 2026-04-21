@@ -7,11 +7,10 @@ import (
 	"strings"
 
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	runtimeport "github.com/lazuale/espocrm-ops/internal/app/ports/runtimeport"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainruntime "github.com/lazuale/espocrm-ops/internal/domain/runtime"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
 type ExecuteRequest struct {
@@ -111,7 +110,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Warnings:               flagWarnings(req),
 	}
 
-	sourceEnv, err := platformconfig.LoadOperationEnv(info.ProjectDir, info.SourceScope, "")
+	sourceEnv, err := s.env.LoadOperationEnv(info.ProjectDir, info.SourceScope, "")
 	if err != nil {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
@@ -129,11 +128,11 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			blockedMigrateStep("files_restore", "Files restore did not run because source contour preflight failed"),
 			blockedMigrateStep("target_start", "Target contour start did not run because source contour preflight failed"),
 		)
-		return info, wrapExecuteError(classifyMigrationEnvError(err))
+		return info, wrapExecuteError(err)
 	}
 
 	info.SourceEnvFile = sourceEnv.FilePath
-	info.SourceBackupRoot = platformconfig.ResolveProjectPath(info.ProjectDir, sourceEnv.BackupRoot())
+	info.SourceBackupRoot = s.env.ResolveProjectPath(info.ProjectDir, sourceEnv.BackupRoot())
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "source_preflight",
 		Status:  domainworkflow.StatusCompleted,
@@ -235,7 +234,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: fmt.Sprintf("The source contour %s and target contour %s match on the governed migration settings.", info.SourceScope, info.TargetScope),
 	})
 
-	runtimePrep, err := prepareRuntime(info.ProjectDir, info.ComposeFile, info.TargetEnvFile)
+	runtimePrep, err := s.prepareRuntime(info.ProjectDir, info.ComposeFile, info.TargetEnvFile)
 	if err != nil {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
@@ -267,7 +266,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The database restore was skipped because of --skip-db.",
 		})
 	} else {
-		dbContainer, err := resolveDBContainer(info.ProjectDir, info.ComposeFile, info.TargetEnvFile)
+		dbContainer, err := s.resolveDBContainer(info.ProjectDir, info.ComposeFile, info.TargetEnvFile)
 		if err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
@@ -283,7 +282,8 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			return info, wrapExecuteError(err)
 		}
 
-		if _, err := s.restore.RestoreDB(buildDBRestoreRequest(targetCtx, info, dbContainer)); err != nil {
+		dbReq := s.restore.BuildDBRestoreRequest(targetCtx, info.ManifestJSONPath, info.DBBackupPath, dbContainer)
+		if _, err := s.restore.RestoreDB(dbReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "db_restore",
@@ -302,7 +302,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Code:    "db_restore",
 			Status:  domainworkflow.StatusCompleted,
 			Summary: "Database restore completed",
-			Details: dbRestoreDetails(targetCtx, info),
+			Details: dbRestoreDetails(info, targetCtx.Env.Value("DB_NAME")),
 		})
 	}
 
@@ -314,7 +314,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The files restore was skipped because of --skip-files.",
 		})
 	} else {
-		filesReq := buildFilesRestoreRequest(targetCtx, info)
+		filesReq := s.restore.BuildFilesRestoreRequest(targetCtx, info.ManifestJSONPath, info.FilesBackupPath)
 		if _, err := s.restore.RestoreFiles(filesReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
@@ -328,7 +328,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			)
 			return info, wrapExecuteError(err)
 		}
-		if err := platformdocker.ReconcileEspoStoragePermissions(
+		if err := s.runtime.ReconcileEspoStoragePermissions(
 			filesReq.TargetDir,
 			strings.TrimSpace(targetCtx.Env.Value("MARIADB_TAG")),
 			strings.TrimSpace(targetCtx.Env.Value("ESPOCRM_IMAGE")),
@@ -350,7 +350,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Code:    "files_restore",
 			Status:  domainworkflow.StatusCompleted,
 			Summary: "Files restore completed",
-			Details: filesRestoreDetails(targetCtx, info),
+			Details: filesRestoreDetails(info, filesReq.TargetDir),
 		})
 	}
 
@@ -362,12 +362,12 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The target application services were left stopped because of --no-start.",
 		})
 	} else {
-		cfg := platformdocker.ComposeConfig{
+		target := runtimeport.Target{
 			ProjectDir:  info.ProjectDir,
 			ComposeFile: info.ComposeFile,
 			EnvFile:     info.TargetEnvFile,
 		}
-		if err := platformdocker.ComposeUp(cfg); err != nil {
+		if err := s.runtime.Up(target); err != nil {
 			info.Steps = append(info.Steps, ExecuteStep{
 				Code:    "target_start",
 				Status:  domainworkflow.StatusFailed,
@@ -378,7 +378,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			return info, wrapExecuteError(executeFailure{Kind: domainfailure.KindExternal, Err: err})
 		}
 		validatedServices := expectedStartedTargetServices()
-		if err := platformdocker.WaitForServicesReady(cfg, domainruntime.DefaultReadinessTimeoutSeconds, validatedServices...); err != nil {
+		if err := s.runtime.WaitForServicesReady(target, domainruntime.DefaultReadinessTimeoutSeconds, validatedServices...); err != nil {
 			info.Steps = append(info.Steps, ExecuteStep{
 				Code:    "target_start",
 				Status:  domainworkflow.StatusFailed,

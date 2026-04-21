@@ -3,9 +3,7 @@ package restore
 import (
 	"path/filepath"
 
-	"github.com/lazuale/espocrm-ops/internal/platform/backupstore"
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
-	platformfs "github.com/lazuale/espocrm-ops/internal/platform/fs"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
 func (s Service) PreflightFilesRestore(req FilesPreflightRequest) (string, error) {
@@ -13,39 +11,39 @@ func (s Service) PreflightFilesRestore(req FilesPreflightRequest) (string, error
 		return "", err
 	}
 
-	filesPath, err := filesRestoreSourcePath(req.ManifestPath, req.FilesBackup)
+	filesPath, err := s.filesRestoreSourcePath(req.ManifestPath, req.FilesBackup)
 	if err != nil {
 		return "", err
 	}
 	if req.FilesBackup != "" {
-		if err := backupstore.VerifyDirectFilesBackup(filesPath); err != nil {
-			return "", PreflightError{Err: err}
+		if err := s.store.VerifyDirectFilesBackup(filesPath); err != nil {
+			return "", err
 		}
 	}
-	filesSize, err := platformfs.EnsureNonEmptyFile("files backup", filesPath)
+	filesSize, err := s.files.EnsureNonEmptyFile("files backup", filesPath)
 	if err != nil {
-		return "", PreflightError{Err: err}
+		return "", restoreFailure(domainfailure.KindIO, "filesystem_error", err)
 	}
 
 	parent := filepath.Dir(req.TargetDir)
-	if err := platformfs.EnsureWritableDir(parent); err != nil {
-		return "", PreflightError{Err: err}
+	if err := s.files.EnsureWritableDir(parent); err != nil {
+		return "", restoreFailure(domainfailure.KindIO, "filesystem_error", err)
 	}
-	if err := platformfs.EnsureFreeSpace(parent, uint64(filesSize)); err != nil {
-		return "", PreflightError{Err: err}
+	if err := s.files.EnsureFreeSpace(parent, uint64(filesSize)); err != nil {
+		return "", restoreFailure(domainfailure.KindIO, "filesystem_error", err)
 	}
 
 	return filesPath, nil
 }
 
-func filesRestoreSourcePath(manifestPath, filesBackup string) (string, error) {
+func (s Service) filesRestoreSourcePath(manifestPath, filesBackup string) (string, error) {
 	if filesBackup != "" {
 		return filesBackup, nil
 	}
 
-	info, err := backupstore.VerifyManifestDetailed(manifestPath)
+	info, err := s.store.VerifyManifestDetailed(manifestPath)
 	if err != nil {
-		return "", PreflightError{Err: err}
+		return "", err
 	}
 
 	return info.FilesPath, nil
@@ -56,35 +54,35 @@ func (s Service) PreflightDBRestore(req DBPreflightRequest) (string, error) {
 		return "", err
 	}
 
-	dbPath, err := dbRestoreSourcePath(req.ManifestPath, req.DBBackup)
+	dbPath, err := s.dbRestoreSourcePath(req.ManifestPath, req.DBBackup)
 	if err != nil {
 		return "", err
 	}
 	if req.DBBackup != "" {
-		if err := backupstore.VerifyDirectDBBackup(dbPath); err != nil {
-			return "", PreflightError{Err: err}
+		if err := s.store.VerifyDirectDBBackup(dbPath); err != nil {
+			return "", err
 		}
 	}
 
-	if err := platformdocker.CheckDockerAvailable(); err != nil {
-		return "", PreflightError{Err: err}
+	if err := s.runtime.CheckDockerAvailable(); err != nil {
+		return "", restoreFailure(domainfailure.KindExternal, "restore_db_failed", err)
 	}
 
-	if err := platformdocker.CheckContainerRunning(req.DBContainer); err != nil {
-		return "", PreflightError{Err: err}
+	if err := s.runtime.CheckContainerRunning(req.DBContainer); err != nil {
+		return "", restoreFailure(domainfailure.KindExternal, "restore_db_failed", err)
 	}
 
 	return dbPath, nil
 }
 
-func dbRestoreSourcePath(manifestPath, dbBackup string) (string, error) {
+func (s Service) dbRestoreSourcePath(manifestPath, dbBackup string) (string, error) {
 	if dbBackup != "" {
 		return dbBackup, nil
 	}
 
-	info, err := backupstore.VerifyManifestDetailed(manifestPath)
+	info, err := s.store.VerifyManifestDetailed(manifestPath)
 	if err != nil {
-		return "", PreflightError{Err: err}
+		return "", err
 	}
 
 	return info.DBBackupPath, nil

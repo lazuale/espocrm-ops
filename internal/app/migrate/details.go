@@ -5,9 +5,8 @@ import (
 	"fmt"
 	"strings"
 
-	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
 func sourceSelectionSummary(selection sourceSelection) string {
@@ -65,12 +64,11 @@ func runtimePrepareDetails(info runtimePrepareInfo) string {
 	return dbMode + " " + appMode
 }
 
-func dbRestoreDetails(ctx maintenanceusecase.OperationContext, info ExecuteInfo) string {
-	return fmt.Sprintf("Restored database %s for target contour %s from %s.", strings.TrimSpace(ctx.Env.Value("DB_NAME")), info.TargetScope, migrateSourceLabel(info))
+func dbRestoreDetails(info ExecuteInfo, dbName string) string {
+	return fmt.Sprintf("Restored database %s for target contour %s from %s.", strings.TrimSpace(dbName), info.TargetScope, migrateSourceLabel(info))
 }
 
-func filesRestoreDetails(ctx maintenanceusecase.OperationContext, info ExecuteInfo) string {
-	targetDir := platformconfig.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir())
+func filesRestoreDetails(info ExecuteInfo, targetDir string) string {
 	return fmt.Sprintf("Restored %s for target contour %s from %s.", targetDir, info.TargetScope, migrateSourceLabel(info))
 }
 
@@ -142,6 +140,10 @@ func failureSummary(err error, fallback string) string {
 	if errors.As(err, &failure) && strings.TrimSpace(failure.Summary) != "" {
 		return failure.Summary
 	}
+	var typed domainfailure.Failure
+	if errors.As(err, &typed) && strings.TrimSpace(typed.Summary) != "" {
+		return typed.Summary
+	}
 
 	return fallback
 }
@@ -150,6 +152,10 @@ func failureAction(err error, fallback string) string {
 	var failure executeFailure
 	if errors.As(err, &failure) && strings.TrimSpace(failure.Action) != "" {
 		return failure.Action
+	}
+	var typed domainfailure.Failure
+	if errors.As(err, &typed) && strings.TrimSpace(typed.Action) != "" {
+		return typed.Action
 	}
 
 	return fallback

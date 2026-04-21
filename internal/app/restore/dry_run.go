@@ -5,10 +5,8 @@ import (
 	"strings"
 
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
-	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
 )
 
 func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req ExecuteRequest, info ExecuteInfo, source executeSource, runtimeInfo runtimePrepareInfo) (ExecuteInfo, error) {
@@ -75,7 +73,8 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 			Details: "The files restore would be skipped because of --skip-files.",
 		})
 	} else {
-		if err := s.dryRunFilesChecks(ctx, source); err != nil {
+		filesReq := s.BuildFilesRestoreRequest(ctx, source.ManifestJSON, source.FilesBackup)
+		if err := s.dryRunFilesChecks(source, filesReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",
@@ -92,7 +91,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 			Code:    "files_restore",
 			Status:  domainworkflow.StatusPlanned,
 			Summary: "Files restore planned",
-			Details: dryRunFilesDetails(ctx, source),
+			Details: dryRunFilesDetails(source, filesReq.TargetDir),
 		})
 	}
 
@@ -107,26 +106,26 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 }
 
 func (s Service) dryRunDBChecks(ctx maintenanceusecase.OperationContext, source executeSource, runtimeInfo runtimePrepareInfo) error {
-	lock, err := platformlocks.AcquireRestoreDBLock()
+	lock, err := s.locks.AcquireRestoreDBLock()
 	if err != nil {
-		return LockError{Err: fmt.Errorf("db restore lock failed: %w", err)}
+		return restoreFailure(domainfailure.KindConflict, "lock_acquire_failed", fmt.Errorf("db restore lock failed: %w", err))
 	}
 	if releaseErr := lock.Release(); releaseErr != nil {
 		return fmt.Errorf("release db restore lock: %w", releaseErr)
 	}
 
-	req := buildDBRestoreRequest(ctx, source, runtimeInfo.DBContainer)
+	req := s.BuildDBRestoreRequest(ctx, source.ManifestJSON, source.DBBackup, runtimeInfo.DBContainer)
 	req.DryRun = true
-	if _, err := configResolveDBPassword(req); err != nil {
+	if _, err := s.resolveDBPassword(req); err != nil {
 		return err
 	}
-	if _, _, err := resolveDBRootPasswordForPlan(req); err != nil {
+	if _, _, err := s.resolveDBRootPasswordForPlan(req); err != nil {
 		return err
 	}
 
 	if runtimeInfo.StartedDBTemporarily {
-		if err := platformdocker.CheckDockerAvailable(); err != nil {
-			return PreflightError{Err: err}
+		if err := s.runtime.CheckDockerAvailable(); err != nil {
+			return restoreFailure(domainfailure.KindExternal, "restore_db_failed", err)
 		}
 		return nil
 	}
@@ -138,19 +137,19 @@ func (s Service) dryRunDBChecks(ctx maintenanceusecase.OperationContext, source 
 	return err
 }
 
-func (s Service) dryRunFilesChecks(ctx maintenanceusecase.OperationContext, source executeSource) error {
-	lock, err := platformlocks.AcquireRestoreFilesLock()
+func (s Service) dryRunFilesChecks(source executeSource, filesReq RestoreFilesRequest) error {
+	lock, err := s.locks.AcquireRestoreFilesLock()
 	if err != nil {
-		return LockError{Err: fmt.Errorf("files restore lock failed: %w", err)}
+		return restoreFailure(domainfailure.KindConflict, "lock_acquire_failed", fmt.Errorf("files restore lock failed: %w", err))
 	}
 	if releaseErr := lock.Release(); releaseErr != nil {
 		return fmt.Errorf("release files restore lock: %w", releaseErr)
 	}
 
-	targetDir := platformconfig.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir())
 	_, err = s.PreflightFilesRestore(FilesPreflightRequest{
-		FilesBackup: source.FilesBackup,
-		TargetDir:   targetDir,
+		ManifestPath: filesReq.ManifestPath,
+		FilesBackup:  filesReq.FilesBackup,
+		TargetDir:    filesReq.TargetDir,
 	})
 	return err
 }
@@ -176,8 +175,7 @@ func dryRunDBDetails(ctx maintenanceusecase.OperationContext, source executeSour
 	return details
 }
 
-func dryRunFilesDetails(ctx maintenanceusecase.OperationContext, source executeSource) string {
-	targetDir := platformconfig.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir())
+func dryRunFilesDetails(source executeSource, targetDir string) string {
 	return fmt.Sprintf("Would replace %s from %s and then reconcile the storage permissions to the runtime image contract.", targetDir, source.FilesBackup)
 }
 

@@ -29,6 +29,11 @@ func testRestoreService() restoreapp.Service {
 	return restoreapp.NewService(restoreapp.Dependencies{
 		Operations: testOperationService(),
 		Backup:     testBackupService(),
+		Env:        appadapter.EnvLoader{},
+		Runtime:    appadapter.Runtime{},
+		Files:      appadapter.Files{},
+		Locks:      appadapter.Locks{},
+		Store:      appadapter.BackupStore{},
 	})
 }
 
@@ -36,7 +41,9 @@ func testMigrateService() Service {
 	return NewService(Dependencies{
 		Operations: testOperationService(),
 		Restore:    testRestoreService(),
-		Backup:     testBackupService(),
+		Env:        appadapter.EnvLoader{},
+		Runtime:    appadapter.Runtime{},
+		Store:      appadapter.BackupStore{},
 	})
 }
 

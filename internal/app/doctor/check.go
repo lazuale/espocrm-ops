@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
-	platformfs "github.com/lazuale/espocrm-ops/internal/platform/fs"
 )
 
 type Request struct {
@@ -48,7 +47,7 @@ type dockerState struct {
 	composeReady   bool
 }
 
-func Diagnose(req Request) (Report, error) {
+func (s Service) Diagnose(req Request) (Report, error) {
 	pathMode := normalizePathCheckMode(req.PathCheckMode)
 	report := Report{
 		TargetScope: strings.TrimSpace(req.Scope),
@@ -56,13 +55,13 @@ func Diagnose(req Request) (Report, error) {
 		ComposeFile: filepath.Clean(req.ComposeFile),
 	}
 
-	checkComposeFile(&report)
-	checkSharedOperationLock(&report)
-	docker := checkDocker(&report)
+	s.checkComposeFile(&report)
+	s.checkSharedOperationLock(&report)
+	docker := s.checkDocker(&report)
 
 	loaded := map[string]domainenv.OperationEnv{}
 	for _, scope := range requestedScopes(report.TargetScope) {
-		env, ok := diagnoseScope(&report, req, scope, docker, pathMode)
+		env, ok := s.diagnoseScope(&report, req, scope, docker, pathMode)
 		if ok {
 			loaded[scope] = env
 		}
@@ -72,7 +71,7 @@ func Diagnose(req Request) (Report, error) {
 		prodEnv, prodOK := loaded["prod"]
 		devEnv, devOK := loaded["dev"]
 		if prodOK && devOK {
-			checkCrossScopeIsolation(&report, report.ProjectDir, prodEnv, devEnv)
+			s.checkCrossScopeIsolation(&report, report.ProjectDir, prodEnv, devEnv)
 			checkCrossScopeCompatibility(&report, prodEnv, devEnv)
 		}
 	}
@@ -80,8 +79,8 @@ func Diagnose(req Request) (Report, error) {
 	return report, nil
 }
 
-func checkComposeFile(report *Report) {
-	if _, err := platformfs.EnsureNonEmptyFile("compose file", report.ComposeFile); err != nil {
+func (s Service) checkComposeFile(report *Report) {
+	if _, err := s.files.EnsureNonEmptyFile("compose file", report.ComposeFile); err != nil {
 		report.fail("", "compose_file", "Compose file is not ready", err.Error(), "Set --compose-file to a readable compose.yaml path before running doctor.")
 		return
 	}

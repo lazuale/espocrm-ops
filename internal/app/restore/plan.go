@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/platform/config"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
 const (
@@ -144,7 +144,7 @@ func buildFilesRestorePlan(req RestoreFilesRequest, filesPath string) FilesResto
 	}
 }
 
-func resolveDBRootPasswordForPlan(req RestoreDBRequest) (string, RestorePlanCheck, error) {
+func (s Service) resolveDBRootPasswordForPlan(req RestoreDBRequest) (string, RestorePlanCheck, error) {
 	if !hasDBRootPasswordSource(req) {
 		if req.DryRun {
 			return "", RestorePlanCheck{
@@ -154,20 +154,16 @@ func resolveDBRootPasswordForPlan(req RestoreDBRequest) (string, RestorePlanChec
 			}, nil
 		}
 
-		return "", RestorePlanCheck{}, PreflightError{
-			Err: fmt.Errorf("resolve db root password: %w", config.PasswordRequiredError{Label: "db root password"}),
+		return "", RestorePlanCheck{}, domainfailure.Failure{
+			Kind: domainfailure.KindValidation,
+			Code: "preflight_failed",
+			Err:  fmt.Errorf("resolve db root password: database root password is required"),
 		}
 	}
 
-	rootPassword, err := config.ResolveDBRootPassword(config.DBConfig{
-		Container:    req.DBContainer,
-		Name:         req.DBName,
-		User:         "root",
-		Password:     req.DBRootPassword,
-		PasswordFile: req.DBRootPasswordFile,
-	})
+	rootPassword, err := s.resolveDBRootPassword(req)
 	if err != nil {
-		return "", RestorePlanCheck{}, PreflightError{Err: fmt.Errorf("resolve db root password: %w", err)}
+		return "", RestorePlanCheck{}, restoreFailure(domainfailure.KindValidation, "preflight_failed", fmt.Errorf("resolve db root password: %w", err))
 	}
 
 	return rootPassword, RestorePlanCheck{

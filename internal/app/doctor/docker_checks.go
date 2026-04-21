@@ -4,14 +4,12 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
-
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
-func checkDocker(report *Report) dockerState {
+func (s Service) checkDocker(report *Report) dockerState {
 	state := dockerState{}
 
-	clientVersion, err := platformdocker.DockerClientVersion()
+	clientVersion, err := s.runtime.DockerClientVersion()
 	if err != nil {
 		report.fail("", "docker_cli", "Docker CLI is not available", err.Error(), "Install Docker and ensure the `docker` binary is on PATH.")
 		return state
@@ -20,7 +18,7 @@ func checkDocker(report *Report) dockerState {
 	state.cliVersion = clientVersion
 	report.ok("", "docker_cli", "Docker CLI is available", fmt.Sprintf("docker %s", clientVersion))
 
-	serverVersion, err := platformdocker.DockerServerVersion()
+	serverVersion, err := s.runtime.DockerServerVersion()
 	if err != nil {
 		report.fail("", "docker_daemon", "Docker daemon is not reachable", err.Error(), "Start the Docker daemon and verify that `docker version` can reach the server.")
 	} else {
@@ -33,7 +31,7 @@ func checkDocker(report *Report) dockerState {
 		}
 	}
 
-	composeVersion, err := platformdocker.ComposeVersion()
+	composeVersion, err := s.runtime.ComposeVersion()
 	if err != nil {
 		report.fail("", "docker_compose", "Docker Compose is not available", err.Error(), "Install Docker Compose v2 and verify that `docker compose version` succeeds.")
 		return state
@@ -49,17 +47,19 @@ func checkDocker(report *Report) dockerState {
 	return state
 }
 
-func checkComposeConfig(report *Report, scope string, cfg platformdocker.ComposeConfig) {
-	if err := platformdocker.ValidateComposeConfig(cfg); err != nil {
+func (s Service) checkComposeConfig(report *Report, scope string, targetPath string) {
+	target := runtimeTarget(report.ProjectDir, report.ComposeFile, targetPath)
+	if err := s.runtime.ValidateComposeConfig(target); err != nil {
 		report.fail(scope, "compose_config", "Docker Compose config validation failed", err.Error(), "Run `docker compose config -q` for the same env file, fix the reported configuration error, and rerun doctor.")
 		return
 	}
 
-	report.ok(scope, "compose_config", "Docker Compose config validation passed", fmt.Sprintf("compose file %s with env %s", cfg.ComposeFile, cfg.EnvFile))
+	report.ok(scope, "compose_config", "Docker Compose config validation passed", fmt.Sprintf("compose file %s with env %s", report.ComposeFile, targetPath))
 }
 
-func checkRunningServices(report *Report, scope string, cfg platformdocker.ComposeConfig) {
-	services, err := platformdocker.ComposeRunningServices(cfg)
+func (s Service) checkRunningServices(report *Report, scope string, envFile string) {
+	target := runtimeTarget(report.ProjectDir, report.ComposeFile, envFile)
+	services, err := s.runtime.RunningServices(target)
 	if err != nil {
 		report.fail(scope, "running_services", "Could not inspect running services", err.Error(), "Check Docker access for this contour and rerun doctor.")
 		return
@@ -72,7 +72,7 @@ func checkRunningServices(report *Report, scope string, cfg platformdocker.Compo
 
 	unhealthy := []string{}
 	for _, service := range services {
-		state, err := platformdocker.ComposeServiceStateFor(cfg, service)
+		state, err := s.runtime.ServiceState(target, service)
 		if err != nil {
 			report.fail(scope, "running_services", "Could not inspect the running service health", err.Error(), "Check the service containers with `docker compose ps` and rerun doctor.")
 			return

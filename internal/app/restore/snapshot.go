@@ -5,8 +5,8 @@ import (
 	"io"
 
 	backupusecase "github.com/lazuale/espocrm-ops/internal/app/backup"
+	runtimeport "github.com/lazuale/espocrm-ops/internal/app/ports/runtimeport"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
 type snapshotBackupRequest struct {
@@ -34,13 +34,13 @@ func (s Service) applySnapshotBackup(req snapshotBackupRequest) (snapshotBackupI
 		TimeoutSeconds: req.TimeoutSeconds,
 	}
 
-	cfg := platformdocker.ComposeConfig{
+	target := runtimeport.Target{
 		ProjectDir:  req.Backup.ProjectDir,
 		ComposeFile: req.Backup.ComposeFile,
 		EnvFile:     req.Backup.EnvFile,
 	}
 
-	state, err := platformdocker.ComposeServiceStateFor(cfg, "db")
+	state, err := s.runtime.ServiceState(target, "db")
 	if err != nil {
 		return info, executeFailure{Kind: domainfailure.KindExternal, Err: err}
 	}
@@ -52,10 +52,10 @@ func (s Service) applySnapshotBackup(req snapshotBackupRequest) (snapshotBackupI
 				return info, executeFailure{Kind: domainfailure.KindIO, Err: err}
 			}
 		}
-		if err := platformdocker.ComposeUp(cfg, "db"); err != nil {
+		if err := s.runtime.Up(target, "db"); err != nil {
 			return info, executeFailure{Kind: domainfailure.KindExternal, Err: err}
 		}
-		if err := platformdocker.WaitForServicesReady(cfg, req.TimeoutSeconds, "db"); err != nil {
+		if err := s.runtime.WaitForServicesReady(target, req.TimeoutSeconds, "db"); err != nil {
 			return info, executeFailure{Kind: domainfailure.KindExternal, Err: err}
 		}
 	}

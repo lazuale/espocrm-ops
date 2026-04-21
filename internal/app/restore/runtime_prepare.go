@@ -5,27 +5,27 @@ import (
 	"slices"
 	"strings"
 
+	runtimeport "github.com/lazuale/espocrm-ops/internal/app/ports/runtimeport"
 	domainruntime "github.com/lazuale/espocrm-ops/internal/domain/runtime"
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
-func inspectRuntime(projectDir, composeFile, envFile string, needDB bool) (runtimePrepareInfo, error) {
+func (s Service) inspectRuntime(projectDir, composeFile, envFile string, needDB bool) (runtimePrepareInfo, error) {
 	info := runtimePrepareInfo{}
-	cfg := platformdocker.ComposeConfig{
+	target := runtimeport.Target{
 		ProjectDir:  projectDir,
 		ComposeFile: composeFile,
 		EnvFile:     envFile,
 	}
 
 	if needDB {
-		dbState, err := platformdocker.ComposeServiceStateFor(cfg, "db")
+		dbState, err := s.runtime.ServiceState(target, "db")
 		if err != nil {
 			return info, err
 		}
 		if dbState.Status != "running" && dbState.Status != "healthy" {
 			info.StartedDBTemporarily = true
 		} else {
-			container, err := platformdocker.ComposeServiceContainerID(cfg, "db")
+			container, err := s.runtime.ServiceContainerID(target, "db")
 			if err != nil {
 				return info, err
 			}
@@ -33,7 +33,7 @@ func inspectRuntime(projectDir, composeFile, envFile string, needDB bool) (runti
 		}
 	}
 
-	runningServices, err := platformdocker.ComposeRunningServices(cfg)
+	runningServices, err := s.runtime.RunningServices(target)
 	if err != nil {
 		return info, err
 	}
@@ -42,29 +42,29 @@ func inspectRuntime(projectDir, composeFile, envFile string, needDB bool) (runti
 	return info, nil
 }
 
-func prepareRuntime(projectDir, composeFile, envFile string, needDB bool, noStop bool) (runtimePrepareInfo, error) {
+func (s Service) prepareRuntime(projectDir, composeFile, envFile string, needDB bool, noStop bool) (runtimePrepareInfo, error) {
 	info := runtimePrepareInfo{}
-	cfg := platformdocker.ComposeConfig{
+	target := runtimeport.Target{
 		ProjectDir:  projectDir,
 		ComposeFile: composeFile,
 		EnvFile:     envFile,
 	}
 
 	if needDB {
-		dbState, err := platformdocker.ComposeServiceStateFor(cfg, "db")
+		dbState, err := s.runtime.ServiceState(target, "db")
 		if err != nil {
 			return info, err
 		}
 		if dbState.Status != "running" && dbState.Status != "healthy" {
 			info.StartedDBTemporarily = true
-			if err := platformdocker.ComposeUp(cfg, "db"); err != nil {
+			if err := s.runtime.Up(target, "db"); err != nil {
 				return info, err
 			}
 		}
-		if err := platformdocker.WaitForServicesReady(cfg, domainruntime.DefaultReadinessTimeoutSeconds, "db"); err != nil {
+		if err := s.runtime.WaitForServicesReady(target, domainruntime.DefaultReadinessTimeoutSeconds, "db"); err != nil {
 			return info, err
 		}
-		container, err := platformdocker.ComposeServiceContainerID(cfg, "db")
+		container, err := s.runtime.ServiceContainerID(target, "db")
 		if err != nil {
 			return info, err
 		}
@@ -74,7 +74,7 @@ func prepareRuntime(projectDir, composeFile, envFile string, needDB bool, noStop
 		}
 	}
 
-	runningServices, err := platformdocker.ComposeRunningServices(cfg)
+	runningServices, err := s.runtime.RunningServices(target)
 	if err != nil {
 		return info, err
 	}
@@ -84,29 +84,29 @@ func prepareRuntime(projectDir, composeFile, envFile string, needDB bool, noStop
 		return info, nil
 	}
 
-	if err := platformdocker.ComposeStop(cfg, info.StoppedAppServices...); err != nil {
+	if err := s.runtime.Stop(target, info.StoppedAppServices...); err != nil {
 		return info, err
 	}
 	return info, nil
 }
 
-func returnRuntime(projectDir, composeFile, envFile string, prep runtimePrepareInfo, noStart bool) (runtimeReturnInfo, error) {
+func (s Service) returnRuntime(projectDir, composeFile, envFile string, prep runtimePrepareInfo, noStart bool) (runtimeReturnInfo, error) {
 	info := runtimeReturnInfo{}
-	cfg := platformdocker.ComposeConfig{
+	target := runtimeport.Target{
 		ProjectDir:  projectDir,
 		ComposeFile: composeFile,
 		EnvFile:     envFile,
 	}
 
 	if len(prep.StoppedAppServices) != 0 && !noStart {
-		if err := platformdocker.ComposeUp(cfg, prep.StoppedAppServices...); err != nil {
+		if err := s.runtime.Up(target, prep.StoppedAppServices...); err != nil {
 			return info, err
 		}
 		info.RestartedAppServices = append(info.RestartedAppServices, prep.StoppedAppServices...)
 	}
 
 	if prep.StartedDBTemporarily && len(prep.StoppedAppServices) == 0 {
-		if err := platformdocker.ComposeStop(cfg, "db"); err != nil {
+		if err := s.runtime.Stop(target, "db"); err != nil {
 			return info, err
 		}
 		info.StoppedDB = true
@@ -115,17 +115,17 @@ func returnRuntime(projectDir, composeFile, envFile string, prep runtimePrepareI
 	return info, nil
 }
 
-func validatePostRestoreRuntimeHealth(projectDir, composeFile, envFile string, services []string) ([]string, error) {
+func (s Service) validatePostRestoreRuntimeHealth(projectDir, composeFile, envFile string, services []string) ([]string, error) {
 	if len(services) == 0 {
 		return nil, nil
 	}
 
-	cfg := platformdocker.ComposeConfig{
+	target := runtimeport.Target{
 		ProjectDir:  projectDir,
 		ComposeFile: composeFile,
 		EnvFile:     envFile,
 	}
-	if err := platformdocker.WaitForServicesReady(cfg, domainruntime.DefaultReadinessTimeoutSeconds, services...); err != nil {
+	if err := s.runtime.WaitForServicesReady(target, domainruntime.DefaultReadinessTimeoutSeconds, services...); err != nil {
 		return nil, err
 	}
 

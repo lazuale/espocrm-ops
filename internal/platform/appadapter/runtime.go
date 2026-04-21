@@ -23,6 +23,18 @@ func (Runtime) PSText(target runtimeport.Target) (string, error) {
 	return platformdocker.ComposePSText(composeTarget(target))
 }
 
+func (Runtime) DockerClientVersion() (string, error) {
+	return platformdocker.DockerClientVersion()
+}
+
+func (Runtime) DockerServerVersion() (string, error) {
+	return platformdocker.DockerServerVersion()
+}
+
+func (Runtime) ComposeVersion() (string, error) {
+	return platformdocker.ComposeVersion()
+}
+
 func (Runtime) RunningServices(target runtimeport.Target) ([]string, error) {
 	return platformdocker.ComposeRunningServices(composeTarget(target))
 }

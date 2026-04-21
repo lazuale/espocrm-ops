@@ -4,6 +4,7 @@ import (
 	envport "github.com/lazuale/espocrm-ops/internal/app/ports/envport"
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
+	"github.com/lazuale/espocrm-ops/internal/opsconfig"
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
@@ -24,25 +25,46 @@ func (EnvLoader) LoadOperationEnv(projectDir, scope, overridePath string) (env d
 }
 
 func (EnvLoader) ResolveProjectPath(projectDir, value string) string {
-	return platformconfig.ResolveProjectPath(projectDir, value)
+	return opsconfig.ResolveProjectPath(projectDir, value)
 }
 
 func (EnvLoader) ResolveDBPassword(req envport.DBPasswordRequest) (string, error) {
-	return platformconfig.ResolveDBPassword(platformconfig.DBConfig{
+	password, err := platformconfig.ResolveDBPassword(platformconfig.DBConfig{
 		Container:    req.Container,
 		Name:         req.Name,
 		User:         req.User,
 		Password:     req.Password,
 		PasswordFile: req.PasswordFile,
 	})
+	if err != nil {
+		return "", classifyPasswordError(err)
+	}
+
+	return password, nil
 }
 
 func (EnvLoader) ResolveDBRootPassword(req envport.DBPasswordRequest) (string, error) {
-	return platformconfig.ResolveDBRootPassword(platformconfig.DBConfig{
+	password, err := platformconfig.ResolveDBRootPassword(platformconfig.DBConfig{
 		Container:    req.Container,
 		Name:         req.Name,
 		User:         req.User,
 		Password:     req.Password,
 		PasswordFile: req.PasswordFile,
 	})
+	if err != nil {
+		return "", classifyPasswordError(err)
+	}
+
+	return password, nil
+}
+
+func classifyPasswordError(err error) error {
+	switch err.(type) {
+	case platformconfig.PasswordFileReadError:
+		return domainfailure.Failure{Kind: domainfailure.KindIO, Code: "filesystem_error", Err: err}
+	case platformconfig.PasswordSourceConflictError, platformconfig.PasswordFileEmptyError, platformconfig.PasswordRequiredError:
+		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "preflight_failed", Err: err}
+	default:
+		return err
+	}
 }

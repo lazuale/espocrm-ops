@@ -6,14 +6,13 @@ import (
 	"path/filepath"
 
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
-	platformfs "github.com/lazuale/espocrm-ops/internal/platform/fs"
-	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
 type preparedFilesRestore struct {
 	plan      FilesRestorePlan
 	filesPath string
-	lock      *platformlocks.FileLock
+	lock      restoreLock
 }
 
 func (s Service) PlanFilesRestore(req RestoreFilesRequest) (plan FilesRestorePlan, err error) {
@@ -32,8 +31,7 @@ func (s Service) PlanFilesRestore(req RestoreFilesRequest) (plan FilesRestorePla
 		}
 	}()
 
-	plan = prepared.plan
-	return plan, nil
+	return prepared.plan, nil
 }
 
 func (s Service) RestoreFiles(req RestoreFilesRequest) (plan FilesRestorePlan, err error) {
@@ -53,16 +51,14 @@ func (s Service) RestoreFiles(req RestoreFilesRequest) (plan FilesRestorePlan, e
 	}()
 
 	if req.DryRun {
-		plan = prepared.plan
-		return plan, nil
+		return prepared.plan, nil
 	}
 
-	if err := executeFilesRestore(req, prepared.filesPath); err != nil {
+	if err := s.executeFilesRestore(req, prepared.filesPath); err != nil {
 		return FilesRestorePlan{}, err
 	}
 
-	plan = prepared.plan
-	return plan, nil
+	return prepared.plan, nil
 }
 
 func (s Service) prepareFilesRestore(req RestoreFilesRequest) (preparedFilesRestore, error) {
@@ -79,9 +75,9 @@ func (s Service) prepareFilesRestore(req RestoreFilesRequest) (preparedFilesRest
 		return preparedFilesRestore{}, err
 	}
 
-	lock, err := platformlocks.AcquireRestoreFilesLock()
+	lock, err := s.locks.AcquireRestoreFilesLock()
 	if err != nil {
-		return preparedFilesRestore{}, LockError{Err: fmt.Errorf("files restore lock failed: %w", err)}
+		return preparedFilesRestore{}, restoreFailure(domainfailure.KindConflict, "lock_acquire_failed", fmt.Errorf("files restore lock failed: %w", err))
 	}
 
 	return preparedFilesRestore{
@@ -91,14 +87,14 @@ func (s Service) prepareFilesRestore(req RestoreFilesRequest) (preparedFilesRest
 	}, nil
 }
 
-func executeFilesRestore(req RestoreFilesRequest, filesPath string) (err error) {
-	stage, err := platformfs.NewSiblingStage(req.TargetDir, "espops-restore-files")
+func (s Service) executeFilesRestore(req RestoreFilesRequest, filesPath string) (err error) {
+	stage, err := s.files.NewSiblingStage(req.TargetDir, "espops-restore-files")
 	if err != nil {
-		return OperationError{Err: err, FallbackCode: "restore_files_failed"}
+		return restoreFailure(domainfailure.KindIO, "restore_files_failed", err)
 	}
 	defer func() {
 		if cleanupErr := stage.Cleanup(); cleanupErr != nil {
-			wrapped := OperationError{Err: cleanupErr, FallbackCode: "restore_files_failed"}
+			wrapped := restoreFailure(domainfailure.KindIO, "restore_files_failed", cleanupErr)
 			if err == nil {
 				err = wrapped
 			} else {
@@ -107,26 +103,26 @@ func executeFilesRestore(req RestoreFilesRequest, filesPath string) (err error) 
 		}
 	}()
 
-	if err := platformfs.UnpackTarGz(filesPath, stage.PreparedDir, domainbackup.ValidateFilesArchiveHeader); err != nil {
-		return OperationError{Err: err, FallbackCode: "restore_files_failed"}
+	if err := s.files.UnpackTarGz(filesPath, stage.PreparedDir(), domainbackup.ValidateFilesArchiveHeader); err != nil {
+		return restoreFailure(domainfailure.KindRestore, "restore_files_failed", err)
 	}
 
-	preparedDir, err := preparedRestoreTreeRoot(stage.PreparedDir, filepath.Base(req.TargetDir), req.FilesBackup != "")
+	preparedDir, err := s.preparedRestoreTreeRoot(stage.PreparedDir(), filepath.Base(req.TargetDir), req.FilesBackup != "")
 	if err != nil {
-		return OperationError{Err: err, FallbackCode: "restore_files_failed"}
+		return restoreFailure(domainfailure.KindRestore, "restore_files_failed", err)
 	}
 
-	if err := platformfs.ReplaceTree(req.TargetDir, preparedDir); err != nil {
-		return OperationError{Err: err, FallbackCode: "restore_files_failed"}
+	if err := s.files.ReplaceTree(req.TargetDir, preparedDir); err != nil {
+		return restoreFailure(domainfailure.KindIO, "restore_files_failed", err)
 	}
 
 	return nil
 }
 
-func preparedRestoreTreeRoot(stageDir, targetBase string, requireExactRoot bool) (string, error) {
+func (s Service) preparedRestoreTreeRoot(stageDir, targetBase string, requireExactRoot bool) (string, error) {
 	if requireExactRoot {
-		return platformfs.PreparedTreeRootExact(stageDir, targetBase)
+		return s.files.PreparedTreeRootExact(stageDir, targetBase)
 	}
 
-	return platformfs.PreparedTreeRoot(stageDir, targetBase)
+	return s.files.PreparedTreeRoot(stageDir, targetBase)
 }

@@ -22,20 +22,6 @@ type MaintenanceLock struct {
 	file         *os.File
 }
 
-type LegacyMetadataOnlyLockError struct {
-	Path string
-	PID  string
-	Kind string
-}
-
-func (e LegacyMetadataOnlyLockError) Error() string {
-	if e.PID != "" {
-		return fmt.Sprintf("found a legacy lock file without a flock handle for %s (PID %s): %s. Its state can no longer be verified safely; remove it manually after verification", e.Kind, e.PID, e.Path)
-	}
-
-	return fmt.Sprintf("found a legacy lock file without a flock handle for %s: %s. Its state can no longer be verified safely; remove it manually after verification", e.Kind, e.Path)
-}
-
 type MaintenanceConflictError struct {
 	Contour string
 	Path    string
@@ -54,16 +40,6 @@ func AcquireSharedOperationLock(rootDir, scope string, log io.Writer) (*Operatio
 	metadataPath, handlePath, err := sharedOperationLockPaths(rootDir)
 	if err != nil {
 		return nil, err
-	}
-
-	if legacy, pid, err := legacyMetadataOnlyLock(metadataPath, handlePath); err != nil {
-		return nil, err
-	} else if legacy {
-		return nil, LegacyMetadataOnlyLockError{
-			Path: metadataPath,
-			PID:  pid,
-			Kind: "the toolkit shared operations lock",
-		}
 	}
 
 	handle, err := os.OpenFile(handlePath, os.O_CREATE|os.O_RDWR, 0o600)
@@ -142,12 +118,6 @@ func AcquireMaintenanceLock(backupRoot, contour, scope string, log io.Writer) (*
 				Path:    lockFile,
 				PID:     pid,
 			}
-		case "legacy_unverified":
-			return nil, LegacyMetadataOnlyLockError{
-				Path: lockFile,
-				PID:  pid,
-				Kind: fmt.Sprintf("contour maintenance operation %q", contour),
-			}
 		case "stale":
 			lockWarn(log, "Found a stale lock file, removing: %s", lockFile)
 			_ = os.Remove(lockFile)
@@ -218,37 +188,20 @@ func metadataLockHandlePath(metadataPath string) string {
 	return filepath.Join(dir, "."+base+".flock")
 }
 
-func legacyMetadataOnlyLock(metadataPath, handlePath string) (bool, string, error) {
-	if _, err := os.Stat(metadataPath); err != nil {
-		if os.IsNotExist(err) {
-			return false, "", nil
-		}
-		return false, "", fmt.Errorf("stat lock metadata %s: %w", metadataPath, err)
-	}
-
-	if _, err := os.Stat(handlePath); err == nil {
-		return false, "", nil
-	} else if !os.IsNotExist(err) {
-		return false, "", fmt.Errorf("stat lock handle %s: %w", handlePath, err)
-	}
-
-	return true, lockFileOwnerPID(metadataPath), nil
-}
-
 func metadataLockState(metadataPath string) (state, pid string, err error) {
 	handlePath := metadataLockHandlePath(metadataPath)
-	legacy, pid, err := legacyMetadataOnlyLock(metadataPath, handlePath)
-	if err != nil {
-		return "", "", err
-	}
-	if legacy {
-		return "legacy_unverified", pid, nil
-	}
+	pid = lockFileOwnerPID(metadataPath)
 
 	handle, err := os.Open(handlePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return "legacy_unverified", pid, nil
+			if _, statErr := os.Stat(metadataPath); statErr != nil {
+				if os.IsNotExist(statErr) {
+					return "stale", pid, nil
+				}
+				return "", "", fmt.Errorf("stat lock metadata %s: %w", metadataPath, statErr)
+			}
+			return "stale", pid, nil
 		}
 		return "", "", fmt.Errorf("open lock handle %s: %w", handlePath, err)
 	}

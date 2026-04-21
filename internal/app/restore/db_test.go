@@ -9,7 +9,7 @@ import (
 	"time"
 
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
 func TestRestoreDB_DryRun(t *testing.T) {
@@ -119,23 +119,18 @@ func TestRestoreDB_RequiresTypedRootPasswordSourceOutsideDryRun(t *testing.T) {
 		t.Fatal("expected missing root password error")
 	}
 
-	var preflightErr PreflightError
-	if !errors.As(err, &preflightErr) {
-		t.Fatalf("expected PreflightError, got %T: %v", err, err)
+	var failure domainfailure.Failure
+	if !errors.As(err, &failure) {
+		t.Fatalf("expected domain failure, got %T: %v", err, err)
 	}
-	if preflightErr.ErrorKind() != "validation" {
-		t.Fatalf("expected validation kind, got %q", preflightErr.ErrorKind())
+	if failure.Kind != domainfailure.KindValidation {
+		t.Fatalf("expected validation kind, got %q", failure.Kind)
 	}
-	if preflightErr.ErrorCode() != "preflight_failed" {
-		t.Fatalf("expected preflight_failed code, got %q", preflightErr.ErrorCode())
+	if failure.Code != "preflight_failed" {
+		t.Fatalf("expected preflight_failed code, got %q", failure.Code)
 	}
-
-	var requiredErr platformconfig.PasswordRequiredError
-	if !errors.As(err, &requiredErr) {
-		t.Fatalf("expected PasswordRequiredError cause, got %T: %v", err, err)
-	}
-	if requiredErr.Label != "db root password" {
-		t.Fatalf("unexpected required label: %q", requiredErr.Label)
+	if !strings.Contains(failure.Error(), "database root password is required") {
+		t.Fatalf("expected root password requirement error, got %q", failure.Error())
 	}
 }
 

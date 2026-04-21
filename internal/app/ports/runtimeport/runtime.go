@@ -16,6 +16,9 @@ type Runtime interface {
 	Stop(target Target, services ...string) error
 	ConfigText(target Target) (string, error)
 	PSText(target Target) (string, error)
+	DockerClientVersion() (string, error)
+	DockerServerVersion() (string, error)
+	ComposeVersion() (string, error)
 	RunningServices(target Target) ([]string, error)
 	ServiceState(target Target, service string) (ServiceState, error)
 	ServiceContainerID(target Target, service string) (string, error)

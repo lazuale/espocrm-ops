@@ -45,10 +45,6 @@ func LoadOperationEnv(projectDir, scope, overridePath string) (domainenv.Operati
 	}, nil
 }
 
-func ResolveProjectPath(projectDir, value string) string {
-	return domainenv.ResolveProjectPath(projectDir, value)
-}
-
 func resolveOperationEnvFile(projectDir, scope, overridePath string) (string, error) {
 	overridePath = strings.TrimSpace(overridePath)
 	if overridePath != "" {

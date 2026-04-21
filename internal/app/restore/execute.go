@@ -1,7 +1,6 @@
 package restore
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
@@ -9,10 +8,8 @@ import (
 	"time"
 
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
-	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
-	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
 type ExecuteRequest struct {
@@ -162,7 +159,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: fmt.Sprintf("Using %s for contour %s.", info.EnvFile, info.Scope),
 	})
 
-	source, err := resolveExecuteSource(ctx.BackupRoot, req)
+	source, err := s.resolveExecuteSource(ctx.BackupRoot, req)
 	if err != nil {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
@@ -194,7 +191,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		Details: restoreSourceDetails(source),
 	})
 
-	runtimeInfo, err := inspectRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, !req.SkipDB)
+	runtimeInfo, err := s.inspectRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, !req.SkipDB)
 	if err != nil {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
@@ -217,7 +214,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		return s.buildDryRun(ctx, req, info, source, runtimeInfo)
 	}
 
-	runtimePrep, err := prepareRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, !req.SkipDB, req.NoStop)
+	runtimePrep, err := s.prepareRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, !req.SkipDB, req.NoStop)
 	if err != nil {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
@@ -251,7 +248,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The pre-restore emergency recovery point was skipped because of --no-snapshot.",
 		})
 	} else {
-		snapshotReq, snapshotReqErr := buildSnapshotRequest(ctx, req)
+		snapshotReq, snapshotReqErr := s.buildSnapshotRequest(ctx, req)
 		if snapshotReqErr != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
@@ -306,7 +303,8 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The database restore was skipped because of --skip-db.",
 		})
 	} else {
-		if _, err := s.RestoreDB(buildDBRestoreRequest(ctx, source, runtimePrep.DBContainer)); err != nil {
+		dbReq := s.BuildDBRestoreRequest(ctx, source.ManifestJSON, source.DBBackup, runtimePrep.DBContainer)
+		if _, err := s.RestoreDB(dbReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "db_restore",
@@ -336,7 +334,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The files restore was skipped because of --skip-files.",
 		})
 	} else {
-		filesReq := buildFilesRestoreRequest(ctx, source)
+		filesReq := s.BuildFilesRestoreRequest(ctx, source.ManifestJSON, source.FilesBackup)
 		if _, err := s.RestoreFiles(filesReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
@@ -350,7 +348,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			)
 			return info, wrapRestoreExecuteError(err)
 		}
-		if err := platformdocker.ReconcileEspoStoragePermissions(
+		if err := s.runtime.ReconcileEspoStoragePermissions(
 			filesReq.TargetDir,
 			strings.TrimSpace(ctx.Env.Value("MARIADB_TAG")),
 			strings.TrimSpace(ctx.Env.Value("ESPOCRM_IMAGE")),
@@ -371,11 +369,11 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Code:    "files_restore",
 			Status:  domainworkflow.StatusCompleted,
 			Summary: "Files restore completed",
-			Details: filesRestoreDetails(ctx, source),
+			Details: filesRestoreDetails(source, filesReq.TargetDir),
 		})
 	}
 
-	runtimeReturn, err := returnRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, runtimePrep, req.NoStart)
+	runtimeReturn, err := s.returnRuntime(info.ProjectDir, info.ComposeFile, info.EnvFile, runtimePrep, req.NoStart)
 	if err != nil {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "runtime_return",
@@ -386,7 +384,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		})
 		return info, wrapRestoreExecuteError(executeFailure{Kind: domainfailure.KindExternal, Err: err})
 	}
-	validatedServices, err := validatePostRestoreRuntimeHealth(
+	validatedServices, err := s.validatePostRestoreRuntimeHealth(
 		info.ProjectDir,
 		info.ComposeFile,
 		info.EnvFile,
@@ -438,15 +436,4 @@ func (i ExecuteInfo) Ready() bool {
 		}
 	}
 	return true
-}
-
-func wrapRestoreExecuteError(err error) error {
-	var failure executeFailure
-	if errors.As(err, &failure) && failure.Kind != "" {
-		return apperr.Wrap(apperr.Kind(failure.Kind), "restore_failed", err)
-	}
-	if kind, ok := apperr.KindOf(err); ok {
-		return apperr.Wrap(kind, "restore_failed", err)
-	}
-	return apperr.Wrap(apperr.KindInternal, "restore_failed", err)
 }

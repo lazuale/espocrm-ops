@@ -11,7 +11,6 @@ import (
 const (
 	LockReady  = "ready"
 	LockActive = "active"
-	LockLegacy = "legacy"
 	LockStale  = "stale"
 )
 
@@ -25,21 +24,18 @@ type LockReadiness struct {
 func CheckSharedOperationReadiness(rootDir string) (readiness LockReadiness, err error) {
 	metadataPath, handlePath := predictedSharedOperationLockPaths(rootDir)
 
-	legacy, pid, err := legacyMetadataOnlyLock(metadataPath, handlePath)
-	if err != nil {
-		return LockReadiness{}, err
-	}
-	if legacy {
-		return LockReadiness{
-			State:        LockLegacy,
-			MetadataPath: metadataPath,
-			PID:          pid,
-		}, nil
-	}
-
 	handle, err := os.Open(handlePath)
 	if err != nil {
 		if os.IsNotExist(err) {
+			if _, statErr := os.Stat(metadataPath); statErr == nil {
+				return LockReadiness{
+					State:        LockStale,
+					MetadataPath: metadataPath,
+					PID:          lockFileOwnerPID(metadataPath),
+				}, nil
+			} else if !os.IsNotExist(statErr) {
+				return LockReadiness{}, fmt.Errorf("stat lock metadata %s: %w", metadataPath, statErr)
+			}
 			return LockReadiness{
 				State:        LockReady,
 				MetadataPath: metadataPath,
@@ -93,12 +89,6 @@ func CheckMaintenanceReadiness(backupRoot string) (LockReadiness, error) {
 		case "active":
 			return LockReadiness{
 				State:        LockActive,
-				MetadataPath: lockFile,
-				PID:          pid,
-			}, nil
-		case "legacy_unverified":
-			return LockReadiness{
-				State:        LockLegacy,
 				MetadataPath: lockFile,
 				PID:          pid,
 			}, nil

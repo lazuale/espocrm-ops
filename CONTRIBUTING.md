@@ -69,7 +69,6 @@ make ci
 - Final `apperr` wrapping belongs to the `Execute()` boundary. Helpers return raw errors or lightweight local typed failures.
 - Keep helpers package-local. Do not add framework packages, generic engines, or unnecessary shared helper packages.
 - Prefer explicit request-level injection or small local interfaces in tests. Do not add mutable package-global hooks.
-- `backup` exposes both `Execute(req)` and `ExecutePrepared(req)`. Operator-facing preflight lives in application code, not in CLI glue.
 
 ## Typical Change Flow
 

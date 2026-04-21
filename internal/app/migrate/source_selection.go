@@ -6,15 +6,13 @@ import (
 	"path/filepath"
 	"strings"
 
-	backupusecase "github.com/lazuale/espocrm-ops/internal/app/backup"
+	backupstoreport "github.com/lazuale/espocrm-ops/internal/app/ports/backupstoreport"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
-	"github.com/lazuale/espocrm-ops/internal/platform/backupstore"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
 func (s Service) resolveSourceSelection(env domainenv.OperationEnv, req ExecuteRequest) (sourceSelection, error) {
-	backupRoot := platformconfig.ResolveProjectPath(filepath.Clean(req.ProjectDir), env.BackupRoot())
+	backupRoot := s.env.ResolveProjectPath(filepath.Clean(req.ProjectDir), env.BackupRoot())
 	dbBackup := strings.TrimSpace(req.DBBackup)
 	filesBackup := strings.TrimSpace(req.FilesBackup)
 
@@ -53,7 +51,7 @@ func (s Service) resolveSourceSelection(env domainenv.OperationEnv, req ExecuteR
 }
 
 func (s Service) resolveLatestCompleteSelection(backupRoot string) (sourceSelection, error) {
-	groups, err := backupstore.Groups(backupRoot, backupstore.GroupModeDB)
+	groups, err := s.store.Groups(backupRoot, backupstoreport.GroupModeDB)
 	if err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "Automatic source backup selection could not inspect the source backup root",
@@ -64,10 +62,10 @@ func (s Service) resolveLatestCompleteSelection(backupRoot string) (sourceSelect
 
 	for _, group := range groups {
 		set := domainbackup.BuildBackupSet(backupRoot, group.Prefix, group.Stamp)
-		if err := backupstore.VerifyDirectDBBackup(set.DBBackup.Path); err != nil {
+		if err := s.store.VerifyDirectDBBackup(set.DBBackup.Path); err != nil {
 			continue
 		}
-		if err := backupstore.VerifyDirectFilesBackup(set.FilesBackup.Path); err != nil {
+		if err := s.store.VerifyDirectFilesBackup(set.FilesBackup.Path); err != nil {
 			continue
 		}
 
@@ -95,14 +93,14 @@ func (s Service) resolveFullPairSelection(backupRoot, dbPath, filesPath, mode st
 	dbPath = filepath.Clean(dbPath)
 	filesPath = filepath.Clean(filesPath)
 
-	if err := backupstore.VerifyDirectDBBackup(dbPath); err != nil {
+	if err := s.store.VerifyDirectDBBackup(dbPath); err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "The selected database backup is not valid",
 			Action:  "Choose a readable .sql.gz backup with a valid .sha256 sidecar.",
 			Err:     err,
 		}
 	}
-	if err := backupstore.VerifyDirectFilesBackup(filesPath); err != nil {
+	if err := s.store.VerifyDirectFilesBackup(filesPath); err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "The selected files backup is not valid",
 			Action:  "Choose a readable .tar.gz backup with a valid .sha256 sidecar.",
@@ -150,7 +148,7 @@ func (s Service) resolveFullPairSelection(backupRoot, dbPath, filesPath, mode st
 func (s Service) resolveDBOnlySelection(backupRoot, explicitDB string) (sourceSelection, error) {
 	if explicitDB != "" {
 		dbPath := filepath.Clean(explicitDB)
-		if err := backupstore.VerifyDirectDBBackup(dbPath); err != nil {
+		if err := s.store.VerifyDirectDBBackup(dbPath); err != nil {
 			return sourceSelection{}, executeFailure{
 				Summary: "The selected database backup is not valid",
 				Action:  "Choose a readable .sql.gz backup with a valid .sha256 sidecar.",
@@ -173,7 +171,7 @@ func (s Service) resolveDBOnlySelection(backupRoot, explicitDB string) (sourceSe
 		}, nil
 	}
 
-	groups, err := backupstore.Groups(backupRoot, backupstore.GroupModeDB)
+	groups, err := s.store.Groups(backupRoot, backupstoreport.GroupModeDB)
 	if err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "Automatic database backup selection could not inspect the source backup root",
@@ -184,7 +182,7 @@ func (s Service) resolveDBOnlySelection(backupRoot, explicitDB string) (sourceSe
 
 	for _, group := range groups {
 		set := domainbackup.BuildBackupSet(backupRoot, group.Prefix, group.Stamp)
-		if err := backupstore.VerifyDirectDBBackup(set.DBBackup.Path); err != nil {
+		if err := s.store.VerifyDirectDBBackup(set.DBBackup.Path); err != nil {
 			continue
 		}
 		return sourceSelection{
@@ -205,7 +203,7 @@ func (s Service) resolveDBOnlySelection(backupRoot, explicitDB string) (sourceSe
 func (s Service) resolveFilesOnlySelection(backupRoot, explicitFiles string) (sourceSelection, error) {
 	if explicitFiles != "" {
 		filesPath := filepath.Clean(explicitFiles)
-		if err := backupstore.VerifyDirectFilesBackup(filesPath); err != nil {
+		if err := s.store.VerifyDirectFilesBackup(filesPath); err != nil {
 			return sourceSelection{}, executeFailure{
 				Summary: "The selected files backup is not valid",
 				Action:  "Choose a readable .tar.gz backup with a valid .sha256 sidecar.",
@@ -228,7 +226,7 @@ func (s Service) resolveFilesOnlySelection(backupRoot, explicitFiles string) (so
 		}, nil
 	}
 
-	groups, err := backupstore.Groups(backupRoot, backupstore.GroupModeFiles)
+	groups, err := s.store.Groups(backupRoot, backupstoreport.GroupModeFiles)
 	if err != nil {
 		return sourceSelection{}, executeFailure{
 			Summary: "Automatic files backup selection could not inspect the source backup root",
@@ -239,7 +237,7 @@ func (s Service) resolveFilesOnlySelection(backupRoot, explicitFiles string) (so
 
 	for _, group := range groups {
 		set := domainbackup.BuildBackupSet(backupRoot, group.Prefix, group.Stamp)
-		if err := backupstore.VerifyDirectFilesBackup(set.FilesBackup.Path); err != nil {
+		if err := s.store.VerifyDirectFilesBackup(set.FilesBackup.Path); err != nil {
 			continue
 		}
 		return sourceSelection{
@@ -271,7 +269,7 @@ func (s Service) attachMatchingManifest(backupRoot string, selection *sourceSele
 		return nil
 	}
 
-	info, err := s.backup.VerifyDetailed(backupusecase.VerifyRequest{ManifestPath: set.ManifestJSON.Path})
+	info, err := s.store.VerifyManifestDetailed(set.ManifestJSON.Path)
 	if err != nil {
 		return executeFailure{
 			Summary: "The matching manifest for the selected backup set is not valid",

@@ -9,18 +9,34 @@ import (
 )
 
 func wrapBackupBoundaryError(err error) error {
-	return wrapBackupError(err, "backup_failed")
+	return wrapBackupAppError(err, "backup_failed")
 }
 
 func wrapBackupExecuteError(err error) error {
-	return wrapBackupError(err, "backup_failed")
+	return normalizeBackupFailure(err, "backup_failed")
 }
 
 func wrapBackupVerifyError(err error) error {
-	return wrapBackupError(err, "backup_verification_failed")
+	return wrapBackupAppError(err, "backup_verification_failed")
 }
 
-func wrapBackupError(err error, defaultCode string) error {
+func normalizeBackupFailure(err error, defaultCode string) error {
+	if err == nil {
+		return nil
+	}
+
+	var failure domainfailure.Failure
+	if errors.As(err, &failure) && failure.Kind != "" {
+		failure.Code = normalizeBackupErrorCode(failure.Code, defaultCode)
+		return failure
+	}
+
+	return err
+}
+
+func wrapBackupAppError(err error, defaultCode string) error {
+	err = normalizeBackupFailure(err, defaultCode)
+
 	var failure domainfailure.Failure
 	if errors.As(err, &failure) && failure.Kind != "" {
 		return apperr.Wrap(apperr.Kind(failure.Kind), normalizeBackupErrorCode(failure.Code, defaultCode), err)

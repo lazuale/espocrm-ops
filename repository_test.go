@@ -41,6 +41,7 @@ func TestInternalDependencyBoundaries(t *testing.T) {
 			assertNoImports(t, pkg, []string{
 				modulePath + "/internal/cli",
 				modulePath + "/internal/contract/exitcode",
+				modulePath + "/internal/platform",
 			})
 		case inLayer(pkg.ImportPath, "domain"):
 			assertNoImports(t, pkg, []string{

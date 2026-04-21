@@ -8,7 +8,6 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
 func requireMigrationCompatibility(sourceEnv, targetEnv domainenv.OperationEnv, sourceScope, targetScope string) error {
@@ -35,16 +34,12 @@ func requireMigrationCompatibility(sourceEnv, targetEnv domainenv.OperationEnv, 
 	}
 }
 
-func classifyMigrationEnvError(err error) error {
-	switch err.(type) {
-	case platformconfig.MissingEnvFileError, platformconfig.InvalidEnvFileError, platformconfig.EnvParseError, platformconfig.MissingEnvValueError, platformconfig.UnsupportedContourError:
-		return executeFailure{Kind: domainfailure.KindValidation, Err: err}
-	default:
-		return executeFailure{Kind: domainfailure.KindIO, Err: err}
-	}
-}
-
 func wrapExecuteError(err error) error {
+	var typed domainfailure.Failure
+	if errors.As(err, &typed) && typed.Kind != "" {
+		return apperr.Wrap(apperr.Kind(typed.Kind), "migrate_failed", err)
+	}
+
 	var failure executeFailure
 	if errors.As(err, &failure) && failure.Kind != "" {
 		return apperr.Wrap(apperr.Kind(failure.Kind), "migrate_failed", err)
