@@ -18,10 +18,6 @@ func checkEnvContract(report *Report, scope string, env domainenv.OperationEnv) 
 		"MARIADB_TAG",
 		"BACKUP_NAME_PREFIX",
 		"BACKUP_RETENTION_DAYS",
-		"BACKUP_MAX_DB_AGE_HOURS",
-		"BACKUP_MAX_FILES_AGE_HOURS",
-		"REPORT_RETENTION_DAYS",
-		"SUPPORT_RETENTION_DAYS",
 		"MIN_FREE_DISK_MB",
 		"DOCKER_LOG_MAX_SIZE",
 		"DOCKER_LOG_MAX_FILE",
@@ -72,10 +68,6 @@ func checkEnvContract(report *Report, scope string, env domainenv.OperationEnv) 
 
 	for _, key := range []string{
 		"BACKUP_RETENTION_DAYS",
-		"BACKUP_MAX_DB_AGE_HOURS",
-		"BACKUP_MAX_FILES_AGE_HOURS",
-		"REPORT_RETENTION_DAYS",
-		"SUPPORT_RETENTION_DAYS",
 		"MIN_FREE_DISK_MB",
 		"DOCKER_LOG_MAX_FILE",
 		"DB_PIDS_LIMIT",
