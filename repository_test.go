@@ -38,10 +38,12 @@ func TestInternalDependencyBoundaries(t *testing.T) {
 				modulePath + "/internal/platform/appadapter",
 			})
 		case inLayer(pkg.ImportPath, "app"):
-			assertNoImports(t, pkg, []string{
+			assertNoImportsExcept(t, pkg, []string{
 				modulePath + "/internal/cli",
-				modulePath + "/internal/contract/exitcode",
+				modulePath + "/internal/contract",
 				modulePath + "/internal/platform",
+			}, []string{
+				modulePath + "/internal/contract/apperr",
 			})
 		case inLayer(pkg.ImportPath, "domain"):
 			assertNoImports(t, pkg, []string{
@@ -57,6 +59,20 @@ func TestInternalDependencyBoundaries(t *testing.T) {
 				modulePath + "/internal/app/ports",
 			})
 		}
+	}
+}
+
+func TestCommandDependencyBoundaries(t *testing.T) {
+	packages := listPackages(t, "./cmd/...")
+
+	for _, pkg := range packages {
+		assertNoImportsExcept(t, pkg, []string{
+			modulePath + "/internal/",
+		}, []string{
+			modulePath + "/internal/cli",
+			modulePath + "/internal/app/operation",
+			modulePath + "/internal/platform/journalstore",
+		})
 	}
 }
 
