@@ -390,12 +390,16 @@ func TestSchema_Restore_JSON_DryRun(t *testing.T) {
 	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
 		t.Fatal(err)
 	}
+	assertNoLegacyWorkflowVocabularyInJSON(t, obj)
 
 	if dryRun, _ := obj["dry_run"].(bool); !dryRun {
 		t.Fatalf("expected dry_run=true")
 	}
-	if wouldRun, _ := requireJSONPath(t, obj, "details", "would_run").(float64); int(wouldRun) != 5 {
-		t.Fatalf("expected five would_run steps, got %v", wouldRun)
+	if planned, _ := requireJSONPath(t, obj, "details", "planned").(float64); int(planned) != 5 {
+		t.Fatalf("expected five planned steps, got %v", planned)
+	}
+	if _, ok := obj["details"].(map[string]any)["would_run"]; ok {
+		t.Fatalf("did not expect legacy would_run detail key in %#v", obj["details"])
 	}
 	if completed, _ := requireJSONPath(t, obj, "details", "completed").(float64); int(completed) != 2 {
 		t.Fatalf("expected two completed steps, got %v", completed)

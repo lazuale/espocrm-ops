@@ -67,19 +67,10 @@ func restoreExecutionItems(steps []restoreusecase.ExecuteStep) []any {
 func newSectionItem(code string, status fmt.Stringer, summary, details, action string) result.SectionItem {
 	return result.SectionItem{
 		Code:    code,
-		Status:  wireStepStatus(status.String()),
+		Status:  status.String(),
 		Summary: summary,
 		Details: details,
 		Action:  action,
-	}
-}
-
-func wireStepStatus(status string) string {
-	switch strings.TrimSpace(status) {
-	case "planned":
-		return "would_run"
-	default:
-		return status
 	}
 }
 

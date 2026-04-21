@@ -60,7 +60,7 @@ type RestoreDetails struct {
 	SelectionMode          string `json:"selection_mode"`
 	SourceKind             string `json:"source_kind"`
 	Steps                  int    `json:"steps"`
-	WouldRun               int    `json:"would_run,omitempty"`
+	Planned                int    `json:"planned,omitempty"`
 	Completed              int    `json:"completed,omitempty"`
 	Skipped                int    `json:"skipped,omitempty"`
 	Blocked                int    `json:"blocked,omitempty"`

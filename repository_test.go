@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -244,6 +245,46 @@ func TestOperationAppDoesNotOwnPlatformJournalStoreWiring(t *testing.T) {
 	assertNoImports(t, pkg, []string{
 		modulePath + "/internal/platform/journalstore",
 	})
+}
+
+func TestProductionWorkflowStatusVocabularyIsCanonical(t *testing.T) {
+	root := repoRoot(t)
+	forbidden := []*regexp.Regexp{
+		regexp.MustCompile(`\bwould_run\b`),
+		regexp.MustCompile(`\bnot_run\b`),
+		regexp.MustCompile(`\bWouldRun\b`),
+		regexp.MustCompile(`\bNotRun\b`),
+	}
+
+	for _, dir := range []string{
+		filepath.Join(root, "cmd"),
+		filepath.Join(root, "internal"),
+	} {
+		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+
+			raw, err := os.ReadFile(path)
+			if err != nil {
+				return err
+			}
+			text := string(raw)
+			for _, token := range forbidden {
+				if token.MatchString(text) {
+					t.Fatalf("production file %s contains legacy workflow vocabulary matching %q", path, token.String())
+				}
+			}
+
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
 }
 
 func listInternalPackages(t *testing.T) []listedPackage {

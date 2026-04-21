@@ -17,7 +17,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "runtime_prepare",
 		Status:  domainworkflow.StatusPlanned,
-		Summary: "Runtime preparation would run",
+		Summary: "Runtime preparation planned",
 		Details: runtimePrepareDetails(runtimeInfo, req),
 	})
 
@@ -32,7 +32,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "snapshot_recovery_point",
 			Status:  domainworkflow.StatusPlanned,
-			Summary: "Emergency recovery point would run",
+			Summary: "Emergency recovery point planned",
 			Details: snapshotPlanDetails(req),
 		})
 	}
@@ -62,7 +62,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "db_restore",
 			Status:  domainworkflow.StatusPlanned,
-			Summary: "Database restore would run",
+			Summary: "Database restore planned",
 			Details: dryRunDBDetails(ctx, source, runtimeInfo),
 		})
 	}
@@ -91,7 +91,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
 			Status:  domainworkflow.StatusPlanned,
-			Summary: "Files restore would run",
+			Summary: "Files restore planned",
 			Details: dryRunFilesDetails(ctx, source),
 		})
 	}
@@ -193,7 +193,7 @@ func dryRunRuntimeReturnStatus(runtimeInfo runtimePrepareInfo, noStart bool) dom
 
 func dryRunRuntimeReturnSummary(runtimeInfo runtimePrepareInfo, noStart bool) string {
 	if dryRunRuntimeReturnStatus(runtimeInfo, noStart) == domainworkflow.StatusPlanned {
-		return "Runtime return would run"
+		return "Runtime return planned"
 	}
 	return "Runtime return skipped"
 }

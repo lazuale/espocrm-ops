@@ -6,15 +6,15 @@ type fakeStatus string
 
 func (s fakeStatus) String() string { return string(s) }
 
-func TestWireStepStatusMapsPlannedToWouldRun(t *testing.T) {
-	item := newSectionItem("runtime_prepare", fakeStatus("planned"), "Runtime preparation would run", "", "")
+func TestNewSectionItemPreservesPlannedStatus(t *testing.T) {
+	item := newSectionItem("runtime_prepare", fakeStatus("planned"), "Runtime preparation planned", "", "")
 
-	if item.Status != "would_run" {
-		t.Fatalf("expected planned status to map to would_run, got %q", item.Status)
+	if item.Status != "planned" {
+		t.Fatalf("expected planned status to stay unchanged, got %q", item.Status)
 	}
 }
 
-func TestWireStepStatusPreservesNonPlannedStatuses(t *testing.T) {
+func TestNewSectionItemPreservesCompletedStatus(t *testing.T) {
 	item := newSectionItem("runtime_prepare", fakeStatus("completed"), "Runtime preparation completed", "", "")
 
 	if item.Status != "completed" {

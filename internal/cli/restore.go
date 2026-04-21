@@ -5,10 +5,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
-	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
+	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
 )
 
@@ -207,7 +207,7 @@ func runRestore(cmd *cobra.Command, in restoreInput) error {
 }
 
 func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
-	wouldRun, completed, skipped, blocked, failed := info.Counts()
+	planned, completed, skipped, blocked, failed := info.Counts()
 	message := "restore completed"
 	if info.DryRun {
 		message = "restore dry-run plan completed"
@@ -232,7 +232,7 @@ func restoreResult(info restoreusecase.ExecuteInfo) result.Result {
 			SelectionMode:          info.SelectionMode,
 			SourceKind:             info.SourceKind,
 			Steps:                  len(info.Steps),
-			WouldRun:               wouldRun,
+			Planned:                planned,
 			Completed:              completed,
 			Skipped:                skipped,
 			Blocked:                blocked,
@@ -315,8 +315,8 @@ func renderRestoreText(w io.Writer, res result.Result) error {
 	if _, err := fmt.Fprintf(w, "  Steps:        %d\n", details.Steps); err != nil {
 		return err
 	}
-	if details.WouldRun != 0 || res.DryRun {
-		if _, err := fmt.Fprintf(w, "  Would run:    %d\n", details.WouldRun); err != nil {
+	if details.Planned != 0 || res.DryRun {
+		if _, err := fmt.Fprintf(w, "  Planned:      %d\n", details.Planned); err != nil {
 			return err
 		}
 	}

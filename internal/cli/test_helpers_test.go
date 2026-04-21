@@ -6,12 +6,13 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
 
-	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
 	"github.com/spf13/cobra"
 )
 
@@ -126,6 +127,7 @@ func assertGoldenJSON(t *testing.T, got []byte, goldenPath string) {
 	if err := json.Unmarshal(got, &gotObj); err != nil {
 		t.Fatalf("invalid json output: %v\n%s", err, string(got))
 	}
+	assertNoLegacyWorkflowVocabularyInJSON(t, gotObj)
 
 	want, err := os.ReadFile(goldenPath)
 	if err != nil {
@@ -148,6 +150,33 @@ func assertGoldenJSON(t *testing.T, got []byte, goldenPath string) {
 
 	if string(gotNorm) != string(wantNorm) {
 		t.Fatalf("golden mismatch\nGOT:\n%s\n\nWANT:\n%s", gotNorm, wantNorm)
+	}
+}
+
+func assertNoLegacyWorkflowVocabularyInJSON(t *testing.T, v any) {
+	t.Helper()
+	assertNoLegacyWorkflowVocabularyAtPath(t, v, "$")
+}
+
+func assertNoLegacyWorkflowVocabularyAtPath(t *testing.T, v any, path string) {
+	t.Helper()
+
+	switch typed := v.(type) {
+	case map[string]any:
+		for key, value := range typed {
+			if key == "would_run" || key == "not_run" {
+				t.Fatalf("legacy workflow key %q found at %s", key, path)
+			}
+			assertNoLegacyWorkflowVocabularyAtPath(t, value, path+"."+key)
+		}
+	case []any:
+		for i, value := range typed {
+			assertNoLegacyWorkflowVocabularyAtPath(t, value, path+"["+strconv.Itoa(i)+"]")
+		}
+	case string:
+		if typed == "would_run" || typed == "not_run" {
+			t.Fatalf("legacy workflow value %q found at %s", typed, path)
+		}
 	}
 }
 
