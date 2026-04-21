@@ -8,7 +8,7 @@ import (
 )
 
 func TestGolden_Restore_JSON(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt":      "hello",
@@ -27,7 +27,10 @@ func TestGolden_Restore_JSON(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixture.fixedNow, "op-restore-1"),
+		},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",

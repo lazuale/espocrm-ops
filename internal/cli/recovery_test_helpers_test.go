@@ -5,8 +5,6 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
-
-	"github.com/lazuale/espocrm-ops/internal/platform/locks"
 )
 
 func prependFakeDockerForRecoveryCLITest(t *testing.T) {
@@ -273,11 +271,10 @@ exit 98
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
-func isolateRecoveryLocks(t *testing.T) {
+func isolateRecoveryLocks(t *testing.T) testAppOption {
 	t.Helper()
 
-	restore := locks.SetLockDirForTest(t.TempDir())
-	t.Cleanup(restore)
+	return withRestoreLockDir(t.TempDir())
 }
 
 func writeBackupSet(t *testing.T, backupRoot, prefix, stamp, scope string) {

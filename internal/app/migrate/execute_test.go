@@ -17,14 +17,14 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
-	"github.com/lazuale/espocrm-ops/internal/platform/locks"
+	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 	"github.com/lazuale/espocrm-ops/internal/testutil"
 )
 
 func TestExecute_SkipDBNoStart_ReconcilesFilesPermissions(t *testing.T) {
 	fixture := newExecuteFixture(t)
 
-	info, err := testMigrateService().Execute(ExecuteRequest{
+	info, err := testMigrateService(appadapter.Locks{RestoreLockDir: fixture.restoreLockDir}).Execute(ExecuteRequest{
 		SourceScope: "dev",
 		TargetScope: "prod",
 		ProjectDir:  fixture.projectDir,
@@ -70,7 +70,7 @@ func TestExecute_FailsClosedWhenFilesPermissionReconcileFails(t *testing.T) {
 	fixture := newExecuteFixture(t)
 	t.Setenv("DOCKER_MOCK_RESTORE_RECONCILE_ERROR", "permission reconcile failed")
 
-	info, err := testMigrateService().Execute(ExecuteRequest{
+	info, err := testMigrateService(appadapter.Locks{RestoreLockDir: fixture.restoreLockDir}).Execute(ExecuteRequest{
 		SourceScope: "dev",
 		TargetScope: "prod",
 		ProjectDir:  fixture.projectDir,
@@ -115,17 +115,17 @@ func TestExecute_FailsClosedWhenFilesPermissionReconcileFails(t *testing.T) {
 }
 
 type executeFixture struct {
-	projectDir  string
-	composeFile string
-	storageDir  string
-	logPath     string
+	restoreLockDir string
+	projectDir     string
+	composeFile    string
+	storageDir     string
+	logPath        string
 }
 
 func newExecuteFixture(t *testing.T) executeFixture {
 	t.Helper()
 
-	restoreLocks := locks.SetLockDirForTest(t.TempDir())
-	t.Cleanup(restoreLocks)
+	restoreLockDir := t.TempDir()
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -163,10 +163,11 @@ func newExecuteFixture(t *testing.T) executeFixture {
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
 	return executeFixture{
-		projectDir:  projectDir,
-		composeFile: composeFile,
-		storageDir:  storageDir,
-		logPath:     logPath,
+		restoreLockDir: restoreLockDir,
+		projectDir:     projectDir,
+		composeFile:    composeFile,
+		storageDir:     storageDir,
+		logPath:        logPath,
 	}
 }
 

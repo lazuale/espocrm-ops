@@ -102,11 +102,19 @@ func CheckMaintenanceReadiness(backupRoot string) (LockReadiness, error) {
 }
 
 func CheckRestoreDBReadiness() (LockReadiness, error) {
-	return checkFileLockReadiness(restoreLockPath("espops-restore-db.lock"))
+	return CheckRestoreDBReadinessInDir("")
 }
 
 func CheckRestoreFilesReadiness() (LockReadiness, error) {
-	return checkFileLockReadiness(restoreLockPath("espops-restore-files.lock"))
+	return CheckRestoreFilesReadinessInDir("")
+}
+
+func CheckRestoreDBReadinessInDir(dir string) (LockReadiness, error) {
+	return checkFileLockReadiness(restoreLockPathInDir(dir, restoreDBLockName))
+}
+
+func CheckRestoreFilesReadinessInDir(dir string) (LockReadiness, error) {
+	return checkFileLockReadiness(restoreLockPathInDir(dir, restoreFilesLockName))
 }
 
 func checkFileLockReadiness(path string) (readiness LockReadiness, err error) {

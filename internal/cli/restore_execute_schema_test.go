@@ -13,7 +13,7 @@ import (
 )
 
 func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt":      "hello",
@@ -33,7 +33,10 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixture.fixedNow, "op-restore-1"),
+		},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",
@@ -128,7 +131,7 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt": "hello",
@@ -151,7 +154,8 @@ func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
 		},
 	})
 
-	outcome := executeCLI(
+	outcome := executeCLIWithOptions(
+		[]testAppOption{lockOpt},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",
@@ -166,7 +170,7 @@ func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt": "hello",
@@ -185,7 +189,10 @@ func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-health-fail")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixture.fixedNow, "op-restore-health-fail"),
+		},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",
@@ -200,7 +207,7 @@ func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/nested/file.txt": "hello",
@@ -217,7 +224,10 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
 	first := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-repeat-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixture.fixedNow, "op-restore-repeat-1"),
+		},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",
@@ -238,7 +248,10 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 	}
 
 	second := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixture.fixedNow.Add(time.Minute), "op-restore-repeat-2")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixture.fixedNow.Add(time.Minute), "op-restore-repeat-2"),
+		},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",
@@ -278,7 +291,7 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 }
 
 func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/restored.txt": "files-only",
@@ -290,7 +303,10 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-files-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixture.fixedNow, "op-restore-files-1"),
+		},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",
@@ -347,7 +363,7 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 }
 
 func TestSchema_Restore_JSON_DryRun(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/dry-run.txt": "dry-run",
@@ -363,7 +379,10 @@ func TestSchema_Restore_JSON_DryRun(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixture.fixedNow, "op-restore-dryrun-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixture.fixedNow, "op-restore-dryrun-1"),
+		},
 		"--journal-dir", fixture.journalDir,
 		"--json",
 		"restore",

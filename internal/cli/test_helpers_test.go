@@ -12,6 +12,8 @@ import (
 	"time"
 
 	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
+	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
 	"github.com/spf13/cobra"
 )
@@ -34,6 +36,7 @@ var _ operationusecase.Runtime = fixedRuntime{}
 type testAppConfig struct {
 	runtime              operationusecase.Runtime
 	journalWriterFactory JournalWriterFactory
+	locks                lockport.Locks
 	options              GlobalOptions
 }
 
@@ -74,6 +77,12 @@ func withJSONOutput() testAppOption {
 	}
 }
 
+func withRestoreLockDir(dir string) testAppOption {
+	return func(cfg *testAppConfig) {
+		cfg.locks = appadapter.Locks{RestoreLockDir: dir}
+	}
+}
+
 func runRootCommand(t *testing.T, args ...string) (string, error) {
 	return runRootCommandWithOptions(t, nil, args...)
 }
@@ -102,6 +111,7 @@ func newTestApp(opts ...testAppOption) *App {
 	app := NewApp(Dependencies{
 		Runtime:              cfg.runtime,
 		JournalWriterFactory: cfg.journalWriterFactory,
+		Locks:                cfg.locks,
 	})
 	app.options = cfg.options
 	return app

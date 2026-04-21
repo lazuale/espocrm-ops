@@ -7,7 +7,9 @@ import (
 	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
 )
 
-type Locks struct{}
+type Locks struct {
+	RestoreLockDir string
+}
 
 func (Locks) AcquireSharedOperationLock(rootDir, scope string, log io.Writer) (lockport.Releaser, error) {
 	return platformlocks.AcquireSharedOperationLock(rootDir, scope, log)
@@ -17,12 +19,12 @@ func (Locks) AcquireMaintenanceLock(backupRoot, contour, scope string, log io.Wr
 	return platformlocks.AcquireMaintenanceLock(backupRoot, contour, scope, log)
 }
 
-func (Locks) AcquireRestoreDBLock() (lockport.Releaser, error) {
-	return platformlocks.AcquireRestoreDBLock()
+func (l Locks) AcquireRestoreDBLock() (lockport.Releaser, error) {
+	return platformlocks.AcquireRestoreDBLockInDir(l.RestoreLockDir)
 }
 
-func (Locks) AcquireRestoreFilesLock() (lockport.Releaser, error) {
-	return platformlocks.AcquireRestoreFilesLock()
+func (l Locks) AcquireRestoreFilesLock() (lockport.Releaser, error) {
+	return platformlocks.AcquireRestoreFilesLockInDir(l.RestoreLockDir)
 }
 
 func (Locks) CheckSharedOperationReadiness(rootDir string) (lockport.Readiness, error) {
@@ -33,12 +35,12 @@ func (Locks) CheckMaintenanceReadiness(backupRoot string) (lockport.Readiness, e
 	return adaptLockReadiness(platformlocks.CheckMaintenanceReadiness(backupRoot))
 }
 
-func (Locks) CheckRestoreDBReadiness() (lockport.Readiness, error) {
-	return adaptLockReadiness(platformlocks.CheckRestoreDBReadiness())
+func (l Locks) CheckRestoreDBReadiness() (lockport.Readiness, error) {
+	return adaptLockReadiness(platformlocks.CheckRestoreDBReadinessInDir(l.RestoreLockDir))
 }
 
-func (Locks) CheckRestoreFilesReadiness() (lockport.Readiness, error) {
-	return adaptLockReadiness(platformlocks.CheckRestoreFilesReadiness())
+func (l Locks) CheckRestoreFilesReadiness() (lockport.Readiness, error) {
+	return adaptLockReadiness(platformlocks.CheckRestoreFilesReadinessInDir(l.RestoreLockDir))
 }
 
 func adaptLockReadiness(readiness platformlocks.LockReadiness, err error) (lockport.Readiness, error) {

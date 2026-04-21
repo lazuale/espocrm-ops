@@ -6,6 +6,7 @@ import (
 	doctorapp "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	migrateapp "github.com/lazuale/espocrm-ops/internal/app/migrate"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	restoreapp "github.com/lazuale/espocrm-ops/internal/app/restore"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 )
@@ -19,6 +20,7 @@ type JournalWriterFactory func(dir string) JournalWriter
 type Dependencies struct {
 	Runtime              operationusecase.Runtime
 	JournalWriterFactory JournalWriterFactory
+	Locks                lockport.Locks
 }
 
 type App struct {
@@ -45,10 +47,15 @@ func NewApp(deps Dependencies) *App {
 		}
 	}
 
+	locks := deps.Locks
+	if locks == nil {
+		locks = appadapter.Locks{}
+	}
+
 	operationService := operationusecase.NewService(operationusecase.Dependencies{
 		Env:   appadapter.EnvLoader{},
 		Files: appadapter.Files{},
-		Locks: appadapter.Locks{},
+		Locks: locks,
 	})
 	backupService := backupapp.NewService(backupapp.Dependencies{
 		Operations: operationService,
@@ -65,7 +72,7 @@ func NewApp(deps Dependencies) *App {
 		Env:        appadapter.EnvLoader{},
 		Runtime:    appadapter.Runtime{},
 		Files:      appadapter.Files{},
-		Locks:      appadapter.Locks{},
+		Locks:      locks,
 		Store:      appadapter.BackupStore{},
 	})
 	migrateService := migrateapp.NewService(migrateapp.Dependencies{
@@ -73,13 +80,13 @@ func NewApp(deps Dependencies) *App {
 		Env:        appadapter.EnvLoader{},
 		Runtime:    appadapter.Runtime{},
 		Files:      appadapter.Files{},
-		Locks:      appadapter.Locks{},
+		Locks:      locks,
 		Store:      appadapter.BackupStore{},
 	})
 	doctorService := doctorapp.NewService(doctorapp.Dependencies{
 		Env:     appadapter.EnvLoader{},
 		Files:   appadapter.Files{},
-		Locks:   appadapter.Locks{},
+		Locks:   locks,
 		Runtime: appadapter.Runtime{},
 	})
 

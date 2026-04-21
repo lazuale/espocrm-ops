@@ -2,24 +2,33 @@ package migrate
 
 import (
 	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
+	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 )
 
-func testOperationService() operationapp.Service {
+func testOperationService(locks lockport.Locks) operationapp.Service {
+	if locks == nil {
+		locks = appadapter.Locks{}
+	}
+
 	return operationapp.NewService(operationapp.Dependencies{
 		Env:   appadapter.EnvLoader{},
 		Files: appadapter.Files{},
-		Locks: appadapter.Locks{},
+		Locks: locks,
 	})
 }
 
-func testMigrateService() Service {
+func testMigrateService(locks lockport.Locks) Service {
+	if locks == nil {
+		locks = appadapter.Locks{}
+	}
+
 	return NewService(Dependencies{
-		Operations: testOperationService(),
+		Operations: testOperationService(locks),
 		Env:        appadapter.EnvLoader{},
 		Runtime:    appadapter.Runtime{},
 		Files:      appadapter.Files{},
-		Locks:      appadapter.Locks{},
+		Locks:      locks,
 		Store:      appadapter.BackupStore{},
 	})
 }

@@ -9,6 +9,11 @@ import (
 	"syscall"
 )
 
+const (
+	restoreDBLockName    = "espops-restore-db.lock"
+	restoreFilesLockName = "espops-restore-files.lock"
+)
+
 type LockError struct {
 	Err error
 }
@@ -26,19 +31,6 @@ type FileLock struct {
 	file *os.File
 }
 
-var lockDir = os.TempDir
-
-func SetLockDirForTest(dir string) func() {
-	previous := lockDir
-	lockDir = func() string {
-		return dir
-	}
-
-	return func() {
-		lockDir = previous
-	}
-}
-
 func AcquireJournalPruneLock(journalDir string) (*FileLock, error) {
 	lock, err := AcquireFileLock(pruneLockPath(journalDir))
 	if err != nil {
@@ -49,11 +41,19 @@ func AcquireJournalPruneLock(journalDir string) (*FileLock, error) {
 }
 
 func AcquireRestoreDBLock() (*FileLock, error) {
-	return AcquireFileLock(restoreLockPath("espops-restore-db.lock"))
+	return AcquireRestoreDBLockInDir("")
 }
 
 func AcquireRestoreFilesLock() (*FileLock, error) {
-	return AcquireFileLock(restoreLockPath("espops-restore-files.lock"))
+	return AcquireRestoreFilesLockInDir("")
+}
+
+func AcquireRestoreDBLockInDir(dir string) (*FileLock, error) {
+	return AcquireFileLock(restoreLockPathInDir(dir, restoreDBLockName))
+}
+
+func AcquireRestoreFilesLockInDir(dir string) (*FileLock, error) {
+	return AcquireFileLock(restoreLockPathInDir(dir, restoreFilesLockName))
 }
 
 func AcquireFileLock(path string) (*FileLock, error) {
@@ -110,5 +110,13 @@ func pruneLockPath(journalDir string) string {
 }
 
 func restoreLockPath(name string) string {
-	return filepath.Join(lockDir(), name)
+	return restoreLockPathInDir("", name)
+}
+
+func restoreLockPathInDir(dir, name string) string {
+	if dir == "" {
+		dir = os.TempDir()
+	}
+
+	return filepath.Join(filepath.Clean(dir), name)
 }

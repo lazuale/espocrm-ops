@@ -8,7 +8,7 @@ import (
 )
 
 func TestGolden_Migrate_JSON(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -45,7 +45,10 @@ func TestGolden_Migrate_JSON(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixedNow, "op-migrate-1"),
+		},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",

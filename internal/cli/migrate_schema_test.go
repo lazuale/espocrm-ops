@@ -12,7 +12,7 @@ import (
 )
 
 func TestSchema_Migrate_JSON_Success(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -51,7 +51,10 @@ func TestSchema_Migrate_JSON_Success(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", logPath)
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixedNow, "op-migrate-1"),
+		},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",
@@ -150,7 +153,7 @@ func TestSchema_Migrate_JSON_Success(t *testing.T) {
 }
 
 func TestSchema_Migrate_JSON_Success_SkipDBNoStart(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -187,7 +190,8 @@ func TestSchema_Migrate_JSON_Success_SkipDBNoStart(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
 	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", logPath)
 
-	outcome := executeCLI(
+	outcome := executeCLIWithOptions(
+		[]testAppOption{lockOpt},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",
@@ -229,7 +233,7 @@ func TestSchema_Migrate_JSON_Success_SkipDBNoStart(t *testing.T) {
 }
 
 func TestSchema_Migrate_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -266,7 +270,8 @@ func TestSchema_Migrate_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T
 		},
 	})
 
-	outcome := executeCLI(
+	outcome := executeCLIWithOptions(
+		[]testAppOption{lockOpt},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",
@@ -281,7 +286,7 @@ func TestSchema_Migrate_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T
 }
 
 func TestSchema_Migrate_JSON_Failure_TargetHealthValidation(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -317,7 +322,10 @@ func TestSchema_Migrate_JSON_Failure_TargetHealthValidation(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RECOVERY_HEALTH_MESSAGE", "target health failed")
 
 	outcome := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-health-fail")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixedNow, "op-migrate-health-fail"),
+		},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",
@@ -332,7 +340,7 @@ func TestSchema_Migrate_JSON_Failure_TargetHealthValidation(t *testing.T) {
 }
 
 func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -366,7 +374,10 @@ func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
 
 	first := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixedNow, "op-migrate-repeat-1")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixedNow, "op-migrate-repeat-1"),
+		},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",
@@ -388,7 +399,10 @@ func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 	}
 
 	second := executeCLIWithOptions(
-		[]testAppOption{withFixedTestRuntime(fixedNow.Add(time.Minute), "op-migrate-repeat-2")},
+		[]testAppOption{
+			lockOpt,
+			withFixedTestRuntime(fixedNow.Add(time.Minute), "op-migrate-repeat-2"),
+		},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",
@@ -429,7 +443,7 @@ func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 }
 
 func TestSchema_Migrate_JSON_Failure_CompatibilityDrift(t *testing.T) {
-	isolateRecoveryLocks(t)
+	lockOpt := isolateRecoveryLocks(t)
 
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
@@ -450,7 +464,8 @@ func TestSchema_Migrate_JSON_Failure_CompatibilityDrift(t *testing.T) {
 	})
 	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
-	outcome := executeCLI(
+	outcome := executeCLIWithOptions(
+		[]testAppOption{lockOpt},
 		"--journal-dir", journalDir,
 		"--json",
 		"migrate",
