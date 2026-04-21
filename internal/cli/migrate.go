@@ -6,7 +6,6 @@ import (
 	"strings"
 
 	migrateusecase "github.com/lazuale/espocrm-ops/internal/app/migrate"
-	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
@@ -93,11 +92,8 @@ func validateMigrateInput(cmd *cobra.Command, in *migrateInput) error {
 	if err := normalizeProjectContext(cmd, &in.projectDir, &in.composeFile, nil); err != nil {
 		return err
 	}
-	if err := normalizeOptionalStringFlag(cmd, "confirm-prod", &in.confirmProd); err != nil {
+	if err := normalizeConfirmProdFlag(cmd, &in.confirmProd); err != nil {
 		return err
-	}
-	if in.confirmProd != "" && in.confirmProd != "prod" {
-		return usageError(fmt.Errorf("--confirm-prod accepts only the value prod"))
 	}
 
 	if in.skipDB && in.skipFiles {
@@ -128,39 +124,28 @@ func validateMigrateInput(cmd *cobra.Command, in *migrateInput) error {
 }
 
 func runMigrateExecute(cmd *cobra.Command, in migrateInput) error {
-	spec := CommandSpec{
+	app := appForCommand(cmd)
+	return RunCommandWithResult(cmd, CommandSpec{
 		Name:       "migrate",
 		ErrorCode:  "migrate_failed",
 		ExitCode:   exitcode.InternalError,
 		RenderText: renderMigrateText,
-	}
-	exec := operationusecase.Begin(
-		appForCommand(cmd).runtime,
-		appForCommand(cmd).journalWriterFactory(appForCommand(cmd).options.JournalDir),
-		spec.Name,
-	)
+	}, func() (result.Result, error) {
+		info, err := app.migrate.Execute(migrateusecase.ExecuteRequest{
+			SourceScope: in.fromScope,
+			TargetScope: in.toScope,
+			ProjectDir:  in.projectDir,
+			ComposeFile: in.composeFile,
+			DBBackup:    in.dbBackup,
+			FilesBackup: in.filesBackup,
+			SkipDB:      in.skipDB,
+			SkipFiles:   in.skipFiles,
+			NoStart:     in.noStart,
+			LogWriter:   cmd.ErrOrStderr(),
+		})
 
-	info, err := appForCommand(cmd).migrate.Execute(migrateusecase.ExecuteRequest{
-		SourceScope: in.fromScope,
-		TargetScope: in.toScope,
-		ProjectDir:  in.projectDir,
-		ComposeFile: in.composeFile,
-		DBBackup:    in.dbBackup,
-		FilesBackup: in.filesBackup,
-		SkipDB:      in.skipDB,
-		SkipFiles:   in.skipFiles,
-		NoStart:     in.noStart,
-		LogWriter:   cmd.ErrOrStderr(),
+		return migrateResult(info), err
 	})
-
-	res := migrateResult(info)
-	res.Command = spec.Name
-
-	if err != nil {
-		return finishJournaledCommandFailure(cmd, spec, exec, res, err)
-	}
-
-	return finishJournaledCommandSuccess(cmd, spec, exec, res)
 }
 
 func migrateResult(info migrateusecase.ExecuteInfo) result.Result {
@@ -291,39 +276,8 @@ func renderMigrateText(w io.Writer, res result.Result) error {
 		return err
 	}
 
-	if len(res.Warnings) != 0 {
-		if _, err := fmt.Fprintln(w, "\nWarnings:"); err != nil {
-			return err
-		}
-		for _, warning := range res.Warnings {
-			if _, err := fmt.Fprintf(w, "- %s\n", warning); err != nil {
-				return err
-			}
-		}
-	}
-
-	if _, err := fmt.Fprintln(w, "\nSteps:"); err != nil {
-		return err
-	}
-	for _, rawItem := range res.Items {
-		item, ok := rawItem.(result.MigrateItem)
-		if !ok {
-			return fmt.Errorf("unexpected migrate item type %T", rawItem)
-		}
-		if _, err := fmt.Fprintf(w, "[%s] %s\n", strings.ToUpper(item.Status), item.Summary); err != nil {
-			return err
-		}
-		if strings.TrimSpace(item.Details) != "" {
-			if _, err := fmt.Fprintf(w, "  %s\n", item.Details); err != nil {
-				return err
-			}
-		}
-		if strings.TrimSpace(item.Action) != "" {
-			if _, err := fmt.Fprintf(w, "  Action: %s\n", item.Action); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	return renderStepItemsBlock(w, res.Items, migrateExecutionItem, stepRenderOptions{
+		Title:      "Steps",
+		StatusText: upperStatusText,
+	})
 }

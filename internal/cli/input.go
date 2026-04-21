@@ -80,3 +80,14 @@ func normalizeOptionalAbsolutePathFlag(cmd *cobra.Command, flag string, value *s
 
 	return nil
 }
+
+func normalizeConfirmProdFlag(cmd *cobra.Command, value *string) error {
+	if err := normalizeOptionalStringFlag(cmd, "confirm-prod", value); err != nil {
+		return err
+	}
+	if *value != "" && *value != "prod" {
+		return usageError(fmt.Errorf("--confirm-prod accepts only the value prod"))
+	}
+
+	return nil
+}

@@ -237,7 +237,7 @@ func TestRunCommand_PayloadSerializationFailure_AddsWarning(t *testing.T) {
 	}
 }
 
-func TestRunResultCommand_DoesNotWriteJournalEntries(t *testing.T) {
+func TestRunCommand_WithoutJournal_DoesNotWriteJournalEntries(t *testing.T) {
 	cw := &captureWriter{}
 	opts := []testAppOption{
 		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-read-only"),
@@ -250,7 +250,7 @@ func TestRunResultCommand_DoesNotWriteJournalEntries(t *testing.T) {
 	bindTestApp(cmd, opts...)
 	cmd.SetOut(&strings.Builder{})
 
-	if err := RunResultCommand(cmd, CommandSpec{
+	if err := runCommand(cmd, CommandSpec{
 		Name:      "doctor",
 		ErrorCode: "doctor_failed",
 		ExitCode:  1,
@@ -259,27 +259,127 @@ func TestRunResultCommand_DoesNotWriteJournalEntries(t *testing.T) {
 			OK:      true,
 			Message: "doctor loaded",
 		}, nil
-	}); err != nil {
-		t.Fatalf("RunResultCommand returned success error: %v", err)
+	}, commandRunOptions{}); err != nil {
+		t.Fatalf("runCommand returned success error: %v", err)
 	}
 
 	if len(cw.entries) != 0 {
 		t.Fatalf("expected no journal entries for non-journaling success, got %d", len(cw.entries))
 	}
 
-	err := RunResultCommand(cmd, CommandSpec{
+	err := runCommand(cmd, CommandSpec{
 		Name:      "doctor",
 		ErrorCode: "doctor_failed",
 		ExitCode:  1,
 	}, func() (result.Result, error) {
 		return result.Result{}, errors.New("boom")
-	})
+	}, commandRunOptions{})
 	if err == nil {
 		t.Fatal("expected error")
 	}
 
 	if len(cw.entries) != 0 {
 		t.Fatalf("expected no journal entries for non-journaling failure, got %d", len(cw.entries))
+	}
+}
+
+func TestRunCommandWithResult_JSONErrorReturnsResultCarrierAndWritesJournal(t *testing.T) {
+	cw := &captureWriter{}
+	opts := []testAppOption{
+		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-result-error"),
+		withJournalWriterFactory(func(dir string) JournalWriter {
+			return cw
+		}),
+		withJSONOutput(),
+	}
+
+	cmd := &cobra.Command{}
+	bindTestApp(cmd, opts...)
+	cmd.SetOut(&strings.Builder{})
+
+	err := RunCommandWithResult(cmd, CommandSpec{
+		Name:      "restore",
+		ErrorCode: "restore_failed",
+		ExitCode:  5,
+	}, func() (result.Result, error) {
+		return result.Result{
+			Message: "restore failed",
+			Details: result.RestoreDetails{
+				Scope: "prod",
+				Ready: false,
+			},
+		}, errors.New("boom")
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var carrier resultCarrier
+	if !errors.As(err, &carrier) {
+		t.Fatalf("expected result carrier, got %T", err)
+	}
+
+	res := carrier.CommandResult()
+	if res.Command != "restore" {
+		t.Fatalf("unexpected command: %s", res.Command)
+	}
+	if res.Message != "restore failed" {
+		t.Fatalf("unexpected message: %q", res.Message)
+	}
+	if len(cw.entries) != 1 {
+		t.Fatalf("expected 1 journal entry, got %d", len(cw.entries))
+	}
+	if cw.entries[0].Command != "restore" || cw.entries[0].ErrorMessage != "boom" {
+		t.Fatalf("unexpected journal entry: %+v", cw.entries[0])
+	}
+}
+
+func TestRunDiagnosticCommand_JSONErrorReturnsResultCarrierWithoutJournal(t *testing.T) {
+	cw := &captureWriter{}
+	opts := []testAppOption{
+		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-diagnostic-error"),
+		withJournalWriterFactory(func(dir string) JournalWriter {
+			return cw
+		}),
+		withJSONOutput(),
+	}
+
+	cmd := &cobra.Command{}
+	bindTestApp(cmd, opts...)
+	cmd.SetOut(&strings.Builder{})
+
+	err := RunDiagnosticCommand(cmd, CommandSpec{
+		Name:      "doctor",
+		ErrorCode: "doctor_failed",
+		ExitCode:  2,
+	}, func() (result.Result, error) {
+		return result.Result{
+				Message: "doctor found readiness failures",
+				Details: result.DoctorDetails{
+					TargetScope: "prod",
+					Ready:       false,
+				},
+			}, CodeError{
+				Code:    2,
+				Err:     errors.New("doctor found readiness failures"),
+				ErrCode: "doctor_failed",
+			}
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+
+	var carrier resultCarrier
+	if !errors.As(err, &carrier) {
+		t.Fatalf("expected result carrier, got %T", err)
+	}
+
+	res := carrier.CommandResult()
+	if res.Command != "doctor" {
+		t.Fatalf("unexpected command: %s", res.Command)
+	}
+	if len(cw.entries) != 0 {
+		t.Fatalf("expected no journal entries for diagnostic failure, got %d", len(cw.entries))
 	}
 }
 

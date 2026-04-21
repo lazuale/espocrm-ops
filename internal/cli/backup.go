@@ -247,17 +247,6 @@ func renderBackupText(w io.Writer, res result.Result) error {
 		}
 	}
 
-	if len(res.Warnings) != 0 {
-		if _, err := fmt.Fprintln(w, "\nWarnings:"); err != nil {
-			return err
-		}
-		for _, warning := range res.Warnings {
-			if _, err := fmt.Fprintf(w, "- %s\n", warning); err != nil {
-				return err
-			}
-		}
-	}
-
 	return renderStepItemsBlock(w, res.Items, backupExecutionItem, stepRenderOptions{
 		Title:      "Steps",
 		StatusText: upperStatusText,

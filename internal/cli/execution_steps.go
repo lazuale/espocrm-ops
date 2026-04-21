@@ -90,6 +90,15 @@ func restoreExecutionItem(raw any) (result.SectionItem, error) {
 	return item.SectionItem, nil
 }
 
+func migrateExecutionItem(raw any) (result.SectionItem, error) {
+	item, ok := raw.(result.MigrateItem)
+	if !ok {
+		return result.SectionItem{}, fmt.Errorf("unexpected migrate item type %T", raw)
+	}
+
+	return item.SectionItem, nil
+}
+
 func upperStatusText(status string) string {
 	return strings.ToUpper(status)
 }

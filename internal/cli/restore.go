@@ -5,7 +5,6 @@ import (
 	"io"
 	"strings"
 
-	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
@@ -115,7 +114,7 @@ func validateRestoreInput(cmd *cobra.Command, in *restoreInput) error {
 	if err := normalizeOptionalAbsolutePathFlag(cmd, "files-backup", &in.filesBackup); err != nil {
 		return err
 	}
-	if err := normalizeOptionalStringFlag(cmd, "confirm-prod", &in.confirmProd); err != nil {
+	if err := normalizeConfirmProdFlag(cmd, &in.confirmProd); err != nil {
 		return err
 	}
 
@@ -151,9 +150,6 @@ func validateRestoreInput(cmd *cobra.Command, in *restoreInput) error {
 	if in.noSnapshot && in.snapshotBeforeRestore {
 		return usageError(fmt.Errorf("--snapshot-before-restore cannot be combined with --no-snapshot"))
 	}
-	if in.confirmProd != "" && in.confirmProd != "prod" {
-		return usageError(fmt.Errorf("--confirm-prod accepts only the value prod"))
-	}
 	if !in.dryRun {
 		if !in.force {
 			return usageError(fmt.Errorf("restore requires an explicit --force flag"))
@@ -167,43 +163,33 @@ func validateRestoreInput(cmd *cobra.Command, in *restoreInput) error {
 }
 
 func runRestore(cmd *cobra.Command, in restoreInput) error {
-	spec := CommandSpec{
+	app := appForCommand(cmd)
+	return RunCommandWithResult(cmd, CommandSpec{
 		Name:       "restore",
 		ErrorCode:  "restore_failed",
 		ExitCode:   exitcode.InternalError,
 		RenderText: renderRestoreText,
-	}
-	exec := operationusecase.Begin(
-		appForCommand(cmd).runtime,
-		appForCommand(cmd).journalWriterFactory(appForCommand(cmd).options.JournalDir),
-		spec.Name,
-	)
+	}, func() (result.Result, error) {
+		info, err := app.restore.Execute(restoreusecase.ExecuteRequest{
+			Scope:           in.scope,
+			ProjectDir:      in.projectDir,
+			ComposeFile:     in.composeFile,
+			EnvFileOverride: in.envFile,
+			ManifestPath:    in.manifestPath,
+			DBBackup:        in.dbBackup,
+			FilesBackup:     in.filesBackup,
+			SkipDB:          in.skipDB,
+			SkipFiles:       in.skipFiles,
+			NoSnapshot:      in.noSnapshot,
+			NoStop:          in.noStop,
+			NoStart:         in.noStart,
+			DryRun:          in.dryRun,
+			LogWriter:       cmd.ErrOrStderr(),
+			Now:             app.runtime.Now,
+		})
 
-	info, err := appForCommand(cmd).restore.Execute(restoreusecase.ExecuteRequest{
-		Scope:           in.scope,
-		ProjectDir:      in.projectDir,
-		ComposeFile:     in.composeFile,
-		EnvFileOverride: in.envFile,
-		ManifestPath:    in.manifestPath,
-		DBBackup:        in.dbBackup,
-		FilesBackup:     in.filesBackup,
-		SkipDB:          in.skipDB,
-		SkipFiles:       in.skipFiles,
-		NoSnapshot:      in.noSnapshot,
-		NoStop:          in.noStop,
-		NoStart:         in.noStart,
-		DryRun:          in.dryRun,
-		LogWriter:       cmd.ErrOrStderr(),
-		Now:             appForCommand(cmd).runtime.Now,
+		return restoreResult(info), err
 	})
-
-	res := restoreResult(info)
-	res.Command = spec.Name
-
-	if err != nil {
-		return finishJournaledCommandFailure(cmd, spec, exec, res, err)
-	}
-	return finishJournaledCommandSuccess(cmd, spec, exec, res)
 }
 
 func restoreResult(info restoreusecase.ExecuteInfo) result.Result {

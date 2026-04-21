@@ -16,12 +16,10 @@ type CommandSpec struct {
 	RenderText func(io.Writer, result.Result) error
 }
 
-type commandRunMode int
-
-const (
-	commandRunModeWithoutJournal commandRunMode = iota
-	commandRunModeWithJournal
-)
+type commandRunOptions struct {
+	journal     bool
+	resultError bool
+}
 
 type exitCodedError interface {
 	error
@@ -29,27 +27,34 @@ type exitCodedError interface {
 }
 
 func RunCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error)) error {
-	return runCommandWithMode(cmd, spec, fn, commandRunModeWithJournal)
+	return runCommand(cmd, spec, fn, commandRunOptions{journal: true})
 }
 
-func RunResultCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error)) error {
-	return runCommandWithMode(cmd, spec, fn, commandRunModeWithoutJournal)
+func RunCommandWithResult(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error)) error {
+	return runCommand(cmd, spec, fn, commandRunOptions{
+		journal:     true,
+		resultError: true,
+	})
 }
 
-func runCommandWithMode(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error), mode commandRunMode) error {
+func RunDiagnosticCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error)) error {
+	return runCommand(cmd, spec, fn, commandRunOptions{resultError: true})
+}
+
+func runCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error), opts commandRunOptions) error {
 	app := appForCommand(cmd)
 	var exec operationusecase.Execution
-	if mode == commandRunModeWithJournal {
+	if opts.journal {
 		exec = operationusecase.Begin(app.runtime, app.journalWriterFactory(app.options.JournalDir), spec.Name)
 	}
 
 	res, err := fn()
 
 	if err != nil {
-		return commandFailure(cmd, app, spec, mode, exec, res, err)
+		return commandFailure(cmd, app, spec, opts, exec, res, err)
 	}
 
-	if mode == commandRunModeWithJournal {
+	if opts.journal {
 		completion, finishErr := exec.FinishSuccess(journalRecordFromResult(&res))
 		if finishErr != nil {
 			return finishErr
@@ -60,21 +65,17 @@ func runCommandWithMode(cmd *cobra.Command, spec CommandSpec, fn func() (result.
 	return renderCommandResult(cmd, spec, res)
 }
 
-func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, mode commandRunMode, exec operationusecase.Execution, res result.Result, err error) error {
+func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, opts commandRunOptions, exec operationusecase.Execution, res result.Result, err error) error {
+	res.Command = spec.Name
 	errCode := errorCodeForError(err, spec.ErrorCode)
-	warnings := []string{}
 
-	if mode == commandRunModeWithJournal {
-		if journalErr := exec.FinishFailure(journalRecordFromResult(&res), err, errCode); journalErr != nil {
-			message := fmt.Sprintf("failed to write journal entry: %v", journalErr)
-			if app.JSONEnabled() {
-				warnings = append(warnings, message)
-			} else {
-				if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: %s\n", message); writeErr != nil {
-					warnings = append(warnings, fmt.Sprintf("failed to render warning %q: %v", message, writeErr))
-				}
-			}
-		}
+	warnings := []string{}
+	if opts.journal {
+		warnings = finishJournalFailure(cmd, app, exec, &res, err, errCode, opts.resultError)
+	}
+
+	if opts.resultError {
+		return renderCommandFailureResult(cmd, spec, res, err, errCode)
 	}
 
 	return CodeError{
@@ -97,29 +98,22 @@ func renderCommandResult(cmd *cobra.Command, spec CommandSpec, res result.Result
 	return result.Render(cmd.OutOrStdout(), res, appForCommand(cmd).JSONEnabled())
 }
 
-func finishJournaledCommandSuccess(cmd *cobra.Command, spec CommandSpec, exec operationusecase.Execution, res result.Result) error {
-	completion, err := exec.FinishSuccess(journalRecordFromResult(&res))
-	if err != nil {
-		return err
+func finishJournalFailure(cmd *cobra.Command, app *App, exec operationusecase.Execution, res *result.Result, err error, errCode string, resultError bool) []string {
+	if journalErr := exec.FinishFailure(journalRecordFromResult(res), err, errCode); journalErr != nil {
+		message := fmt.Sprintf("failed to write journal entry: %v", journalErr)
+		if resultError {
+			appendCommandWarning(cmd, app, &res.Warnings, message)
+			return nil
+		}
+		warnings := []string{}
+		appendCommandWarning(cmd, app, &warnings, message)
+		return warnings
 	}
-	applyExecutionCompletion(&res, completion)
 
-	return renderCommandResult(cmd, spec, res)
+	return nil
 }
 
-func finishJournaledCommandFailure(cmd *cobra.Command, spec CommandSpec, exec operationusecase.Execution, res result.Result, err error) error {
-	res.Command = spec.Name
-	errCode := errorCodeForError(err, spec.ErrorCode)
-
-	if journalErr := exec.FinishFailure(journalRecordFromResult(&res), err, errCode); journalErr != nil {
-		message := fmt.Sprintf("failed to write journal entry: %v", journalErr)
-		if appForCommand(cmd).JSONEnabled() {
-			res.Warnings = append(res.Warnings, message)
-		} else if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: %s\n", message); writeErr != nil {
-			res.Warnings = append(res.Warnings, fmt.Sprintf("failed to render warning %q: %v", message, writeErr))
-		}
-	}
-
+func renderCommandFailureResult(cmd *cobra.Command, spec CommandSpec, res result.Result, err error, errCode string) error {
 	codeErr := CodeError{
 		Code:     codeForError(err, spec.ExitCode),
 		Err:      err,
@@ -134,19 +128,21 @@ func finishJournaledCommandFailure(cmd *cobra.Command, spec CommandSpec, exec op
 		}
 	}
 
-	if spec.RenderText != nil {
-		if err := spec.RenderText(cmd.OutOrStdout(), res); err != nil {
-			return err
-		}
-	} else if err := result.Render(cmd.OutOrStdout(), res, false); err != nil {
-		return err
-	}
-
-	if err := renderWarnings(cmd.OutOrStdout(), res.Warnings); err != nil {
+	if err := renderCommandResult(cmd, spec, res); err != nil {
 		return err
 	}
 
 	return silentCodeError{CodeError: codeErr}
+}
+
+func appendCommandWarning(cmd *cobra.Command, app *App, warnings *[]string, message string) {
+	if app.JSONEnabled() {
+		*warnings = append(*warnings, message)
+		return
+	}
+	if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: %s\n", message); writeErr != nil {
+		*warnings = append(*warnings, fmt.Sprintf("failed to render warning %q: %v", message, writeErr))
+	}
 }
 
 func renderWarnings(w io.Writer, warnings []string) error {

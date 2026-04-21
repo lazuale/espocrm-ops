@@ -9,20 +9,16 @@ import (
 )
 
 func journalRecordFromResult(res *result.Result) operationusecase.JournalRecord {
-	artifacts, artifactErr := toJSONObjectMap(res.Artifacts)
-	if artifactErr != nil {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal artifacts: %v", artifactErr))
-	}
+	// Journal payload stores JSON-compatible maps, so CLI projects typed result
+	// payloads through their existing JSON shape here.
+	artifacts, artifactErr := projectJournalObject(res.Artifacts)
+	appendJournalShapeWarning(res, "artifacts", artifactErr)
 
-	details, detailsErr := toJSONObjectMap(res.Details)
-	if detailsErr != nil {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal details: %v", detailsErr))
-	}
+	details, detailsErr := projectJournalObject(res.Details)
+	appendJournalShapeWarning(res, "details", detailsErr)
 
-	items, itemsErr := toJSONArray(res.Items)
-	if itemsErr != nil {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal items: %v", itemsErr))
-	}
+	items, itemsErr := projectJournalItems(res.Items)
+	appendJournalShapeWarning(res, "items", itemsErr)
 
 	return operationusecase.JournalRecord{
 		DryRun:   res.DryRun,
@@ -36,6 +32,14 @@ func journalRecordFromResult(res *result.Result) operationusecase.JournalRecord 
 	}
 }
 
+func appendJournalShapeWarning(res *result.Result, field string, err error) {
+	if err == nil {
+		return
+	}
+
+	res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal %s: %v", field, err))
+}
+
 func applyExecutionCompletion(res *result.Result, completion operationusecase.Completion) {
 	res.OK = true
 	res.Timing = &result.TimingInfo{
@@ -46,9 +50,12 @@ func applyExecutionCompletion(res *result.Result, completion operationusecase.Co
 	res.Warnings = completion.Warnings
 }
 
-func toJSONObjectMap(v any) (map[string]any, error) {
+func projectJournalObject(v any) (map[string]any, error) {
 	if v == nil {
 		return nil, nil
+	}
+	if typed, ok := v.(map[string]any); ok {
+		return cloneJSONObject(typed), nil
 	}
 
 	raw, err := json.Marshal(v)
@@ -64,7 +71,7 @@ func toJSONObjectMap(v any) (map[string]any, error) {
 	return out, nil
 }
 
-func toJSONArray(v any) ([]any, error) {
+func projectJournalItems(v any) ([]any, error) {
 	if v == nil {
 		return nil, nil
 	}
@@ -80,4 +87,17 @@ func toJSONArray(v any) ([]any, error) {
 	}
 
 	return out, nil
+}
+
+func cloneJSONObject(src map[string]any) map[string]any {
+	if src == nil {
+		return nil
+	}
+
+	dst := make(map[string]any, len(src))
+	for key, value := range src {
+		dst[key] = value
+	}
+
+	return dst
 }

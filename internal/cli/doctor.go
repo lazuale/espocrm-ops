@@ -34,41 +34,7 @@ func newDoctorCmd() *cobra.Command {
 				return err
 			}
 
-			report, err := appForCommand(cmd).doctor.Diagnose(doctorusecase.Request{
-				Scope:           in.scope,
-				ProjectDir:      in.projectDir,
-				ComposeFile:     in.composeFile,
-				EnvFileOverride: in.envFile,
-			})
-			if err != nil {
-				return err
-			}
-
-			res := doctorResult(report)
-			if report.Ready() {
-				return renderCommandResult(cmd, CommandSpec{
-					Name:       "doctor",
-					RenderText: renderDoctorText,
-				}, res)
-			}
-
-			errCode := CodeError{
-				Code:    exitcode.ValidationError,
-				Err:     apperr.Wrap(apperr.KindValidation, "doctor_failed", errors.New("doctor found readiness failures")),
-				ErrCode: "doctor_failed",
-			}
-
-			if appForCommand(cmd).JSONEnabled() {
-				return ResultCodeError{
-					CodeError: errCode,
-					Result:    res,
-				}
-			}
-
-			if err := renderDoctorText(cmd.OutOrStdout(), res); err != nil {
-				return err
-			}
-			return silentCodeError{CodeError: errCode}
+			return runDoctor(cmd, in)
 		},
 	}
 
@@ -99,6 +65,37 @@ func validateDoctorInput(cmd *cobra.Command, in *doctorInput) error {
 	}
 
 	return nil
+}
+
+func runDoctor(cmd *cobra.Command, in doctorInput) error {
+	app := appForCommand(cmd)
+	return RunDiagnosticCommand(cmd, CommandSpec{
+		Name:       "doctor",
+		ErrorCode:  "doctor_failed",
+		ExitCode:   exitcode.ValidationError,
+		RenderText: renderDoctorText,
+	}, func() (result.Result, error) {
+		report, err := app.doctor.Diagnose(doctorusecase.Request{
+			Scope:           in.scope,
+			ProjectDir:      in.projectDir,
+			ComposeFile:     in.composeFile,
+			EnvFileOverride: in.envFile,
+		})
+		if err != nil {
+			return result.Result{}, err
+		}
+
+		res := doctorResult(report)
+		if report.Ready() {
+			return res, nil
+		}
+
+		return res, CodeError{
+			Code:    exitcode.ValidationError,
+			Err:     apperr.Wrap(apperr.KindValidation, "doctor_failed", errors.New("doctor found readiness failures")),
+			ErrCode: "doctor_failed",
+		}
+	})
 }
 
 func doctorResult(report doctorusecase.Report) result.Result {
