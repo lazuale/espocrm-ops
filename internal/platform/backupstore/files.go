@@ -1,9 +1,7 @@
 package backupstore
 
 import (
-	"fmt"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -31,19 +29,4 @@ func InspectFile(path string) (FileInfo, error) {
 		Size:    stat.Size(),
 		ModTime: stat.ModTime(),
 	}, nil
-}
-
-func ValidateTXTManifest(path string) error {
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		return err
-	}
-	text := string(raw)
-	for _, key := range []string{"created_at=", "contour=", "compose_project="} {
-		if !strings.Contains(text, key) {
-			return fmt.Errorf("missing %s", strings.TrimSuffix(key, "="))
-		}
-	}
-
-	return nil
 }
