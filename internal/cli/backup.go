@@ -111,7 +111,7 @@ func backupResult(info backupusecase.ExecuteInfo) result.Result {
 		message = "backup failed"
 	}
 
-	items := make([]any, 0, len(info.Steps))
+	items := make([]result.ItemPayload, 0, len(info.Steps))
 	for _, step := range info.Steps {
 		items = append(items, result.BackupItem{
 			SectionItem: newSectionItem(step.Code, step.Status, step.Summary, step.Details, step.Action),
@@ -253,7 +253,7 @@ func renderBackupText(w io.Writer, res result.Result) error {
 	})
 }
 
-func backupExecutionItem(raw any) (result.SectionItem, error) {
+func backupExecutionItem(raw result.ItemPayload) (result.SectionItem, error) {
 	item, ok := raw.(result.BackupItem)
 	if !ok {
 		return result.SectionItem{}, fmt.Errorf("unexpected backup item type %T", raw)

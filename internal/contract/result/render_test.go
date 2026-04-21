@@ -50,9 +50,9 @@ func TestRenderJSON(t *testing.T) {
 		OK:      true,
 		Message: "restore dry-run passed",
 		Details: RestoreDetails{
-			Ready:     true,
-			Scope:     "dev",
-			SourceKind:"manifest",
+			Ready:      true,
+			Scope:      "dev",
+			SourceKind: "manifest",
 		},
 		Timing: &TimingInfo{
 			StartedAt:  "2026-04-15T10:00:00Z",
@@ -64,14 +64,19 @@ func TestRenderJSON(t *testing.T) {
 		t.Fatalf("Render failed: %v", err)
 	}
 
-	var decoded Result
+	var decoded map[string]any
 	if err := json.Unmarshal(buf.Bytes(), &decoded); err != nil {
 		t.Fatalf("invalid JSON output: %v", err)
 	}
-	if decoded.Command != "restore" || !decoded.OK || decoded.Message != "restore dry-run passed" {
+	if decoded["command"] != "restore" || decoded["ok"] != true || decoded["message"] != "restore dry-run passed" {
 		t.Fatalf("unexpected decoded result: %+v", decoded)
 	}
-	if decoded.Timing == nil || decoded.Timing.DurationMS != 1000 {
-		t.Fatalf("expected timing in decoded result, got: %+v", decoded.Timing)
+	timing, ok := decoded["timing"].(map[string]any)
+	if !ok || timing["duration_ms"] != float64(1000) {
+		t.Fatalf("expected timing in decoded result, got: %+v", decoded["timing"])
+	}
+	details, ok := decoded["details"].(map[string]any)
+	if !ok || details["scope"] != "dev" || details["source_kind"] != "manifest" {
+		t.Fatalf("expected typed details payload in decoded result, got: %+v", decoded["details"])
 	}
 }

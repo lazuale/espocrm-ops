@@ -9,8 +9,8 @@ import (
 )
 
 func journalRecordFromResult(res *result.Result) operationusecase.JournalRecord {
-	// Journal payload stores JSON-compatible maps, so CLI projects typed result
-	// payloads through their existing JSON shape here.
+	// Journal payload stores JSON-compatible maps, so CLI projects the bounded
+	// result payload families through their existing JSON shape here.
 	artifacts, artifactErr := projectJournalObject(res.Artifacts)
 	appendJournalShapeWarning(res, "artifacts", artifactErr)
 
@@ -71,8 +71,8 @@ func projectJournalObject(v any) (map[string]any, error) {
 	return out, nil
 }
 
-func projectJournalItems(v any) ([]any, error) {
-	if v == nil {
+func projectJournalItems(v []result.ItemPayload) ([]any, error) {
+	if len(v) == 0 {
 		return nil, nil
 	}
 

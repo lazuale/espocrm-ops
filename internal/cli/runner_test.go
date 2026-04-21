@@ -141,8 +141,8 @@ func TestRunCommand_SerializesTypedArtifactsAndDetailsIntoJournal(t *testing.T) 
 				Scope:     "prod",
 				CreatedAt: "2026-04-15T11:00:00Z",
 			},
-			Items: []any{
-				result.SectionItem{
+			Items: []result.ItemPayload{
+				result.DoctorCheck{
 					Code:    "doctor",
 					Status:  "completed",
 					Summary: "Doctor completed",
@@ -186,54 +186,6 @@ func TestRunCommand_SerializesTypedArtifactsAndDetailsIntoJournal(t *testing.T) 
 	}
 	if item["code"] != "doctor" || item["status"] != "completed" {
 		t.Fatalf("unexpected item payload: %#v", item)
-	}
-}
-
-func TestRunCommand_PayloadSerializationFailure_AddsWarning(t *testing.T) {
-	cw := &captureWriter{}
-	opts := []testAppOption{
-		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-bad-payload"),
-		withJournalWriterFactory(func(dir string) JournalWriter {
-			return cw
-		}),
-	}
-
-	cmd := &cobra.Command{}
-	bindTestApp(cmd, opts...)
-	out := &strings.Builder{}
-	cmd.SetOut(out)
-
-	err := RunCommand(cmd, CommandSpec{
-		Name:      "weird-command",
-		ErrorCode: "weird_failed",
-		ExitCode:  5,
-	}, func() (result.Result, error) {
-		ch := make(chan int)
-		return result.Result{
-			Message: "ok",
-			Details: struct {
-				Bad any `json:"bad"`
-			}{
-				Bad: ch,
-			},
-		}, nil
-	})
-	if err != nil {
-		t.Fatalf("RunCommand returned error: %v", err)
-	}
-
-	got := out.String()
-	if !strings.Contains(got, "failed to serialize journal details") {
-		t.Fatalf("expected serialization warning, got: %s", got)
-	}
-	if len(cw.entries) != 1 {
-		t.Fatalf("expected 1 journal entry, got %d", len(cw.entries))
-	}
-	if len(cw.entries[0].Warnings) != 1 || !strings.Contains(cw.entries[0].Warnings[0], "failed to serialize journal details") {
-		t.Fatalf("expected journal serialization warning, got: %+v", cw.entries[0].Warnings)
-	}
-	if cw.entries[0].Details != nil {
-		t.Fatalf("expected failed details payload to be omitted from journal, got: %+v", cw.entries[0].Details)
 	}
 }
 

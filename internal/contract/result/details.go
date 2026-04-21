@@ -13,6 +13,8 @@ type BackupVerifyDetails struct {
 	CreatedAt string `json:"created_at"`
 }
 
+func (BackupVerifyDetails) isResultDetails() {}
+
 type BackupDetails struct {
 	Scope                  string `json:"scope"`
 	Ready                  bool   `json:"ready"`
@@ -31,15 +33,21 @@ type BackupDetails struct {
 	RetentionDays          int    `json:"retention_days"`
 }
 
+func (BackupDetails) isResultDetails() {}
+
 type BackupItem struct {
 	SectionItem
 }
+
+func (BackupItem) isResultItem() {}
 
 type BackupVerifyArtifacts struct {
 	Manifest    string `json:"manifest"`
 	DBBackup    string `json:"db_backup,omitempty"`
 	FilesBackup string `json:"files_backup,omitempty"`
 }
+
+func (BackupVerifyArtifacts) isResultArtifacts() {}
 
 type BackupArtifacts struct {
 	ProjectDir    string `json:"project_dir,omitempty"`
@@ -53,6 +61,8 @@ type BackupArtifacts struct {
 	DBChecksum    string `json:"db_checksum,omitempty"`
 	FilesChecksum string `json:"files_checksum,omitempty"`
 }
+
+func (BackupArtifacts) isResultArtifacts() {}
 
 type RestoreDetails struct {
 	Scope                  string `json:"scope"`
@@ -75,6 +85,8 @@ type RestoreDetails struct {
 	StartedDBTemporarily   bool   `json:"started_db_temporarily"`
 }
 
+func (RestoreDetails) isResultDetails() {}
+
 type RestoreArtifacts struct {
 	ProjectDir            string `json:"project_dir"`
 	ComposeFile           string `json:"compose_file"`
@@ -92,9 +104,13 @@ type RestoreArtifacts struct {
 	SnapshotFilesChecksum string `json:"snapshot_files_checksum,omitempty"`
 }
 
+func (RestoreArtifacts) isResultArtifacts() {}
+
 type RestoreItem struct {
 	SectionItem
 }
+
+func (RestoreItem) isResultItem() {}
 
 type MigrateDetails struct {
 	SourceScope            string `json:"source_scope"`
@@ -114,6 +130,8 @@ type MigrateDetails struct {
 	StartedDBTemporarily   bool   `json:"started_db_temporarily"`
 }
 
+func (MigrateDetails) isResultDetails() {}
+
 type MigrateArtifacts struct {
 	ProjectDir           string `json:"project_dir"`
 	ComposeFile          string `json:"compose_file"`
@@ -131,9 +149,13 @@ type MigrateArtifacts struct {
 	FilesBackup          string `json:"files_backup,omitempty"`
 }
 
+func (MigrateArtifacts) isResultArtifacts() {}
+
 type MigrateItem struct {
 	SectionItem
 }
+
+func (MigrateItem) isResultItem() {}
 
 type DoctorDetails struct {
 	TargetScope string `json:"target_scope"`
@@ -143,6 +165,8 @@ type DoctorDetails struct {
 	Warnings    int    `json:"warnings"`
 	Failed      int    `json:"failed"`
 }
+
+func (DoctorDetails) isResultDetails() {}
 
 type DoctorScopeArtifact struct {
 	Scope      string `json:"scope"`
@@ -156,6 +180,8 @@ type DoctorArtifacts struct {
 	Scopes      []DoctorScopeArtifact `json:"scopes,omitempty"`
 }
 
+func (DoctorArtifacts) isResultArtifacts() {}
+
 type DoctorCheck struct {
 	Scope   string `json:"scope,omitempty"`
 	Code    string `json:"code"`
@@ -164,3 +190,5 @@ type DoctorCheck struct {
 	Details string `json:"details,omitempty"`
 	Action  string `json:"action,omitempty"`
 }
+
+func (DoctorCheck) isResultItem() {}

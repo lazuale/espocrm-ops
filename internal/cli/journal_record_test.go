@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"strings"
 	"testing"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
@@ -11,16 +10,18 @@ func TestJournalRecordFromResultSerializesPayload(t *testing.T) {
 	res := result.Result{
 		Message: "ok",
 		DryRun:  true,
-		Artifacts: struct {
-			Manifest string `json:"manifest"`
-		}{Manifest: "/tmp/manifest.json"},
-		Details: map[string]any{
-			"scope": "dev",
+		Artifacts: result.BackupVerifyArtifacts{
+			Manifest: "/tmp/manifest.json",
 		},
-		Items: []any{
-			struct {
-				Code string `json:"code"`
-			}{Code: "backup"},
+		Details: result.BackupVerifyDetails{
+			Scope: "dev",
+		},
+		Items: []result.ItemPayload{
+			result.BackupItem{
+				SectionItem: result.SectionItem{
+					Code: "backup",
+				},
+			},
 		},
 		Warnings: []string{"existing"},
 	}
@@ -45,20 +46,5 @@ func TestJournalRecordFromResultSerializesPayload(t *testing.T) {
 	}
 	if len(record.Warnings) != 1 || record.Warnings[0] != "existing" {
 		t.Fatalf("unexpected warnings: %#v", record.Warnings)
-	}
-}
-
-func TestJournalRecordFromResultAppendsSerializationWarnings(t *testing.T) {
-	res := result.Result{
-		Artifacts: func() {},
-	}
-
-	record := journalRecordFromResult(&res)
-
-	if len(res.Warnings) != 1 || !strings.Contains(res.Warnings[0], "failed to serialize journal artifacts") {
-		t.Fatalf("expected serialization warning on result, got %#v", res.Warnings)
-	}
-	if len(record.Warnings) != 1 || !strings.Contains(record.Warnings[0], "failed to serialize journal artifacts") {
-		t.Fatalf("expected serialization warning on journal record, got %#v", record.Warnings)
 	}
 }

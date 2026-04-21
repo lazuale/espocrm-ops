@@ -105,7 +105,7 @@ func doctorResult(report doctorusecase.Report) result.Result {
 		message = "doctor found readiness failures"
 	}
 
-	items := make([]any, 0, len(report.Checks))
+	items := make([]result.ItemPayload, 0, len(report.Checks))
 	for _, check := range report.Checks {
 		items = append(items, result.DoctorCheck{
 			Scope:   check.Scope,

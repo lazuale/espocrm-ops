@@ -155,7 +155,7 @@ func migrateResult(info migrateusecase.ExecuteInfo) result.Result {
 		message = "backup migration failed"
 	}
 
-	items := make([]any, 0, len(info.Steps))
+	items := make([]result.ItemPayload, 0, len(info.Steps))
 	for _, step := range info.Steps {
 		items = append(items, result.MigrateItem{
 			SectionItem: newSectionItem(step.Code, step.Status, step.Summary, step.Details, step.Action),
