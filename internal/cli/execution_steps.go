@@ -6,7 +6,7 @@ import (
 	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	restoreusecase "github.com/lazuale/espocrm-ops/internal/usecase/restore"
+	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
 )
 
 type stepRenderOptions struct {

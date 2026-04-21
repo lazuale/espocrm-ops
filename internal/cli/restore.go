@@ -7,8 +7,8 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
-	restoreusecase "github.com/lazuale/espocrm-ops/internal/usecase/restore"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
 	"github.com/spf13/cobra"
 )
 
@@ -179,7 +179,7 @@ func runRestore(cmd *cobra.Command, in restoreInput) error {
 		spec.Name,
 	)
 
-	info, err := restoreusecase.Execute(restoreusecase.ExecuteRequest{
+	info, err := appForCommand(cmd).restore.Execute(restoreusecase.ExecuteRequest{
 		Scope:           in.scope,
 		ProjectDir:      in.projectDir,
 		ComposeFile:     in.composeFile,

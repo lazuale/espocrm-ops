@@ -1,17 +1,13 @@
 package cli
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
+	backupusecase "github.com/lazuale/espocrm-ops/internal/app/backup"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	"github.com/lazuale/espocrm-ops/internal/opsconfig"
-	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
-	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
 	"github.com/spf13/cobra"
 )
 
@@ -89,54 +85,16 @@ func runBackup(cmd *cobra.Command, in backupInput) error {
 		ExitCode:   exitcode.InternalError,
 		RenderText: renderBackupText,
 	}, func() (res result.Result, err error) {
-		res = backupInputResult(in)
-
-		ctx, err := maintenanceusecase.PrepareOperation(maintenanceusecase.OperationContextRequest{
+		info, err := appForCommand(cmd).backup.Execute(backupusecase.Request{
 			Scope:           in.scope,
-			Operation:       "backup",
 			ProjectDir:      in.projectDir,
+			ComposeFile:     in.composeFile,
 			EnvFileOverride: in.envFile,
+			SkipDB:          in.skipDB,
+			SkipFiles:       in.skipFiles,
+			NoStop:          in.noStop,
+			Now:             appForCommand(cmd).runtime.Now,
 		})
-		if err != nil {
-			return res, wrapBackupCommandError(err)
-		}
-		defer func() {
-			if releaseErr := ctx.Release(); releaseErr != nil {
-				if err == nil {
-					err = releaseErr
-					return
-				}
-				err = errors.Join(err, releaseErr)
-			}
-		}()
-
-		cfg, err := opsconfig.LoadBackupExecutionConfig(in.projectDir, ctx.Env.FilePath, ctx.Env.Values, !in.skipDB)
-		if err != nil {
-			return res, apperr.Wrap(apperr.KindValidation, "backup_failed", err)
-		}
-
-		req := backupusecase.ExecuteRequest{
-			Scope:          in.scope,
-			ProjectDir:     in.projectDir,
-			ComposeFile:    in.composeFile,
-			EnvFile:        ctx.Env.FilePath,
-			BackupRoot:     cfg.BackupRoot,
-			StorageDir:     cfg.StorageDir,
-			NamePrefix:     cfg.NamePrefix,
-			RetentionDays:  cfg.RetentionDays,
-			ComposeProject: cfg.ComposeProject,
-			DBUser:         cfg.DBUser,
-			DBPassword:     cfg.DBPassword,
-			DBName:         cfg.DBName,
-			EspoCRMImage:   cfg.EspoCRMImage,
-			MariaDBTag:     cfg.MariaDBTag,
-			SkipDB:         in.skipDB,
-			SkipFiles:      in.skipFiles,
-			NoStop:         in.noStop,
-			Now:            appForCommand(cmd).runtime.Now,
-		}
-
-		info, err := backupusecase.Execute(req)
 		if err != nil {
 			res = backupResult(info)
 			return res, err
@@ -144,18 +102,6 @@ func runBackup(cmd *cobra.Command, in backupInput) error {
 
 		return backupResult(info), nil
 	})
-}
-
-func backupInputResult(in backupInput) result.Result {
-	return result.Result{
-		OK: true,
-		Details: result.BackupDetails{
-			Scope:     in.scope,
-			SkipDB:    in.skipDB,
-			SkipFiles: in.skipFiles,
-			NoStop:    in.noStop,
-		},
-	}
 }
 
 func backupResult(info backupusecase.ExecuteInfo) result.Result {
@@ -325,12 +271,4 @@ func backupExecutionItem(raw any) (result.SectionItem, error) {
 	}
 
 	return item.SectionItem, nil
-}
-
-func wrapBackupCommandError(err error) error {
-	if kind, ok := apperr.KindOf(err); ok {
-		return apperr.Wrap(kind, "backup_failed", err)
-	}
-
-	return apperr.Wrap(apperr.KindInternal, "backup_failed", err)
 }

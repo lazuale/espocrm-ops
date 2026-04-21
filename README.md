@@ -118,7 +118,8 @@ Run a migration:
 
 - `cmd/espops/`: program entrypoint
 - `internal/cli/`: Cobra command surface, input validation, result rendering
-- `internal/usecase/`: retained product behavior
+- `internal/app/`: application workflows and operation lifecycle
+- `internal/domain/`: policy, invariants, and shared operational vocabulary
 - `internal/platform/`: filesystem, Docker, config, backup storage, and lock adapters
 - `internal/opsconfig/`: shared Go authority for path and env-derived runtime semantics
 - `internal/contract/`: JSON/output contract and exit codes

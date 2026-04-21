@@ -8,7 +8,8 @@ Retained product behavior belongs in:
 
 - `cmd/espops/` for the binary entrypoint
 - `internal/cli/` for flags, command wiring, and result rendering
-- `internal/usecase/` for retained workflows
+- `internal/app/` for retained workflows and operation lifecycle
+- `internal/domain/` for policy and shared operational meaning
 - `internal/platform/` for side-effecting adapters
 - `internal/opsconfig/` for shared operational semantics that must stay Go-owned
 
@@ -64,11 +65,11 @@ make ci
 ## Operational Style
 
 - CLI is edge-only: validate flags, normalize input, call one usecase boundary, render one structured result.
-- Mutating usecases expose `Execute(req)`, run a linear workflow, and return structured `Info`, `Warnings`, `Steps`, `Counts()`, and `Ready()`.
+- Mutating app modules expose `Execute(req)`, run a linear workflow, and return structured `Info`, `Warnings`, `Steps`, `Counts()`, and `Ready()`.
 - Final `apperr` wrapping belongs to the `Execute()` boundary. Helpers return raw errors or lightweight local typed failures.
 - Keep helpers package-local. Do not add framework packages, generic engines, or unnecessary shared helper packages.
 - Prefer explicit request-level injection or small local interfaces in tests. Do not add mutable package-global hooks.
-- `backup.Execute` is intentionally a prepared worker boundary. The CLI owns backup preflight and env-derived config assembly so restore can reuse the same backup workflow for emergency recovery points without a second wrapper layer.
+- `backup` exposes both `Execute(req)` and `ExecutePrepared(req)`. Operator-facing preflight lives in application code, not in CLI glue.
 
 ## Typical Change Flow
 

@@ -7,8 +7,8 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	migrateusecase "github.com/lazuale/espocrm-ops/internal/usecase/migrate"
-	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
+	migrateusecase "github.com/lazuale/espocrm-ops/internal/app/migrate"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	"github.com/spf13/cobra"
 )
 
@@ -140,7 +140,7 @@ func runMigrateExecute(cmd *cobra.Command, in migrateInput) error {
 		spec.Name,
 	)
 
-	info, err := migrateusecase.Execute(migrateusecase.ExecuteRequest{
+	info, err := appForCommand(cmd).migrate.Execute(migrateusecase.ExecuteRequest{
 		SourceScope: in.fromScope,
 		TargetScope: in.toScope,
 		ProjectDir:  in.projectDir,

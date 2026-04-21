@@ -6,7 +6,7 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	"github.com/lazuale/espocrm-ops/internal/usecase/backup"
+	"github.com/lazuale/espocrm-ops/internal/app/backup"
 	"github.com/spf13/cobra"
 )
 
@@ -37,7 +37,7 @@ func newBackupVerifyCmd() *cobra.Command {
 
 				verifyManifestPath := manifestPath
 				if backupRoot != "" {
-					selectedManifestPath, err := backup.LatestCompleteManifest(backupRoot)
+					selectedManifestPath, err := appForCommand(cmd).backup.LatestCompleteManifest(backupRoot)
 					if err != nil {
 						return res, err
 					}
@@ -47,7 +47,7 @@ func newBackupVerifyCmd() *cobra.Command {
 					}
 				}
 
-				info, err := backup.VerifyDetailed(backup.VerifyRequest{
+				info, err := appForCommand(cmd).backup.VerifyDetailed(backup.VerifyRequest{
 					ManifestPath: verifyManifestPath,
 				})
 				if err != nil {

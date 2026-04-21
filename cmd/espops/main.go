@@ -5,7 +5,7 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/cli"
 	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
-	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 )
 
 func main() {

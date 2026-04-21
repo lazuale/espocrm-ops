@@ -9,7 +9,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	doctorusecase "github.com/lazuale/espocrm-ops/internal/usecase/doctor"
+	doctorusecase "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	"github.com/spf13/cobra"
 )
 

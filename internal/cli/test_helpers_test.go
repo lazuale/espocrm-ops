@@ -11,7 +11,7 @@ import (
 	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
-	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	"github.com/spf13/cobra"
 )
 

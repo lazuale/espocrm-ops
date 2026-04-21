@@ -30,11 +30,13 @@ func TestInternalDependencyBoundaries(t *testing.T) {
 				modulePath + "/internal/",
 			})
 		case inLayer(pkg.ImportPath, "cli"):
-			assertNoImports(t, pkg, []string{
+			assertNoImportsExcept(t, pkg, []string{
 				modulePath + "/internal/domain",
 				modulePath + "/internal/platform",
+			}, []string{
+				modulePath + "/internal/platform/appadapter",
 			})
-		case inLayer(pkg.ImportPath, "usecase"):
+		case inLayer(pkg.ImportPath, "app"):
 			assertNoImports(t, pkg, []string{
 				modulePath + "/internal/cli",
 				modulePath + "/internal/contract/exitcode",
@@ -45,10 +47,12 @@ func TestInternalDependencyBoundaries(t *testing.T) {
 			})
 			assertStdlibOnly(t, pkg)
 		case inLayer(pkg.ImportPath, "platform"):
-			assertNoImports(t, pkg, []string{
+			assertNoImportsExcept(t, pkg, []string{
 				modulePath + "/internal/cli",
 				modulePath + "/internal/contract",
-				modulePath + "/internal/usecase",
+				modulePath + "/internal/app",
+			}, []string{
+				modulePath + "/internal/app/ports",
 			})
 		}
 	}
@@ -129,12 +133,12 @@ func TestProductionCLIPackageHasNoPackageVars(t *testing.T) {
 	}
 }
 
-func TestUsecaseAndDomainDoNotReadProcessEnv(t *testing.T) {
+func TestAppAndDomainDoNotReadProcessEnv(t *testing.T) {
 	root := repoRoot(t)
 	fset := token.NewFileSet()
 
 	for _, dir := range []string{
-		filepath.Join(root, "internal", "usecase"),
+		filepath.Join(root, "internal", "app"),
 		filepath.Join(root, "internal", "domain"),
 	} {
 		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
@@ -234,11 +238,11 @@ func TestDockerMySQLAdapterDoesNotUseProcessStdIOOrWholeEnv(t *testing.T) {
 	}
 }
 
-func TestOperationUsecaseDoesNotOwnPlatformJournalWiring(t *testing.T) {
-	pkg := listPackage(t, "./internal/usecase/operation")
+func TestOperationAppDoesNotOwnPlatformJournalStoreWiring(t *testing.T) {
+	pkg := listPackage(t, "./internal/app/operation")
 
 	assertNoImports(t, pkg, []string{
-		modulePath + "/internal/platform/",
+		modulePath + "/internal/platform/journalstore",
 	})
 }
 
@@ -322,6 +326,24 @@ func assertNoImports(t *testing.T, pkg listedPackage, forbiddenPrefixes []string
 	t.Helper()
 
 	for _, imp := range pkg.Imports {
+		for _, forbidden := range forbiddenPrefixes {
+			if strings.HasPrefix(imp, forbidden) {
+				t.Fatalf("%s imports forbidden package %s", pkg.ImportPath, imp)
+			}
+		}
+	}
+}
+
+func assertNoImportsExcept(t *testing.T, pkg listedPackage, forbiddenPrefixes, allowedPrefixes []string) {
+	t.Helper()
+
+allowed:
+	for _, imp := range pkg.Imports {
+		for _, allowed := range allowedPrefixes {
+			if strings.HasPrefix(imp, allowed) {
+				continue allowed
+			}
+		}
 		for _, forbidden := range forbiddenPrefixes {
 			if strings.HasPrefix(imp, forbidden) {
 				t.Fatalf("%s imports forbidden package %s", pkg.ImportPath, imp)

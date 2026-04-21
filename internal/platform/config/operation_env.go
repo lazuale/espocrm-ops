@@ -9,66 +9,36 @@ import (
 	"strings"
 	"syscall"
 
-	"github.com/lazuale/espocrm-ops/internal/opsconfig"
+	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
 )
 
-type OperationEnv struct {
-	FilePath        string
-	ResolvedContour string
-	Values          map[string]string
-}
-
-func (e OperationEnv) Value(key string) string {
-	if e.Values == nil {
-		return ""
-	}
-
-	return e.Values[key]
-}
-
-func (e OperationEnv) ComposeProject() string {
-	return e.Value("COMPOSE_PROJECT_NAME")
-}
-
-func (e OperationEnv) DBStorageDir() string {
-	return e.Value("DB_STORAGE_DIR")
-}
-
-func (e OperationEnv) ESPOStorageDir() string {
-	return e.Value("ESPO_STORAGE_DIR")
-}
-
-func (e OperationEnv) BackupRoot() string {
-	return e.Value("BACKUP_ROOT")
-}
-
-func LoadOperationEnv(projectDir, scope, overridePath string) (OperationEnv, error) {
+func LoadOperationEnv(projectDir, scope, overridePath string) (domainenv.OperationEnv, error) {
 	resolvedPath, err := resolveOperationEnvFile(projectDir, scope, overridePath)
 	if err != nil {
-		return OperationEnv{}, err
+		return domainenv.OperationEnv{}, err
 	}
 
 	if err := validateEnvFileForLoading(resolvedPath); err != nil {
-		return OperationEnv{}, err
+		return domainenv.OperationEnv{}, err
 	}
 
 	values, err := loadEnvAssignments(resolvedPath)
 	if err != nil {
-		return OperationEnv{}, err
+		return domainenv.OperationEnv{}, err
 	}
 
 	for _, key := range []string{"COMPOSE_PROJECT_NAME", "DB_STORAGE_DIR", "ESPO_STORAGE_DIR", "BACKUP_ROOT"} {
 		if strings.TrimSpace(values[key]) == "" {
-			return OperationEnv{}, MissingEnvValueError{Path: resolvedPath, Name: key}
+			return domainenv.OperationEnv{}, MissingEnvValueError{Path: resolvedPath, Name: key}
 		}
 	}
 
 	resolvedContour, err := validateLoadedEnvContour(resolvedPath, scope, values["ESPO_CONTOUR"])
 	if err != nil {
-		return OperationEnv{}, err
+		return domainenv.OperationEnv{}, err
 	}
 
-	return OperationEnv{
+	return domainenv.OperationEnv{
 		FilePath:        resolvedPath,
 		ResolvedContour: resolvedContour,
 		Values:          values,
@@ -76,7 +46,7 @@ func LoadOperationEnv(projectDir, scope, overridePath string) (OperationEnv, err
 }
 
 func ResolveProjectPath(projectDir, value string) string {
-	return opsconfig.ResolveProjectPath(projectDir, value)
+	return domainenv.ResolveProjectPath(projectDir, value)
 }
 
 func resolveOperationEnvFile(projectDir, scope, overridePath string) (string, error) {

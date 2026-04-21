@@ -5,7 +5,7 @@ import (
 	"io"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	operationusecase "github.com/lazuale/espocrm-ops/internal/usecase/operation"
+	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	"github.com/spf13/cobra"
 )
 
