@@ -5,10 +5,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/lazuale/espocrm-ops/internal/testutil"
 )
 
 func TestDockerMySQLAdapterDoesNotUseProcessStdIOOrWholeEnv(t *testing.T) {
-	root := repoRootForArchitectureTest(t)
+	root := testutil.RepoRoot(t)
 	path := filepath.Join(root, "internal", "platform", "docker", "mysql.go")
 
 	raw, err := os.ReadFile(path)
@@ -21,24 +23,5 @@ func TestDockerMySQLAdapterDoesNotUseProcessStdIOOrWholeEnv(t *testing.T) {
 		if strings.Contains(text, forbidden) {
 			t.Fatalf("docker mysql adapter must not use %s directly", forbidden)
 		}
-	}
-}
-
-func repoRootForArchitectureTest(t *testing.T) string {
-	t.Helper()
-
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("go.mod not found")
-		}
-		dir = parent
 	}
 }

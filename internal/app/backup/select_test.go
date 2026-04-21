@@ -6,32 +6,33 @@ import (
 	"testing"
 	"time"
 
+	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 )
 
-func TestLatestCompleteManifest_SelectsNewestValidCompleteSet(t *testing.T) {
+func TestDiagnoseBackupRoot_SelectsNewestValidCompleteSet(t *testing.T) {
 	tmp := t.TempDir()
 	root := filepath.Join(tmp, "backups")
 
 	validManifest := writeBackupSetForSelection(t, root, "espocrm-dev", "2026-04-07_01-00-00", "dev")
 	writeIncompleteManifestForSelection(t, root, "espocrm-dev", "2026-04-07_02-00-00", "dev")
 
-	got, err := LatestCompleteManifest(root)
+	report, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{BackupRoot: root})
 	if err != nil {
-		t.Fatalf("LatestCompleteManifest failed: %v", err)
+		t.Fatalf("Diagnose failed: %v", err)
 	}
-	if got != validManifest {
-		t.Fatalf("expected valid manifest %s, got %s", validManifest, got)
+	if report.ManifestPath != validManifest {
+		t.Fatalf("expected valid manifest %s, got %s", validManifest, report.ManifestPath)
 	}
 }
 
-func TestLatestCompleteManifest_FailsWhenNoCompleteSetExists(t *testing.T) {
+func TestDiagnoseBackupRoot_FailsWhenNoCompleteSetExists(t *testing.T) {
 	tmp := t.TempDir()
 	root := filepath.Join(tmp, "backups")
 
 	writeIncompleteManifestForSelection(t, root, "espocrm-dev", "2026-04-07_02-00-00", "dev")
 
-	if _, err := LatestCompleteManifest(root); err == nil {
+	if _, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{BackupRoot: root}); err == nil {
 		t.Fatal("expected no complete backup set error")
 	}
 }

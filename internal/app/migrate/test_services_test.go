@@ -23,7 +23,3 @@ func testMigrateService() Service {
 		Store:      appadapter.BackupStore{},
 	})
 }
-
-func Execute(req ExecuteRequest) (ExecuteInfo, error) {
-	return testMigrateService().Execute(req)
-}

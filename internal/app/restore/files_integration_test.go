@@ -11,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	restoreflow "github.com/lazuale/espocrm-ops/internal/app/internal/restoreflow"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 )
 
@@ -62,7 +63,7 @@ func TestRestoreFiles_Integration(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	_, err := RestoreFiles(RestoreFilesRequest{
+	_, err := testRestoreFlow().RestoreFiles(restoreflow.FilesRequest{
 		ManifestPath: manifestPath,
 		TargetDir:    targetDir,
 	})
@@ -104,7 +105,7 @@ func TestRestoreFiles_RejectsSymlinkEntry(t *testing.T) {
 		},
 	})
 
-	_, err := RestoreFiles(RestoreFilesRequest{
+	_, err := testRestoreFlow().RestoreFiles(restoreflow.FilesRequest{
 		ManifestPath: manifestPath,
 		TargetDir:    targetDir,
 	})
@@ -148,7 +149,7 @@ func TestRestoreFiles_DryRunDoesNotReplaceTarget(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := RestoreFiles(RestoreFilesRequest{
+	plan, err := testRestoreFlow().RestoreFiles(restoreflow.FilesRequest{
 		ManifestPath: manifestPath,
 		TargetDir:    targetDir,
 		DryRun:       true,
@@ -156,7 +157,7 @@ func TestRestoreFiles_DryRunDoesNotReplaceTarget(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreFiles dry-run failed: %v", err)
 	}
-	if plan.Plan.SourceKind != RestoreSourceManifest {
+	if plan.Plan.SourceKind != restoreflow.RestoreSourceManifest {
 		t.Fatalf("unexpected source kind: %s", plan.Plan.SourceKind)
 	}
 	if plan.Plan.SourcePath != filesPath {
@@ -187,14 +188,14 @@ func TestRestoreFiles_DirectArchive(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	plan, err := RestoreFiles(RestoreFilesRequest{
+	plan, err := testRestoreFlow().RestoreFiles(restoreflow.FilesRequest{
 		FilesBackup: filesPath,
 		TargetDir:   targetDir,
 	})
 	if err != nil {
 		t.Fatalf("RestoreFiles direct archive failed: %v", err)
 	}
-	if plan.Plan.SourceKind != RestoreSourceDirectBackup {
+	if plan.Plan.SourceKind != restoreflow.RestoreSourceDirectBackup {
 		t.Fatalf("unexpected source kind: %s", plan.Plan.SourceKind)
 	}
 	if plan.Plan.SourcePath != filesPath {
@@ -217,7 +218,7 @@ func TestRestoreFiles_DirectArchiveRequiresSidecar(t *testing.T) {
 		"storage/restored.txt": "hello",
 	})
 
-	_, err := RestoreFiles(RestoreFilesRequest{
+	_, err := testRestoreFlow().RestoreFiles(restoreflow.FilesRequest{
 		FilesBackup: filesPath,
 		TargetDir:   targetDir,
 		DryRun:      true,
@@ -229,7 +230,7 @@ func TestRestoreFiles_DirectArchiveRequiresSidecar(t *testing.T) {
 
 func TestRestoreFiles_RejectsUnsafeTargetDirBeforePreflight(t *testing.T) {
 	for _, targetDir := range []string{"   ", ".", string(os.PathSeparator)} {
-		_, err := RestoreFiles(RestoreFilesRequest{
+		_, err := testRestoreFlow().RestoreFiles(restoreflow.FilesRequest{
 			ManifestPath: "missing-manifest.json",
 			TargetDir:    targetDir,
 			DryRun:       true,

@@ -8,12 +8,14 @@ import (
 	"strconv"
 	"strings"
 	"testing"
+
+	"github.com/lazuale/espocrm-ops/internal/testutil"
 )
 
 const modulePath = "github.com/lazuale/espocrm-ops"
 
 func TestOperationAppDoesNotOwnPlatformJournalStoreWiring(t *testing.T) {
-	root := repoRootForArchitectureTest(t)
+	root := testutil.RepoRoot(t)
 	dir := filepath.Join(root, "internal", "app", "operation")
 	fset := token.NewFileSet()
 
@@ -44,24 +46,5 @@ func TestOperationAppDoesNotOwnPlatformJournalStoreWiring(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
-	}
-}
-
-func repoRootForArchitectureTest(t *testing.T) string {
-	t.Helper()
-
-	dir, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	for {
-		if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {
-			return dir
-		}
-		parent := filepath.Dir(dir)
-		if parent == dir {
-			t.Fatal("go.mod not found")
-		}
-		dir = parent
 	}
 }

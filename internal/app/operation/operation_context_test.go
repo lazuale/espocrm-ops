@@ -11,7 +11,7 @@ import (
 func TestPrepareOperationDoesNotPrecreateRuntimeDirs(t *testing.T) {
 	projectDir := newOperationProject(t, "prod")
 
-	ctx, err := PrepareOperation(OperationContextRequest{
+	ctx, err := testService().PrepareOperation(OperationContextRequest{
 		Scope:      "prod",
 		Operation:  "backup",
 		ProjectDir: projectDir,

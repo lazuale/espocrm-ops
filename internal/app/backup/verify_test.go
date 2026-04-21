@@ -12,7 +12,9 @@ import (
 	"testing"
 	"time"
 
+	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
+	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 )
 
 func TestVerify_OK(t *testing.T) {
@@ -45,7 +47,7 @@ func TestVerify_OK(t *testing.T) {
 	}
 	writeManifest(t, manifestPath, manifest)
 
-	err := Verify(VerifyRequest{ManifestPath: manifestPath})
+	_, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath})
 	if err != nil {
 		t.Fatalf("expected verify to succeed, got: %v", err)
 	}
@@ -91,7 +93,7 @@ func TestVerify_OK_FromManifestsDirLayout(t *testing.T) {
 	}
 	writeManifest(t, manifestPath, manifest)
 
-	err := Verify(VerifyRequest{ManifestPath: manifestPath})
+	_, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath})
 	if err != nil {
 		t.Fatalf("expected manifest-dir verify to succeed, got: %v", err)
 	}
@@ -127,7 +129,7 @@ func TestVerify_FailsOnChecksumMismatch(t *testing.T) {
 	}
 	writeManifest(t, manifestPath, manifest)
 
-	err := Verify(VerifyRequest{ManifestPath: manifestPath})
+	_, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath})
 	if err == nil {
 		t.Fatal("expected checksum error")
 	}
@@ -161,7 +163,7 @@ func TestVerify_FailsOnUnsafeTarEntry(t *testing.T) {
 	}
 	writeManifest(t, manifestPath, manifest)
 
-	err := Verify(VerifyRequest{ManifestPath: manifestPath})
+	_, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath})
 	if err == nil {
 		t.Fatal("expected unsafe tar entry error")
 	}
@@ -195,7 +197,7 @@ func TestVerify_FailsOnSymlinkEntry(t *testing.T) {
 	}
 	writeManifest(t, manifestPath, manifest)
 
-	err := Verify(VerifyRequest{ManifestPath: manifestPath})
+	_, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath})
 	if err == nil {
 		t.Fatal("expected symlink rejection")
 	}
@@ -232,7 +234,7 @@ func TestVerify_FailsOnIncompleteBackupPair(t *testing.T) {
 		},
 	})
 
-	if err := Verify(VerifyRequest{ManifestPath: manifestPath}); err == nil {
+	if _, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath}); err == nil {
 		t.Fatal("expected incomplete backup pair to fail verification")
 	}
 }
@@ -274,7 +276,7 @@ func TestVerify_FailsOnCanonicalManifestArtifactMismatch(t *testing.T) {
 		},
 	})
 
-	err := Verify(VerifyRequest{ManifestPath: manifestPath})
+	_, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath})
 	if err == nil {
 		t.Fatal("expected canonical manifest mismatch to fail")
 	}
@@ -301,7 +303,7 @@ func TestLoadManifest_FailsOnPathArtifact(t *testing.T) {
 		},
 	})
 
-	if _, err := LoadManifest(manifestPath); err == nil {
+	if _, err := (appadapter.BackupStore{}).LoadManifest(manifestPath); err == nil {
 		t.Fatal("expected path validation error")
 	}
 }

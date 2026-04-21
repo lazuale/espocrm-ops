@@ -10,7 +10,3 @@ func testDoctorService() Service {
 		Runtime: appadapter.Runtime{},
 	})
 }
-
-func Diagnose(req Request) (Report, error) {
-	return testDoctorService().Diagnose(req)
-}

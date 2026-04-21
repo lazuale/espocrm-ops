@@ -9,7 +9,3 @@ func testService() Service {
 		Locks: appadapter.Locks{},
 	})
 }
-
-func PrepareOperation(req OperationContextRequest) (OperationContext, error) {
-	return testService().PrepareOperation(req)
-}

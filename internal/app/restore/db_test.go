@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	restoreflow "github.com/lazuale/espocrm-ops/internal/app/internal/restoreflow"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
@@ -51,7 +52,7 @@ func TestRestoreDB_DryRun(t *testing.T) {
 	prependFakeDocker(t, "", "")
 	t.Setenv("ESPOPS_DB_ROOT_PASSWORD", "must-not-leak-into-usecase")
 
-	plan, err := RestoreDB(RestoreDBRequest{
+	plan, err := testRestoreFlow().RestoreDB(restoreflow.DBRequest{
 		ManifestPath: manifestPath,
 		DBContainer:  "db-container",
 		DBName:       "espocrm",
@@ -62,7 +63,7 @@ func TestRestoreDB_DryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreDB dry-run failed: %v", err)
 	}
-	if plan.Plan.SourceKind != RestoreSourceManifest {
+	if plan.Plan.SourceKind != restoreflow.RestoreSourceManifest {
 		t.Fatalf("unexpected source kind: %s", plan.Plan.SourceKind)
 	}
 	if plan.Plan.SourcePath != dbPath {
@@ -81,7 +82,7 @@ func TestRestoreDB_DirectBackupDryRun(t *testing.T) {
 	writeSHA256Sidecar(t, dbPath)
 	prependFakeDocker(t, "", "")
 
-	plan, err := RestoreDB(RestoreDBRequest{
+	plan, err := testRestoreFlow().RestoreDB(restoreflow.DBRequest{
 		DBBackup:    dbPath,
 		DBContainer: "db-container",
 		DBName:      "espocrm",
@@ -92,7 +93,7 @@ func TestRestoreDB_DirectBackupDryRun(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RestoreDB direct dry-run failed: %v", err)
 	}
-	if plan.Plan.SourceKind != RestoreSourceDirectBackup {
+	if plan.Plan.SourceKind != restoreflow.RestoreSourceDirectBackup {
 		t.Fatalf("unexpected source kind: %s", plan.Plan.SourceKind)
 	}
 	if plan.Plan.SourcePath != dbPath {
@@ -108,7 +109,7 @@ func TestRestoreDB_RequiresTypedRootPasswordSourceOutsideDryRun(t *testing.T) {
 	writeSHA256Sidecar(t, dbPath)
 	prependFakeDocker(t, "", "")
 
-	_, err := RestoreDB(RestoreDBRequest{
+	_, err := testRestoreFlow().RestoreDB(restoreflow.DBRequest{
 		DBBackup:    dbPath,
 		DBContainer: "db-container",
 		DBName:      "espocrm",

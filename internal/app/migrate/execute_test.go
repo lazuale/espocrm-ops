@@ -23,7 +23,7 @@ import (
 func TestExecute_SkipDBNoStart_ReconcilesFilesPermissions(t *testing.T) {
 	fixture := newExecuteFixture(t)
 
-	info, err := Execute(ExecuteRequest{
+	info, err := testMigrateService().Execute(ExecuteRequest{
 		SourceScope: "dev",
 		TargetScope: "prod",
 		ProjectDir:  fixture.projectDir,
@@ -69,7 +69,7 @@ func TestExecute_FailsClosedWhenFilesPermissionReconcileFails(t *testing.T) {
 	fixture := newExecuteFixture(t)
 	t.Setenv("DOCKER_MOCK_RESTORE_RECONCILE_ERROR", "permission reconcile failed")
 
-	info, err := Execute(ExecuteRequest{
+	info, err := testMigrateService().Execute(ExecuteRequest{
 		SourceScope: "dev",
 		TargetScope: "prod",
 		ProjectDir:  fixture.projectDir,

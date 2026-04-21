@@ -7,7 +7,9 @@ import (
 	"testing"
 	"time"
 
+	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
+	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 )
 
 func TestBuildManifest_HashesArtifacts(t *testing.T) {
@@ -29,7 +31,7 @@ func TestBuildManifest_HashesArtifacts(t *testing.T) {
 	}
 
 	createdAt := time.Date(2026, 4, 7, 1, 2, 3, 0, time.FixedZone("test", 3*60*60))
-	manifest, err := BuildManifest(ManifestBuildRequest{
+	manifest, err := testBackupService().buildManifest(manifestBuildRequest{
 		Scope:           " dev ",
 		CreatedAt:       createdAt,
 		DBBackupPath:    dbPath,
@@ -76,11 +78,11 @@ func TestWriteManifest_WritesValidatedJSON(t *testing.T) {
 		},
 	}
 
-	if err := WriteManifest(manifestPath, manifest); err != nil {
+	if err := (appadapter.BackupStore{}).WriteManifest(manifestPath, manifest); err != nil {
 		t.Fatal(err)
 	}
 
-	loaded, err := LoadManifest(manifestPath)
+	loaded, err := (appadapter.BackupStore{}).LoadManifest(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +100,7 @@ func TestWriteSHA256Sidecar(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte("db"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := WriteSHA256Sidecar(filePath, checksum, sidecarPath); err != nil {
+	if err := (appadapter.BackupStore{}).WriteSHA256Sidecar(filePath, checksum, sidecarPath); err != nil {
 		t.Fatal(err)
 	}
 
@@ -129,7 +131,7 @@ func TestFinalizeBackup_WritesSidecarsAndManifest(t *testing.T) {
 		"storage/a.txt": "hello",
 	})
 
-	info, err := FinalizeBackup(FinalizeRequest{
+	info, err := testBackupService().finalizeBackup(finalizeRequest{
 		Scope:            "dev",
 		CreatedAt:        time.Date(2026, 4, 7, 1, 2, 3, 0, time.UTC),
 		DBBackupPath:     dbPath,
@@ -153,7 +155,7 @@ func TestFinalizeBackup_WritesSidecarsAndManifest(t *testing.T) {
 	if info.FilesSidecarPath != filesPath+".tmp.sha256" {
 		t.Fatalf("unexpected files sidecar path: %s", info.FilesSidecarPath)
 	}
-	if err := Verify(VerifyRequest{ManifestPath: manifestPath}); err != nil {
+	if _, err := testBackupVerifyService().Diagnose(backupverifyapp.Request{ManifestPath: manifestPath}); err != nil {
 		t.Fatalf("finalized backup should verify: %v", err)
 	}
 }

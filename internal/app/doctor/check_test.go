@@ -16,7 +16,7 @@ func TestDiagnoseReadyForSingleContour(t *testing.T) {
 	writeDoctorEnv(t, projectDir, "prod", nil)
 	prependFakeDocker(t)
 
-	report, err := Diagnose(Request{
+	report, err := testDoctorService().Diagnose(Request{
 		Scope:       "prod",
 		ProjectDir:  projectDir,
 		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
@@ -45,7 +45,7 @@ func TestDiagnoseReportsSharedLockConflict(t *testing.T) {
 		_ = lock.Release()
 	}()
 
-	report, err := Diagnose(Request{
+	report, err := testDoctorService().Diagnose(Request{
 		Scope:       "prod",
 		ProjectDir:  projectDir,
 		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
@@ -75,7 +75,7 @@ func TestDiagnoseReportsCrossScopeCompatibilityDrift(t *testing.T) {
 	})
 	prependFakeDocker(t)
 
-	report, err := Diagnose(Request{
+	report, err := testDoctorService().Diagnose(Request{
 		Scope:       "all",
 		ProjectDir:  projectDir,
 		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
