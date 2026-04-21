@@ -1,7 +1,7 @@
 package restore
 
 import (
-	backupapp "github.com/lazuale/espocrm-ops/internal/app/backup"
+	restoreflow "github.com/lazuale/espocrm-ops/internal/app/internal/restoreflow"
 	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 )
@@ -14,20 +14,9 @@ func testOperationService() operationapp.Service {
 	})
 }
 
-func testBackupService() backupapp.Service {
-	return backupapp.NewService(backupapp.Dependencies{
-		Operations: testOperationService(),
-		Env:        appadapter.EnvLoader{},
-		Runtime:    appadapter.Runtime{},
-		Files:      appadapter.Files{},
-		Store:      appadapter.BackupStore{},
-	})
-}
-
 func testRestoreService() Service {
 	return NewService(Dependencies{
 		Operations: testOperationService(),
-		Backup:     testBackupService(),
 		Env:        appadapter.EnvLoader{},
 		Runtime:    appadapter.Runtime{},
 		Files:      appadapter.Files{},
@@ -36,22 +25,48 @@ func testRestoreService() Service {
 	})
 }
 
+type RestoreDBRequest = restoreflow.DBRequest
+type RestoreFilesRequest = restoreflow.FilesRequest
+type FilesPreflightRequest = restoreflow.FilesPreflightRequest
+type DBPreflightRequest = restoreflow.DBPreflightRequest
+type RestorePlanCheck = restoreflow.PlanCheck
+type RestorePlan = restoreflow.Plan
+type DBRestorePlan = restoreflow.DBPlan
+type FilesRestorePlan = restoreflow.FilesPlan
+
+const (
+	RestoreSourceManifest     = restoreflow.RestoreSourceManifest
+	RestoreSourceDirectBackup = restoreflow.RestoreSourceDirectBackup
+	RestoreCheckPassed        = restoreflow.RestoreCheckPassed
+	RestoreCheckPending       = restoreflow.RestoreCheckPending
+)
+
+func testRestoreFlow() restoreflow.Service {
+	return restoreflow.NewService(restoreflow.Dependencies{
+		Env:     appadapter.EnvLoader{},
+		Runtime: appadapter.Runtime{},
+		Files:   appadapter.Files{},
+		Locks:   appadapter.Locks{},
+		Store:   appadapter.BackupStore{},
+	})
+}
+
 func Execute(req ExecuteRequest) (ExecuteInfo, error) { return testRestoreService().Execute(req) }
 func RestoreDB(req RestoreDBRequest) (DBRestorePlan, error) {
-	return testRestoreService().RestoreDB(req)
+	return testRestoreFlow().RestoreDB(req)
 }
 func RestoreFiles(req RestoreFilesRequest) (FilesRestorePlan, error) {
-	return testRestoreService().RestoreFiles(req)
+	return testRestoreFlow().RestoreFiles(req)
 }
 func PlanDBRestore(req RestoreDBRequest) (DBRestorePlan, error) {
-	return testRestoreService().PlanDBRestore(req)
+	return testRestoreFlow().PlanDB(req)
 }
 func PlanFilesRestore(req RestoreFilesRequest) (FilesRestorePlan, error) {
-	return testRestoreService().PlanFilesRestore(req)
+	return testRestoreFlow().PlanFiles(req)
 }
 func PreflightDBRestore(req DBPreflightRequest) (string, error) {
-	return testRestoreService().PreflightDBRestore(req)
+	return testRestoreFlow().PreflightDB(req)
 }
 func PreflightFilesRestore(req FilesPreflightRequest) (string, error) {
-	return testRestoreService().PreflightFilesRestore(req)
+	return testRestoreFlow().PreflightFiles(req)
 }

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	restoreflow "github.com/lazuale/espocrm-ops/internal/app/internal/restoreflow"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
@@ -73,7 +74,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 			Details: "The files restore would be skipped because of --skip-files.",
 		})
 	} else {
-		filesReq := s.BuildFilesRestoreRequest(ctx, source.ManifestJSON, source.FilesBackup)
+		filesReq := s.flow.BuildFilesRequest(ctx, source.ManifestJSON, source.FilesBackup)
 		if err := s.dryRunFilesChecks(source, filesReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
@@ -106,20 +107,9 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 }
 
 func (s Service) dryRunDBChecks(ctx maintenanceusecase.OperationContext, source executeSource, runtimeInfo runtimePrepareInfo) error {
-	lock, err := s.locks.AcquireRestoreDBLock()
-	if err != nil {
-		return restoreFailure(domainfailure.KindConflict, "lock_acquire_failed", fmt.Errorf("db restore lock failed: %w", err))
-	}
-	if releaseErr := lock.Release(); releaseErr != nil {
-		return fmt.Errorf("release db restore lock: %w", releaseErr)
-	}
-
-	req := s.BuildDBRestoreRequest(ctx, source.ManifestJSON, source.DBBackup, runtimeInfo.DBContainer)
+	req := s.flow.BuildDBRequest(ctx, source.ManifestJSON, source.DBBackup, runtimeInfo.DBContainer)
 	req.DryRun = true
-	if _, err := s.resolveDBPassword(req); err != nil {
-		return err
-	}
-	if _, _, err := s.resolveDBRootPasswordForPlan(req); err != nil {
+	if _, err := s.flow.PlanDB(req); err != nil {
 		return err
 	}
 
@@ -130,27 +120,16 @@ func (s Service) dryRunDBChecks(ctx maintenanceusecase.OperationContext, source 
 		return nil
 	}
 
-	_, err = s.PreflightDBRestore(DBPreflightRequest{
+	_, err := s.flow.PreflightDB(restoreflow.DBPreflightRequest{
 		DBBackup:    source.DBBackup,
 		DBContainer: runtimeInfo.DBContainer,
 	})
 	return err
 }
 
-func (s Service) dryRunFilesChecks(source executeSource, filesReq RestoreFilesRequest) error {
-	lock, err := s.locks.AcquireRestoreFilesLock()
-	if err != nil {
-		return restoreFailure(domainfailure.KindConflict, "lock_acquire_failed", fmt.Errorf("files restore lock failed: %w", err))
-	}
-	if releaseErr := lock.Release(); releaseErr != nil {
-		return fmt.Errorf("release files restore lock: %w", releaseErr)
-	}
-
-	_, err = s.PreflightFilesRestore(FilesPreflightRequest{
-		ManifestPath: filesReq.ManifestPath,
-		FilesBackup:  filesReq.FilesBackup,
-		TargetDir:    filesReq.TargetDir,
-	})
+func (s Service) dryRunFilesChecks(source executeSource, filesReq restoreflow.FilesRequest) error {
+	filesReq.DryRun = true
+	_, err := s.flow.PlanFiles(filesReq)
 	return err
 }
 

@@ -1,4 +1,4 @@
-package backup
+package backupflow
 
 import (
 	"errors"
@@ -35,7 +35,7 @@ func runtimePrepareDetails(info runtimePrepareInfo) string {
 	return fmt.Sprintf("Stopped application services before backup: %s.", strings.Join(info.StoppedAppServices, ", "))
 }
 
-func runtimePrepareSkippedDetails(req PreparedRequest) string {
+func runtimePrepareSkippedDetails(req Request) string {
 	return "Application services remained running because of --no-stop."
 }
 
@@ -79,7 +79,7 @@ func runtimeReturnDetails(info runtimeReturnInfo) string {
 	return fmt.Sprintf("Restarted application services after backup: %s.", strings.Join(info.RestartedAppServices, ", "))
 }
 
-func runtimeReturnSkippedDetails(req PreparedRequest, prep runtimePrepareInfo) string {
+func runtimeReturnSkippedDetails(req Request, prep runtimePrepareInfo) string {
 	switch {
 	case req.NoStop:
 		return "Application services remained running because of --no-stop."
@@ -90,7 +90,7 @@ func runtimeReturnSkippedDetails(req PreparedRequest, prep runtimePrepareInfo) s
 	}
 }
 
-func flagWarnings(req PreparedRequest) []string {
+func flagWarnings(req Request) []string {
 	warnings := []string{}
 	if req.NoStop {
 		warnings = append(warnings, "Backup will run without stopping application services because of --no-stop.")
@@ -105,7 +105,7 @@ func flagWarnings(req PreparedRequest) []string {
 	return warnings
 }
 
-func blockedBackupStep(code, summary string) domainworkflow.Step {
+func blockedStep(code, summary string) domainworkflow.Step {
 	return domainworkflow.NewStep(code, domainworkflow.StatusBlocked, summary, "", "")
 }
 

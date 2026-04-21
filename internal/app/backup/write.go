@@ -9,14 +9,14 @@ import (
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 )
 
-type ManifestBuildRequest struct {
+type manifestBuildRequest struct {
 	Scope           string
 	CreatedAt       time.Time
 	DBBackupPath    string
 	FilesBackupPath string
 }
 
-type FinalizeRequest struct {
+type finalizeRequest struct {
 	Scope            string
 	CreatedAt        time.Time
 	DBBackupPath     string
@@ -26,7 +26,7 @@ type FinalizeRequest struct {
 	FilesSidecarPath string
 }
 
-type FinalizeInfo struct {
+type finalizeInfo struct {
 	ManifestPath     string
 	DBBackupPath     string
 	FilesBackupPath  string
@@ -36,19 +36,19 @@ type FinalizeInfo struct {
 	CreatedAt        string
 }
 
-func (s Service) FinalizeBackup(req FinalizeRequest) (FinalizeInfo, error) {
+func (s Service) finalizeBackup(req finalizeRequest) (finalizeInfo, error) {
 	if strings.TrimSpace(req.ManifestPath) == "" {
-		return FinalizeInfo{}, fmt.Errorf("manifest path is required")
+		return finalizeInfo{}, fmt.Errorf("manifest path is required")
 	}
 
-	manifest, err := s.BuildManifest(ManifestBuildRequest{
+	manifest, err := s.buildManifest(manifestBuildRequest{
 		Scope:           req.Scope,
 		CreatedAt:       req.CreatedAt,
 		DBBackupPath:    req.DBBackupPath,
 		FilesBackupPath: req.FilesBackupPath,
 	})
 	if err != nil {
-		return FinalizeInfo{}, err
+		return finalizeInfo{}, err
 	}
 
 	dbSidecarPath := strings.TrimSpace(req.DBSidecarPath)
@@ -60,16 +60,16 @@ func (s Service) FinalizeBackup(req FinalizeRequest) (FinalizeInfo, error) {
 		filesSidecarPath = req.FilesBackupPath + ".sha256"
 	}
 	if err := s.store.WriteSHA256Sidecar(req.DBBackupPath, manifest.Checksums.DBBackup, dbSidecarPath); err != nil {
-		return FinalizeInfo{}, fmt.Errorf("write db sha256 sidecar: %w", err)
+		return finalizeInfo{}, fmt.Errorf("write db sha256 sidecar: %w", err)
 	}
 	if err := s.store.WriteSHA256Sidecar(req.FilesBackupPath, manifest.Checksums.FilesBackup, filesSidecarPath); err != nil {
-		return FinalizeInfo{}, fmt.Errorf("write files sha256 sidecar: %w", err)
+		return finalizeInfo{}, fmt.Errorf("write files sha256 sidecar: %w", err)
 	}
 	if err := s.store.WriteManifest(req.ManifestPath, manifest); err != nil {
-		return FinalizeInfo{}, err
+		return finalizeInfo{}, err
 	}
 
-	return FinalizeInfo{
+	return finalizeInfo{
 		ManifestPath:     req.ManifestPath,
 		DBBackupPath:     req.DBBackupPath,
 		FilesBackupPath:  req.FilesBackupPath,
@@ -80,7 +80,7 @@ func (s Service) FinalizeBackup(req FinalizeRequest) (FinalizeInfo, error) {
 	}, nil
 }
 
-func (s Service) BuildManifest(req ManifestBuildRequest) (domainbackup.Manifest, error) {
+func (s Service) buildManifest(req manifestBuildRequest) (domainbackup.Manifest, error) {
 	if strings.TrimSpace(req.Scope) == "" {
 		return domainbackup.Manifest{}, fmt.Errorf("scope is required")
 	}

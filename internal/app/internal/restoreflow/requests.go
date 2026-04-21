@@ -1,14 +1,14 @@
-package restore
+package restoreflow
 
 import (
 	"strings"
 
-	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
 	envport "github.com/lazuale/espocrm-ops/internal/app/ports/envport"
 )
 
-func (s Service) BuildDBRestoreRequest(ctx maintenanceusecase.OperationContext, manifestPath, dbBackup, dbContainer string) RestoreDBRequest {
-	req := RestoreDBRequest{
+func (s Service) BuildDBRequest(ctx operationapp.OperationContext, manifestPath, dbBackup, dbContainer string) DBRequest {
+	req := DBRequest{
 		DBContainer:    dbContainer,
 		DBName:         strings.TrimSpace(ctx.Env.Value("DB_NAME")),
 		DBUser:         strings.TrimSpace(ctx.Env.Value("DB_USER")),
@@ -23,8 +23,8 @@ func (s Service) BuildDBRestoreRequest(ctx maintenanceusecase.OperationContext, 
 	return req
 }
 
-func (s Service) BuildFilesRestoreRequest(ctx maintenanceusecase.OperationContext, manifestPath, filesBackup string) RestoreFilesRequest {
-	req := RestoreFilesRequest{
+func (s Service) BuildFilesRequest(ctx operationapp.OperationContext, manifestPath, filesBackup string) FilesRequest {
+	req := FilesRequest{
 		TargetDir: s.env.ResolveProjectPath(ctx.ProjectDir, ctx.Env.ESPOStorageDir()),
 	}
 	if cleaned := strings.TrimSpace(manifestPath); cleaned != "" {
@@ -35,7 +35,7 @@ func (s Service) BuildFilesRestoreRequest(ctx maintenanceusecase.OperationContex
 	return req
 }
 
-func (s Service) resolveDBPassword(req RestoreDBRequest) (string, error) {
+func (s Service) resolveDBPassword(req DBRequest) (string, error) {
 	return s.env.ResolveDBPassword(envport.DBPasswordRequest{
 		Container:    req.DBContainer,
 		Name:         req.DBName,
@@ -45,7 +45,7 @@ func (s Service) resolveDBPassword(req RestoreDBRequest) (string, error) {
 	})
 }
 
-func (s Service) resolveDBRootPassword(req RestoreDBRequest) (string, error) {
+func (s Service) resolveDBRootPassword(req DBRequest) (string, error) {
 	return s.env.ResolveDBRootPassword(envport.DBPasswordRequest{
 		Container:    req.DBContainer,
 		Name:         req.DBName,

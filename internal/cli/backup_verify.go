@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"io"
 
+	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	"github.com/lazuale/espocrm-ops/internal/app/backup"
 	"github.com/spf13/cobra"
 )
 
@@ -35,20 +35,9 @@ func newBackupVerifyCmd() *cobra.Command {
 					},
 				}
 
-				verifyManifestPath := manifestPath
-				if backupRoot != "" {
-					selectedManifestPath, err := appForCommand(cmd).backup.LatestCompleteManifest(backupRoot)
-					if err != nil {
-						return res, err
-					}
-					verifyManifestPath = selectedManifestPath
-					res.Artifacts = result.BackupVerifyArtifacts{
-						Manifest: selectedManifestPath,
-					}
-				}
-
-				info, err := appForCommand(cmd).backup.VerifyDetailed(backup.VerifyRequest{
-					ManifestPath: verifyManifestPath,
+				report, err := appForCommand(cmd).backupVerify.Diagnose(backupverifyapp.Request{
+					ManifestPath: manifestPath,
+					BackupRoot:   backupRoot,
 				})
 				if err != nil {
 					return res, err
@@ -56,13 +45,13 @@ func newBackupVerifyCmd() *cobra.Command {
 
 				res.Message = "backup verification passed"
 				res.Artifacts = result.BackupVerifyArtifacts{
-					Manifest:    info.ManifestPath,
-					DBBackup:    info.DBBackupPath,
-					FilesBackup: info.FilesPath,
+					Manifest:    report.ManifestPath,
+					DBBackup:    report.DBBackupPath,
+					FilesBackup: report.FilesPath,
 				}
 				res.Details = result.BackupVerifyDetails{
-					Scope:     info.Scope,
-					CreatedAt: info.CreatedAt,
+					Scope:     report.Scope,
+					CreatedAt: report.CreatedAt,
 				}
 
 				return res, nil

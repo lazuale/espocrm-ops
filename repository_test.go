@@ -146,6 +146,98 @@ func TestProductionWorkflowStatusVocabularyIsCanonical(t *testing.T) {
 	}
 }
 
+func TestAppBoundaryPackagesExposeOnlyCanonicalSurface(t *testing.T) {
+	root := repoRoot(t)
+	allowedServiceMethods := map[string]map[string]struct{}{
+		"backup": {
+			"Execute": {},
+		},
+		"backupverify": {
+			"Diagnose": {},
+		},
+		"restore": {
+			"Execute": {},
+		},
+		"migrate": {
+			"Execute": {},
+		},
+		"doctor": {
+			"Diagnose": {},
+		},
+	}
+	allowedResultMethods := map[string]map[string]map[string]struct{}{
+		"backup": {
+			"ExecuteInfo": {
+				"Counts": {},
+				"Ready":  {},
+			},
+		},
+		"restore": {
+			"ExecuteInfo": {
+				"Counts": {},
+				"Ready":  {},
+			},
+		},
+		"migrate": {
+			"ExecuteInfo": {
+				"Counts": {},
+				"Ready":  {},
+			},
+		},
+		"doctor": {
+			"Report": {
+				"Counts": {},
+				"Ready":  {},
+			},
+		},
+	}
+
+	fset := token.NewFileSet()
+	for pkgName, serviceMethods := range allowedServiceMethods {
+		dir := filepath.Join(root, "internal", "app", pkgName)
+		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+
+			file, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Name == nil || !fn.Name.IsExported() {
+					continue
+				}
+
+				receiver := receiverBaseName(fn.Recv)
+				if receiver != "" && !ast.IsExported(receiver) {
+					continue
+				}
+				switch {
+				case receiver == "" && fn.Name.Name == "NewService":
+					continue
+				case receiver == "Service" && hasName(serviceMethods, fn.Name.Name):
+					continue
+				case receiver != "" && hasNestedName(allowedResultMethods[pkgName], receiver, fn.Name.Name):
+					continue
+				}
+
+				t.Fatalf("%s exports non-canonical app API symbol %s", path, exportedSymbolName(fn))
+			}
+
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
 func listInternalPackages(t *testing.T) []listedPackage {
 	t.Helper()
 
@@ -249,4 +341,46 @@ func assertStdlibOnly(t *testing.T, pkg listedPackage) {
 			t.Fatalf("%s imports non-stdlib package %s", pkg.ImportPath, imp)
 		}
 	}
+}
+
+func receiverBaseName(list *ast.FieldList) string {
+	if list == nil || len(list.List) == 0 {
+		return ""
+	}
+
+	switch typ := list.List[0].Type.(type) {
+	case *ast.Ident:
+		return typ.Name
+	case *ast.StarExpr:
+		if ident, ok := typ.X.(*ast.Ident); ok {
+			return ident.Name
+		}
+	}
+
+	return ""
+}
+
+func hasName(allowed map[string]struct{}, name string) bool {
+	_, ok := allowed[name]
+	return ok
+}
+
+func hasNestedName(allowed map[string]map[string]struct{}, receiver, name string) bool {
+	methods, ok := allowed[receiver]
+	if !ok {
+		return false
+	}
+	_, ok = methods[name]
+	return ok
+}
+
+func exportedSymbolName(fn *ast.FuncDecl) string {
+	if fn == nil || fn.Name == nil {
+		return ""
+	}
+	receiver := receiverBaseName(fn.Recv)
+	if receiver == "" {
+		return fn.Name.Name
+	}
+	return receiver + "." + fn.Name.Name
 }

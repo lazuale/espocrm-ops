@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"io"
 
-	backupusecase "github.com/lazuale/espocrm-ops/internal/app/backup"
+	backupflow "github.com/lazuale/espocrm-ops/internal/app/internal/backupflow"
 	runtimeport "github.com/lazuale/espocrm-ops/internal/app/ports/runtimeport"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
@@ -12,7 +12,7 @@ import (
 type snapshotBackupRequest struct {
 	TimeoutSeconds int
 	LogWriter      io.Writer
-	Backup         backupusecase.PreparedRequest
+	Backup         backupflow.Request
 }
 
 type snapshotBackupInfo struct {
@@ -60,7 +60,7 @@ func (s Service) applySnapshotBackup(req snapshotBackupRequest) (snapshotBackupI
 		}
 	}
 
-	backupInfo, err := s.backup.ExecutePrepared(req.Backup)
+	backupInfo, err := s.backupFlow.Execute(req.Backup)
 	if err != nil {
 		return info, err
 	}

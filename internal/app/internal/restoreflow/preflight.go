@@ -1,4 +1,4 @@
-package restore
+package restoreflow
 
 import (
 	"path/filepath"
@@ -6,7 +6,7 @@ import (
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
-func (s Service) PreflightFilesRestore(req FilesPreflightRequest) (string, error) {
+func (s Service) PreflightFiles(req FilesPreflightRequest) (string, error) {
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
@@ -22,15 +22,15 @@ func (s Service) PreflightFilesRestore(req FilesPreflightRequest) (string, error
 	}
 	filesSize, err := s.files.EnsureNonEmptyFile("files backup", filesPath)
 	if err != nil {
-		return "", restoreFailure(domainfailure.KindIO, "filesystem_error", err)
+		return "", failure(domainfailure.KindIO, "filesystem_error", err)
 	}
 
 	parent := filepath.Dir(req.TargetDir)
 	if err := s.files.EnsureWritableDir(parent); err != nil {
-		return "", restoreFailure(domainfailure.KindIO, "filesystem_error", err)
+		return "", failure(domainfailure.KindIO, "filesystem_error", err)
 	}
 	if err := s.files.EnsureFreeSpace(parent, uint64(filesSize)); err != nil {
-		return "", restoreFailure(domainfailure.KindIO, "filesystem_error", err)
+		return "", failure(domainfailure.KindIO, "filesystem_error", err)
 	}
 
 	return filesPath, nil
@@ -49,7 +49,7 @@ func (s Service) filesRestoreSourcePath(manifestPath, filesBackup string) (strin
 	return info.FilesPath, nil
 }
 
-func (s Service) PreflightDBRestore(req DBPreflightRequest) (string, error) {
+func (s Service) PreflightDB(req DBPreflightRequest) (string, error) {
 	if err := req.Validate(); err != nil {
 		return "", err
 	}
@@ -65,11 +65,11 @@ func (s Service) PreflightDBRestore(req DBPreflightRequest) (string, error) {
 	}
 
 	if err := s.runtime.CheckDockerAvailable(); err != nil {
-		return "", restoreFailure(domainfailure.KindExternal, "restore_db_failed", err)
+		return "", failure(domainfailure.KindExternal, "restore_db_failed", err)
 	}
 
 	if err := s.runtime.CheckContainerRunning(req.DBContainer); err != nil {
-		return "", restoreFailure(domainfailure.KindExternal, "restore_db_failed", err)
+		return "", failure(domainfailure.KindExternal, "restore_db_failed", err)
 	}
 
 	return dbPath, nil

@@ -1,8 +1,8 @@
-package restore
+package restoreflow
 
 import domainrestore "github.com/lazuale/espocrm-ops/internal/domain/restore"
 
-type RestoreDBRequest struct {
+type DBRequest struct {
 	ManifestPath       string
 	DBBackup           string
 	DBContainer        string
@@ -15,7 +15,7 @@ type RestoreDBRequest struct {
 	DryRun             bool
 }
 
-func (r RestoreDBRequest) Validate() error {
+func (r DBRequest) Validate() error {
 	return domainrestore.RestoreDBRequest{
 		ManifestPath:       r.ManifestPath,
 		DBBackup:           r.DBBackup,
@@ -30,14 +30,14 @@ func (r RestoreDBRequest) Validate() error {
 	}.Validate()
 }
 
-type RestoreFilesRequest struct {
+type FilesRequest struct {
 	ManifestPath string
 	FilesBackup  string
 	TargetDir    string
 	DryRun       bool
 }
 
-func (r RestoreFilesRequest) Validate() error {
+func (r FilesRequest) Validate() error {
 	return domainrestore.RestoreFilesRequest{
 		ManifestPath: r.ManifestPath,
 		FilesBackup:  r.FilesBackup,

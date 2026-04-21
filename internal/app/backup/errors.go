@@ -12,14 +12,6 @@ func wrapBackupBoundaryError(err error) error {
 	return wrapBackupAppError(err, "backup_failed")
 }
 
-func wrapBackupExecuteError(err error) error {
-	return normalizeBackupFailure(err, "backup_failed")
-}
-
-func wrapBackupVerifyError(err error) error {
-	return wrapBackupAppError(err, "backup_verification_failed")
-}
-
 func normalizeBackupFailure(err error, defaultCode string) error {
 	if err == nil {
 		return nil

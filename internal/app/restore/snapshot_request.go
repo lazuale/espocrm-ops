@@ -3,14 +3,14 @@ package restore
 import (
 	"path/filepath"
 
-	backupusecase "github.com/lazuale/espocrm-ops/internal/app/backup"
+	backupflow "github.com/lazuale/espocrm-ops/internal/app/internal/backupflow"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainruntime "github.com/lazuale/espocrm-ops/internal/domain/runtime"
 )
 
 func (s Service) buildSnapshotRequest(ctx maintenanceusecase.OperationContext, req ExecuteRequest) (snapshotBackupRequest, error) {
-	prepared, err := s.backup.BuildPreparedRequest(ctx, backupusecase.PreparedOptions{
+	prepared, err := s.backupFlow.BuildRequest(ctx, backupflow.Options{
 		ComposeFile: filepath.Clean(req.ComposeFile),
 		SkipDB:      req.SkipDB,
 		SkipFiles:   req.SkipFiles,

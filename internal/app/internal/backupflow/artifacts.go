@@ -1,4 +1,4 @@
-package backup
+package backupflow
 
 import (
 	"encoding/json"
@@ -54,7 +54,7 @@ type filesArchiveInfo struct {
 	UsedDockerHelper bool
 }
 
-func allocateBackupExecutionState(req PreparedRequest) (backupExecutionState, error) {
+func allocateBackupExecutionState(req Request) (backupExecutionState, error) {
 	createdAt := executeNow(req.Now)
 	for {
 		stamp := createdAt.Format("2006-01-02_15-04-05")
@@ -80,7 +80,7 @@ func allocateBackupExecutionState(req PreparedRequest) (backupExecutionState, er
 	}
 }
 
-func backupTempPaths(state backupExecutionState, req PreparedRequest) []string {
+func backupTempPaths(state backupExecutionState, req Request) []string {
 	paths := []string{
 		state.set.ManifestTXT.Path + ".tmp",
 		state.set.ManifestJSON.Path + ".tmp",
@@ -112,7 +112,7 @@ func backupSetCollides(set domainbackup.BackupSet) bool {
 	return false
 }
 
-func (s Service) createFilesBackupArchive(req PreparedRequest, archivePath string) (filesArchiveInfo, error) {
+func (s Service) createFilesBackupArchive(req Request, archivePath string) (filesArchiveInfo, error) {
 	info := filesArchiveInfo{}
 	if err := s.files.CreateTarGz(req.StorageDir, archivePath); err == nil {
 		return info, nil
@@ -132,7 +132,7 @@ func (s Service) createFilesBackupArchive(req PreparedRequest, archivePath strin
 	return info, nil
 }
 
-func (s Service) finalizeBackupArtifacts(req PreparedRequest, state *backupExecutionState, info *ExecuteInfo) error {
+func (s Service) finalizeArtifacts(req Request, state *backupExecutionState, info *ExecuteInfo) error {
 	manifestTXTPath := state.set.ManifestTXT.Path
 	manifestJSONPath := state.set.ManifestJSON.Path
 	manifestTXTTmp := manifestTXTPath + ".tmp"
@@ -178,14 +178,14 @@ func (s Service) finalizeBackupArtifacts(req PreparedRequest, state *backupExecu
 		}
 	}
 
-	if err := s.writeBackupManifestTXT(req, *state, manifestTXTTmp); err != nil {
+	if err := s.writeManifestTXT(req, *state, manifestTXTTmp); err != nil {
 		return err
 	}
 	if err := saveTempFile(manifestTXTTmp, manifestTXTPath, "save text manifest"); err != nil {
 		return err
 	}
 
-	if err := s.writeBackupManifestJSON(req, *state, manifestJSONTmp); err != nil {
+	if err := s.writeManifestJSON(req, *state, manifestJSONTmp); err != nil {
 		return err
 	}
 	if err := saveTempFile(manifestJSONTmp, manifestJSONPath, "save json manifest"); err != nil {
@@ -195,7 +195,7 @@ func (s Service) finalizeBackupArtifacts(req PreparedRequest, state *backupExecu
 	return nil
 }
 
-func (s Service) writeBackupManifestTXT(req PreparedRequest, state backupExecutionState, path string) error {
+func (s Service) writeManifestTXT(req Request, state backupExecutionState, path string) error {
 	var body strings.Builder
 	stamp := state.createdAt.UTC().Format("2006-01-02_15-04-05")
 
@@ -231,7 +231,7 @@ func (s Service) writeBackupManifestTXT(req PreparedRequest, state backupExecuti
 	return nil
 }
 
-func (s Service) writeBackupManifestJSON(req PreparedRequest, state backupExecutionState, path string) error {
+func (s Service) writeManifestJSON(req Request, state backupExecutionState, path string) error {
 	manifest := backupManifestJSON{
 		Version:        1,
 		Scope:          req.Scope,
@@ -269,7 +269,7 @@ func (s Service) writeBackupManifestJSON(req PreparedRequest, state backupExecut
 	return nil
 }
 
-func cleanupBackupRetention(root string, retentionDays int, now time.Time) error {
+func cleanupRetention(root string, retentionDays int, now time.Time) error {
 	if retentionDays < 0 {
 		return fmt.Errorf("retention days must be non-negative")
 	}
@@ -311,7 +311,7 @@ func cleanupBackupRetention(root string, retentionDays int, now time.Time) error
 	return nil
 }
 
-func cleanupBackupTemps(paths []string) {
+func cleanupTemps(paths []string) {
 	for _, path := range paths {
 		if strings.TrimSpace(path) == "" {
 			continue

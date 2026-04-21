@@ -282,7 +282,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			return info, wrapExecuteError(err)
 		}
 
-		dbReq := s.restore.BuildDBRestoreRequest(targetCtx, info.ManifestJSONPath, info.DBBackupPath, dbContainer)
+		dbReq := s.restore.BuildDBRequest(targetCtx, info.ManifestJSONPath, info.DBBackupPath, dbContainer)
 		if _, err := s.restore.RestoreDB(dbReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
@@ -314,7 +314,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The files restore was skipped because of --skip-files.",
 		})
 	} else {
-		filesReq := s.restore.BuildFilesRestoreRequest(targetCtx, info.ManifestJSONPath, info.FilesBackupPath)
+		filesReq := s.restore.BuildFilesRequest(targetCtx, info.ManifestJSONPath, info.FilesBackupPath)
 		if _, err := s.restore.RestoreFiles(filesReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{

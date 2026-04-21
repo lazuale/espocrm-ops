@@ -2,6 +2,7 @@ package cli
 
 import (
 	backupapp "github.com/lazuale/espocrm-ops/internal/app/backup"
+	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	doctorapp "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	migrateapp "github.com/lazuale/espocrm-ops/internal/app/migrate"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
@@ -24,6 +25,7 @@ type App struct {
 	runtime              operationusecase.Runtime
 	journalWriterFactory JournalWriterFactory
 	backup               backupapp.Service
+	backupVerify         backupverifyapp.Service
 	doctor               doctorapp.Service
 	restore              restoreapp.Service
 	migrate              migrateapp.Service
@@ -55,9 +57,11 @@ func NewApp(deps Dependencies) *App {
 		Files:      appadapter.Files{},
 		Store:      appadapter.BackupStore{},
 	})
+	backupVerifyService := backupverifyapp.NewService(backupverifyapp.Dependencies{
+		Store: appadapter.BackupStore{},
+	})
 	restoreService := restoreapp.NewService(restoreapp.Dependencies{
 		Operations: operationService,
-		Backup:     backupService,
 		Env:        appadapter.EnvLoader{},
 		Runtime:    appadapter.Runtime{},
 		Files:      appadapter.Files{},
@@ -66,9 +70,10 @@ func NewApp(deps Dependencies) *App {
 	})
 	migrateService := migrateapp.NewService(migrateapp.Dependencies{
 		Operations: operationService,
-		Restore:    restoreService,
 		Env:        appadapter.EnvLoader{},
 		Runtime:    appadapter.Runtime{},
+		Files:      appadapter.Files{},
+		Locks:      appadapter.Locks{},
 		Store:      appadapter.BackupStore{},
 	})
 	doctorService := doctorapp.NewService(doctorapp.Dependencies{
@@ -82,6 +87,7 @@ func NewApp(deps Dependencies) *App {
 		runtime:              runtime,
 		journalWriterFactory: journalWriterFactory,
 		backup:               backupService,
+		backupVerify:         backupVerifyService,
 		doctor:               doctorService,
 		restore:              restoreService,
 		migrate:              migrateService,

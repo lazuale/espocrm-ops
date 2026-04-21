@@ -303,8 +303,8 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The database restore was skipped because of --skip-db.",
 		})
 	} else {
-		dbReq := s.BuildDBRestoreRequest(ctx, source.ManifestJSON, source.DBBackup, runtimePrep.DBContainer)
-		if _, err := s.RestoreDB(dbReq); err != nil {
+		dbReq := s.flow.BuildDBRequest(ctx, source.ManifestJSON, source.DBBackup, runtimePrep.DBContainer)
+		if _, err := s.flow.RestoreDB(dbReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "db_restore",
@@ -334,8 +334,8 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: "The files restore was skipped because of --skip-files.",
 		})
 	} else {
-		filesReq := s.BuildFilesRestoreRequest(ctx, source.ManifestJSON, source.FilesBackup)
-		if _, err := s.RestoreFiles(filesReq); err != nil {
+		filesReq := s.flow.BuildFilesRequest(ctx, source.ManifestJSON, source.FilesBackup)
+		if _, err := s.flow.RestoreFiles(filesReq); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",

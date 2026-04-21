@@ -1,4 +1,4 @@
-package restore
+package restoreflow
 
 import (
 	"fmt"
@@ -16,32 +16,32 @@ const (
 	RestoreCheckPending = "pending"
 )
 
-type RestorePlanCheck struct {
+type PlanCheck struct {
 	Name    string
 	Status  string
 	Details string
 }
 
-type RestorePlan struct {
+type Plan struct {
 	SourceKind  string
 	SourcePath  string
 	Destructive bool
 	Changes     []string
 	NonChanges  []string
-	Checks      []RestorePlanCheck
+	Checks      []PlanCheck
 	NextStep    string
 }
 
-type DBRestorePlan struct {
-	Plan RestorePlan
+type DBPlan struct {
+	Plan Plan
 }
 
-type FilesRestorePlan struct {
-	Plan RestorePlan
+type FilesPlan struct {
+	Plan Plan
 }
 
-func buildDBRestorePlan(req RestoreDBRequest, dbPath string, rootPasswordCheck RestorePlanCheck) DBRestorePlan {
-	checks := []RestorePlanCheck{
+func buildDBPlan(req DBRequest, dbPath string, rootPasswordCheck PlanCheck) DBPlan {
+	checks := []PlanCheck{
 		{
 			Name:    "db_password_source",
 			Status:  RestoreCheckPassed,
@@ -78,8 +78,8 @@ func buildDBRestorePlan(req RestoreDBRequest, dbPath string, rootPasswordCheck R
 		}
 	}
 
-	return DBRestorePlan{
-		Plan: RestorePlan{
+	return DBPlan{
+		Plan: Plan{
 			SourceKind:  restoreSourceKind(req.ManifestPath),
 			SourcePath:  dbPath,
 			Destructive: true,
@@ -97,15 +97,15 @@ func buildDBRestorePlan(req RestoreDBRequest, dbPath string, rootPasswordCheck R
 	}
 }
 
-func buildFilesRestorePlan(req RestoreFilesRequest, filesPath string) FilesRestorePlan {
+func buildFilesPlan(req FilesRequest, filesPath string) FilesPlan {
 	parentDir := filepath.Dir(req.TargetDir)
 	nextStep := "run status and application checks after the files restore"
 	if req.DryRun {
 		nextStep = "rerun without --dry-run to execute the files restore"
 	}
 
-	return FilesRestorePlan{
-		Plan: RestorePlan{
+	return FilesPlan{
+		Plan: Plan{
 			SourceKind:  restoreSourceKind(req.ManifestPath),
 			SourcePath:  filesPath,
 			Destructive: true,
@@ -117,7 +117,7 @@ func buildFilesRestorePlan(req RestoreFilesRequest, filesPath string) FilesResto
 				"does not modify database contents",
 				"does not manage contour stop/start orchestration",
 			},
-			Checks: []RestorePlanCheck{
+			Checks: []PlanCheck{
 				{
 					Name:    "backup_source",
 					Status:  RestoreCheckPassed,
@@ -144,17 +144,17 @@ func buildFilesRestorePlan(req RestoreFilesRequest, filesPath string) FilesResto
 	}
 }
 
-func (s Service) resolveDBRootPasswordForPlan(req RestoreDBRequest) (string, RestorePlanCheck, error) {
+func (s Service) resolveDBRootPasswordForPlan(req DBRequest) (string, PlanCheck, error) {
 	if !hasDBRootPasswordSource(req) {
 		if req.DryRun {
-			return "", RestorePlanCheck{
+			return "", PlanCheck{
 				Name:    "db_root_password_source",
 				Status:  RestoreCheckPending,
 				Details: "provide database root password source before executing without --dry-run",
 			}, nil
 		}
 
-		return "", RestorePlanCheck{}, domainfailure.Failure{
+		return "", PlanCheck{}, domainfailure.Failure{
 			Kind: domainfailure.KindValidation,
 			Code: "preflight_failed",
 			Err:  fmt.Errorf("resolve db root password: database root password is required"),
@@ -163,10 +163,10 @@ func (s Service) resolveDBRootPasswordForPlan(req RestoreDBRequest) (string, Res
 
 	rootPassword, err := s.resolveDBRootPassword(req)
 	if err != nil {
-		return "", RestorePlanCheck{}, restoreFailure(domainfailure.KindValidation, "preflight_failed", fmt.Errorf("resolve db root password: %w", err))
+		return "", PlanCheck{}, failure(domainfailure.KindValidation, "preflight_failed", fmt.Errorf("resolve db root password: %w", err))
 	}
 
-	return rootPassword, RestorePlanCheck{
+	return rootPassword, PlanCheck{
 		Name:    "db_root_password_source",
 		Status:  RestoreCheckPassed,
 		Details: "database root password source resolved",
@@ -181,7 +181,7 @@ func restoreSourceKind(manifestPath string) string {
 	return RestoreSourceDirectBackup
 }
 
-func hasDBRootPasswordSource(req RestoreDBRequest) bool {
+func hasDBRootPasswordSource(req DBRequest) bool {
 	return strings.TrimSpace(req.DBRootPassword) != "" ||
 		strings.TrimSpace(req.DBRootPasswordFile) != ""
 }
