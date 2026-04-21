@@ -8,14 +8,6 @@ import (
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
-const defaultRestoreReadinessTimeoutSeconds = 300
-
-var restoreAppServices = []string{
-	"espocrm",
-	"espocrm-daemon",
-	"espocrm-websocket",
-}
-
 func inspectRuntime(projectDir, composeFile, envFile string, needDB bool) (runtimePrepareInfo, error) {
 	info := runtimePrepareInfo{}
 	cfg := platformdocker.ComposeConfig{
@@ -44,8 +36,8 @@ func inspectRuntime(projectDir, composeFile, envFile string, needDB bool) (runti
 	if err != nil {
 		return info, err
 	}
-	info.AppServicesWereRunning = restoreAppServicesRunning(runningServices)
-	info.StoppedAppServices = runningAppServices(runningServices)
+	info.AppServicesWereRunning = platformdocker.OperationalAppServicesRunning(runningServices)
+	info.StoppedAppServices = platformdocker.RunningOperationalAppServices(runningServices)
 	return info, nil
 }
 
@@ -68,7 +60,7 @@ func prepareRuntime(projectDir, composeFile, envFile string, needDB bool, noStop
 				return info, err
 			}
 		}
-		if err := platformdocker.WaitForServicesReady(cfg, defaultRestoreReadinessTimeoutSeconds, "db"); err != nil {
+		if err := platformdocker.WaitForServicesReady(cfg, platformdocker.DefaultOperationalReadinessTimeoutSeconds, "db"); err != nil {
 			return info, err
 		}
 		container, err := platformdocker.ComposeServiceContainerID(cfg, "db")
@@ -85,8 +77,8 @@ func prepareRuntime(projectDir, composeFile, envFile string, needDB bool, noStop
 	if err != nil {
 		return info, err
 	}
-	info.AppServicesWereRunning = restoreAppServicesRunning(runningServices)
-	info.StoppedAppServices = runningAppServices(runningServices)
+	info.AppServicesWereRunning = platformdocker.OperationalAppServicesRunning(runningServices)
+	info.StoppedAppServices = platformdocker.RunningOperationalAppServices(runningServices)
 	if noStop || len(info.StoppedAppServices) == 0 {
 		return info, nil
 	}
@@ -132,7 +124,7 @@ func validatePostRestoreRuntimeHealth(projectDir, composeFile, envFile string, s
 		ComposeFile: composeFile,
 		EnvFile:     envFile,
 	}
-	if err := platformdocker.WaitForServicesReady(cfg, defaultRestoreReadinessTimeoutSeconds, services...); err != nil {
+	if err := platformdocker.WaitForServicesReady(cfg, platformdocker.DefaultOperationalReadinessTimeoutSeconds, services...); err != nil {
 		return nil, err
 	}
 
@@ -163,23 +155,4 @@ func expectedPostRestoreServices(req ExecuteRequest, prep runtimePrepareInfo, re
 	}
 
 	return out
-}
-
-func runningAppServices(services []string) []string {
-	items := make([]string, 0, len(restoreAppServices))
-	for _, service := range restoreAppServices {
-		if slices.Contains(services, service) {
-			items = append(items, service)
-		}
-	}
-	return items
-}
-
-func restoreAppServicesRunning(services []string) bool {
-	for _, service := range services {
-		if slices.Contains(restoreAppServices, service) {
-			return true
-		}
-	}
-	return false
 }

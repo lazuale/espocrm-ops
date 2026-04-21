@@ -1,16 +1,8 @@
 package backup
 
 import (
-	"slices"
-
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
-
-var backupAppServices = []string{
-	"espocrm",
-	"espocrm-daemon",
-	"espocrm-websocket",
-}
 
 type runtimePrepareInfo struct {
 	AppServicesWereRunning bool
@@ -34,8 +26,8 @@ func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo
 		return info, err
 	}
 
-	info.AppServicesWereRunning = backupAppServicesRunning(runningServices)
-	info.StoppedAppServices = runningAppServices(runningServices)
+	info.AppServicesWereRunning = platformdocker.OperationalAppServicesRunning(runningServices)
+	info.StoppedAppServices = platformdocker.RunningOperationalAppServices(runningServices)
 	if len(info.StoppedAppServices) == 0 {
 		return info, nil
 	}
@@ -64,25 +56,4 @@ func returnRuntime(projectDir, composeFile, envFile string, prep runtimePrepareI
 
 	info.RestartedAppServices = append(info.RestartedAppServices, prep.StoppedAppServices...)
 	return info, nil
-}
-
-func backupAppServicesRunning(runningServices []string) bool {
-	for _, service := range runningServices {
-		if slices.Contains(backupAppServices, service) {
-			return true
-		}
-	}
-
-	return false
-}
-
-func runningAppServices(services []string) []string {
-	items := make([]string, 0, len(backupAppServices))
-	for _, service := range backupAppServices {
-		if slices.Contains(services, service) {
-			items = append(items, service)
-		}
-	}
-
-	return items
 }

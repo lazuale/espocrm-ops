@@ -90,6 +90,12 @@ func (e executeFailure) Unwrap() error {
 	return e.Err
 }
 
+// Execute runs the prepared backup workflow.
+//
+// Backup is intentionally kept as a prepared worker boundary: the CLI owns
+// maintenance preflight and env-derived config assembly so restore can reuse
+// the same backup execution path for emergency recovery points without a second
+// wrapper layer.
 func Execute(req ExecuteRequest) (info ExecuteInfo, err error) {
 	info = ExecuteInfo{
 		Scope:              strings.TrimSpace(req.Scope),

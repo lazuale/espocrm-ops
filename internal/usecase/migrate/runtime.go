@@ -8,14 +8,6 @@ import (
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
-const defaultReadinessTimeoutSeconds = 300
-
-var migrationAppServices = []string{
-	"espocrm",
-	"espocrm-daemon",
-	"espocrm-websocket",
-}
-
 func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo, error) {
 	info := runtimePrepareInfo{}
 	cfg := platformdocker.ComposeConfig{
@@ -36,7 +28,7 @@ func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo
 		}
 	}
 
-	if err := platformdocker.WaitForServicesReady(cfg, defaultReadinessTimeoutSeconds, "db"); err != nil {
+	if err := platformdocker.WaitForServicesReady(cfg, platformdocker.DefaultOperationalReadinessTimeoutSeconds, "db"); err != nil {
 		return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 	}
 
@@ -44,9 +36,9 @@ func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo
 	if err != nil {
 		return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 	}
-	if migrationAppServicesRunning(runningServices) {
-		info.StoppedAppServices = runningAppServices(runningServices)
-		if err := platformdocker.ComposeStop(cfg, migrationAppServices...); err != nil {
+	info.StoppedAppServices = platformdocker.RunningOperationalAppServices(runningServices)
+	if len(info.StoppedAppServices) != 0 {
+		if err := platformdocker.ComposeStop(cfg, info.StoppedAppServices...); err != nil {
 			return info, executeFailure{Kind: apperr.KindExternal, Err: err}
 		}
 	}
@@ -55,7 +47,7 @@ func prepareRuntime(projectDir, composeFile, envFile string) (runtimePrepareInfo
 }
 
 func expectedStartedTargetServices() []string {
-	return append([]string{"db"}, migrationAppServices...)
+	return append([]string{"db"}, platformdocker.OperationalAppServices()...)
 }
 
 func resolveDBContainer(projectDir, composeFile, envFile string) (string, error) {
@@ -77,32 +69,4 @@ func resolveDBContainer(projectDir, composeFile, envFile string) (string, error)
 	}
 
 	return container, nil
-}
-
-func migrationAppServicesRunning(services []string) bool {
-	for _, service := range services {
-		for _, appService := range migrationAppServices {
-			if service == appService {
-				return true
-			}
-		}
-	}
-
-	return false
-}
-
-func runningAppServices(services []string) []string {
-	set := map[string]struct{}{}
-	for _, service := range services {
-		set[service] = struct{}{}
-	}
-
-	items := make([]string, 0, len(migrationAppServices))
-	for _, service := range migrationAppServices {
-		if _, ok := set[service]; ok {
-			items = append(items, service)
-		}
-	}
-
-	return items
 }

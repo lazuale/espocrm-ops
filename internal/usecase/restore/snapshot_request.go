@@ -6,13 +6,14 @@ import (
 	"strings"
 
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
+	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	backupusecase "github.com/lazuale/espocrm-ops/internal/usecase/backup"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/usecase/maintenance"
 )
 
 func buildSnapshotRequest(ctx maintenanceusecase.OperationContext, req ExecuteRequest) snapshotBackupRequest {
 	return snapshotBackupRequest{
-		TimeoutSeconds: defaultRestoreReadinessTimeoutSeconds,
+		TimeoutSeconds: platformdocker.DefaultOperationalReadinessTimeoutSeconds,
 		LogWriter:      req.LogWriter,
 		Backup: backupusecase.ExecuteRequest{
 			Scope:          ctx.Scope,

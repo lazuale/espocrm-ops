@@ -61,6 +61,15 @@ make ci
 - Preflight should inspect. Execution should mutate.
 - Do not claim reliability improvements without end-to-end evidence.
 
+## Operational Style
+
+- CLI is edge-only: validate flags, normalize input, call one usecase boundary, render one structured result.
+- Mutating usecases expose `Execute(req)`, run a linear workflow, and return structured `Info`, `Warnings`, `Steps`, `Counts()`, and `Ready()`.
+- Final `apperr` wrapping belongs to the `Execute()` boundary. Helpers return raw errors or lightweight local typed failures.
+- Keep helpers package-local. Do not add framework packages, generic engines, or unnecessary shared helper packages.
+- Prefer explicit request-level injection or small local interfaces in tests. Do not add mutable package-global hooks.
+- `backup.Execute` is intentionally a prepared worker boundary. The CLI owns backup preflight and env-derived config assembly so restore can reuse the same backup workflow for emergency recovery points without a second wrapper layer.
+
 ## Typical Change Flow
 
 1. Make the Go change.

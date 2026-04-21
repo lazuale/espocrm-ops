@@ -21,6 +21,7 @@ func requireMigrationCompatibility(sourceEnv, targetEnv platformconfig.Operation
 	}
 
 	return executeFailure{
+		Kind:    apperr.KindValidation,
 		Summary: "Migration compatibility contract failed",
 		Action:  "Align the shared settings first and rerun espops doctor --scope all --project-dir <repo>.",
 		Err: fmt.Errorf(
@@ -32,12 +33,12 @@ func requireMigrationCompatibility(sourceEnv, targetEnv platformconfig.Operation
 	}
 }
 
-func wrapMigrationEnvError(err error) error {
+func classifyMigrationEnvError(err error) error {
 	switch err.(type) {
 	case platformconfig.MissingEnvFileError, platformconfig.InvalidEnvFileError, platformconfig.EnvParseError, platformconfig.MissingEnvValueError, platformconfig.UnsupportedContourError:
-		return apperr.Wrap(apperr.KindValidation, "migrate_failed", err)
+		return executeFailure{Kind: apperr.KindValidation, Err: err}
 	default:
-		return apperr.Wrap(apperr.KindIO, "migrate_failed", err)
+		return executeFailure{Kind: apperr.KindIO, Err: err}
 	}
 }
 
@@ -51,8 +52,4 @@ func wrapExecuteError(err error) error {
 	}
 
 	return apperr.Wrap(apperr.KindInternal, "migrate_failed", err)
-}
-
-func wrapExternalError(err error) error {
-	return apperr.Wrap(apperr.KindExternal, "migrate_failed", err)
 }

@@ -135,7 +135,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			notRunMigrateStep("files_restore", "Files restore did not run because source contour preflight failed"),
 			notRunMigrateStep("target_start", "Target contour start did not run because source contour preflight failed"),
 		)
-		return info, wrapMigrationEnvError(err)
+		return info, wrapExecuteError(classifyMigrationEnvError(err))
 	}
 
 	info.SourceEnvFile = sourceEnv.FilePath
@@ -200,7 +200,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			notRunMigrateStep("files_restore", "Files restore did not run because source backup selection failed"),
 			notRunMigrateStep("target_start", "Target contour start did not run because source backup selection failed"),
 		)
-		return info, apperr.Wrap(apperr.KindValidation, "migrate_failed", err)
+		return info, wrapExecuteError(executeFailure{Kind: apperr.KindValidation, Err: err})
 	}
 
 	info.SelectionMode = selection.SelectionMode
@@ -232,7 +232,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			notRunMigrateStep("files_restore", "Files restore did not run because migration compatibility checks failed"),
 			notRunMigrateStep("target_start", "Target contour start did not run because migration compatibility checks failed"),
 		)
-		return info, apperr.Wrap(apperr.KindValidation, "migrate_failed", err)
+		return info, wrapExecuteError(err)
 	}
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "compatibility",
@@ -349,7 +349,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				},
 				notRunMigrateStep("target_start", "Target contour start did not run because files restore failed"),
 			)
-			return info, wrapExternalError(err)
+			return info, wrapExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 		}
 
 		info.Steps = append(info.Steps, ExecuteStep{
@@ -381,10 +381,10 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Details: err.Error(),
 				Action:  "Resolve the target contour start failure before rerunning migrate.",
 			})
-			return info, wrapExternalError(err)
+			return info, wrapExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 		}
 		validatedServices := expectedStartedTargetServices()
-		if err := platformdocker.WaitForServicesReady(cfg, defaultReadinessTimeoutSeconds, validatedServices...); err != nil {
+		if err := platformdocker.WaitForServicesReady(cfg, platformdocker.DefaultOperationalReadinessTimeoutSeconds, validatedServices...); err != nil {
 			info.Steps = append(info.Steps, ExecuteStep{
 				Code:    "target_start",
 				Status:  MigrateStepStatusFailed,
@@ -392,7 +392,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				Details: err.Error(),
 				Action:  "Repair the target contour runtime health before treating this migration as successful.",
 			})
-			return info, wrapExternalError(err)
+			return info, wrapExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 		}
 
 		info.Steps = append(info.Steps, ExecuteStep{

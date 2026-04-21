@@ -184,7 +184,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			blockedRestoreStep("files_restore", "Files restore did not run because source resolution failed"),
 			blockedRestoreStep("runtime_return", "Runtime return did not run because source resolution failed"),
 		)
-		return info, apperr.Wrap(apperr.KindValidation, "restore_failed", err)
+		return info, wrapRestoreExecuteError(executeFailure{Kind: apperr.KindValidation, Err: err})
 	}
 
 	info.SelectionMode = source.SelectionMode
@@ -215,7 +215,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			blockedRestoreStep("files_restore", "Files restore did not run because runtime preparation planning failed"),
 			blockedRestoreStep("runtime_return", "Runtime return did not run because runtime preparation planning failed"),
 		)
-		return info, wrapRestoreExternalError(err)
+		return info, wrapRestoreExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 	}
 	info.AppServicesWereRunning = runtimeInfo.AppServicesWereRunning
 
@@ -238,7 +238,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			blockedRestoreStep("files_restore", "Files restore did not run because runtime preparation failed"),
 			blockedRestoreStep("runtime_return", "Runtime return did not run because runtime preparation failed"),
 		)
-		return info, wrapRestoreExternalError(err)
+		return info, wrapRestoreExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 	}
 	info.AppServicesWereRunning = runtimePrep.AppServicesWereRunning
 	info.StartedDBTemporarily = runtimePrep.StartedDBTemporarily
@@ -355,7 +355,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 				},
 				blockedRestoreStep("runtime_return", "Runtime return did not run because the files restore failed"),
 			)
-			return info, wrapRestoreExternalError(err)
+			return info, wrapRestoreExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 		}
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
@@ -374,7 +374,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: err.Error(),
 			Action:  "Resolve the contour return failure before relying on the restored state.",
 		})
-		return info, wrapRestoreExternalError(err)
+		return info, wrapRestoreExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 	}
 	validatedServices, err := validatePostRestoreRuntimeHealth(
 		info.ProjectDir,
@@ -390,7 +390,7 @@ func Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			Details: err.Error(),
 			Action:  "Repair the restored contour health before treating this restore as successful.",
 		})
-		return info, wrapRestoreExternalError(err)
+		return info, wrapRestoreExecuteError(executeFailure{Kind: apperr.KindExternal, Err: err})
 	}
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "runtime_return",
@@ -439,8 +439,4 @@ func wrapRestoreExecuteError(err error) error {
 		return apperr.Wrap(kind, "restore_failed", err)
 	}
 	return apperr.Wrap(apperr.KindInternal, "restore_failed", err)
-}
-
-func wrapRestoreExternalError(err error) error {
-	return apperr.Wrap(apperr.KindExternal, "restore_failed", err)
 }
