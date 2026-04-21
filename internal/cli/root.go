@@ -73,7 +73,7 @@ func (a *App) JSONEnabled() bool {
 
 func bindApp(cmd *cobra.Command, app *App) *cobra.Command {
 	if app == nil {
-		app = NewApp(Dependencies{})
+		panic("cli: bindApp requires non-nil app")
 	}
 
 	base := context.Background()
@@ -94,7 +94,7 @@ func appForCommand(cmd *cobra.Command) *App {
 		}
 	}
 
-	return NewApp(Dependencies{})
+	panic("cli: command app is not bound")
 }
 
 func validateGlobalOptions(opts GlobalOptions) error {

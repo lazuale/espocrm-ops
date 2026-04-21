@@ -4,7 +4,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"slices"
+	"strings"
 	"testing"
+
+	"github.com/spf13/cobra"
 )
 
 func TestSchema_Root_JSON_Error_UnknownCommand_NoJournal(t *testing.T) {
@@ -65,4 +68,44 @@ func TestBackupCommandExposesOnlyVerifySubcommand(t *testing.T) {
 	if !reflect.DeepEqual(subcommands, []string{"verify"}) {
 		t.Fatalf("unexpected backup subcommands: got %v want [verify]", subcommands)
 	}
+}
+
+func TestBindApp_RequiresNonNilApp(t *testing.T) {
+	cmd := &cobra.Command{}
+
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("expected panic")
+		}
+		message, ok := recovered.(string)
+		if !ok {
+			t.Fatalf("unexpected panic type: %T", recovered)
+		}
+		if message != "cli: bindApp requires non-nil app" {
+			t.Fatalf("unexpected panic message: %q", message)
+		}
+	}()
+
+	bindApp(cmd, nil)
+}
+
+func TestAppForCommand_RequiresBoundApp(t *testing.T) {
+	cmd := &cobra.Command{}
+
+	defer func() {
+		recovered := recover()
+		if recovered == nil {
+			t.Fatal("expected panic")
+		}
+		message, ok := recovered.(string)
+		if !ok {
+			t.Fatalf("unexpected panic type: %T", recovered)
+		}
+		if !strings.Contains(message, "cli: command app is not bound") {
+			t.Fatalf("unexpected panic message: %q", message)
+		}
+	}()
+
+	_ = appForCommand(cmd)
 }
