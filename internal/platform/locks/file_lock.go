@@ -109,10 +109,6 @@ func pruneLockPath(journalDir string) string {
 	return filepath.Join(os.TempDir(), "espops-journal-prune-"+hex.EncodeToString(sum[:8])+".lock")
 }
 
-func restoreLockPath(name string) string {
-	return restoreLockPathInDir("", name)
-}
-
 func restoreLockPathInDir(dir, name string) string {
 	if dir == "" {
 		dir = os.TempDir()
