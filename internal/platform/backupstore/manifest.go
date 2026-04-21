@@ -22,10 +22,6 @@ func (e ManifestError) Unwrap() error {
 	return e.Err
 }
 
-func (e ManifestError) ErrorCode() string {
-	return "manifest_invalid"
-}
-
 func LoadManifest(path string) (domainbackup.Manifest, error) {
 	var manifest domainbackup.Manifest
 

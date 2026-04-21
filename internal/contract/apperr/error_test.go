@@ -16,6 +16,20 @@ func (testCodeError) ErrorCode() string {
 	return "typed_failure"
 }
 
+type testCarrierError struct{}
+
+func (testCarrierError) Error() string {
+	return "typed failure"
+}
+
+func (testCarrierError) ErrorKind() Kind {
+	return KindValidation
+}
+
+func (testCarrierError) ErrorCode() string {
+	return "typed_failure"
+}
+
 func TestKindOfFindsWrappedErrorKind(t *testing.T) {
 	cause := errors.New("bad input")
 	err := Wrap(KindValidation, "input_invalid", cause)
@@ -47,7 +61,7 @@ func TestWrapToleratesNilCause(t *testing.T) {
 }
 
 func TestCodeOfFindsWrappedErrorCode(t *testing.T) {
-	err := fmt.Errorf("outer: %w", testCodeError{})
+	err := fmt.Errorf("outer: %w", testCarrierError{})
 
 	code, ok := CodeOf(err)
 	if !ok {
@@ -55,5 +69,13 @@ func TestCodeOfFindsWrappedErrorCode(t *testing.T) {
 	}
 	if code != "typed_failure" {
 		t.Fatalf("expected typed_failure code, got %q", code)
+	}
+}
+
+func TestCodeOfIgnoresCodeOnlyErrors(t *testing.T) {
+	err := fmt.Errorf("outer: %w", testCodeError{})
+
+	if code, ok := CodeOf(err); ok {
+		t.Fatalf("expected code-only error to be ignored, got %q", code)
 	}
 }

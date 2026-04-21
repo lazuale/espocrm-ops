@@ -17,10 +17,6 @@ func (e VerificationError) Unwrap() error {
 	return e.Err
 }
 
-func (e VerificationError) ErrorCode() string {
-	return "backup_verification_failed"
-}
-
 type fileNameSuffixError struct {
 	Label  string
 	Path   string

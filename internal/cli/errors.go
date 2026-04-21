@@ -128,8 +128,11 @@ func exitCodeForKind(kind apperr.Kind, fallback int) int {
 }
 
 func errorCodeForError(err error, fallback string) string {
-	if code, ok := apperr.CodeOf(err); ok {
-		return code
+	var carrier interface{ ErrorCode() string }
+	if errors.As(err, &carrier) {
+		if code := strings.TrimSpace(carrier.ErrorCode()); code != "" {
+			return code
+		}
 	}
 
 	var pathErr *os.PathError
@@ -191,7 +194,8 @@ func IsUsageError(err error) bool {
 		return true
 	}
 
-	if code, ok := apperr.CodeOf(err); ok && code == "usage_error" {
+	var carrier interface{ ErrorCode() string }
+	if errors.As(err, &carrier) && strings.TrimSpace(carrier.ErrorCode()) == "usage_error" {
 		return true
 	}
 

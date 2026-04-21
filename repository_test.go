@@ -10,6 +10,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -158,6 +159,67 @@ func TestProductionWorkflowStatusVocabularyIsCanonical(t *testing.T) {
 		})
 		if err != nil {
 			t.Fatal(err)
+		}
+	}
+}
+
+func TestProductionErrorCodeOwnershipIsCanonical(t *testing.T) {
+	root := repoRoot(t)
+	fset := token.NewFileSet()
+	got := map[string]struct{}{}
+	want := map[string]struct{}{
+		"internal/contract/apperr.Error": {},
+		"internal/cli.CodeError":         {},
+	}
+
+	for _, dir := range []string{
+		filepath.Join(root, "cmd"),
+		filepath.Join(root, "internal"),
+	} {
+		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+
+			file, err := parser.ParseFile(fset, path, nil, 0)
+			if err != nil {
+				return err
+			}
+			for _, decl := range file.Decls {
+				fn, ok := decl.(*ast.FuncDecl)
+				if !ok || fn.Recv == nil || fn.Name.Name != "ErrorCode" {
+					continue
+				}
+
+				rel, err := filepath.Rel(root, path)
+				if err != nil {
+					return err
+				}
+				owner := filepath.ToSlash(filepath.Dir(rel)) + "." + receiverBaseName(fn.Recv)
+				got[owner] = struct{}{}
+			}
+
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected ErrorCode owners: got %v want %v", sortedStringSet(got), sortedStringSet(want))
+	}
+	for owner := range want {
+		if _, ok := got[owner]; !ok {
+			t.Fatalf("missing canonical ErrorCode owner %q in %v", owner, sortedStringSet(got))
+		}
+	}
+	for owner := range got {
+		if _, ok := want[owner]; !ok {
+			t.Fatalf("unexpected ErrorCode owner %q in %v", owner, sortedStringSet(got))
 		}
 	}
 }
@@ -399,4 +461,13 @@ func exportedSymbolName(fn *ast.FuncDecl) string {
 		return fn.Name.Name
 	}
 	return receiver + "." + fn.Name.Name
+}
+
+func sortedStringSet(set map[string]struct{}) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

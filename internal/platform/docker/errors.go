@@ -36,10 +36,6 @@ func (e UnavailableError) Unwrap() error {
 	return e.Err
 }
 
-func (e UnavailableError) ErrorCode() string {
-	return "docker_unavailable"
-}
-
 type ContainerInspectError struct {
 	Container string
 	Err       error
@@ -53,20 +49,12 @@ func (e ContainerInspectError) Unwrap() error {
 	return e.Err
 }
 
-func (e ContainerInspectError) ErrorCode() string {
-	return "container_inspect_failed"
-}
-
 type ContainerNotRunningError struct {
 	Container string
 }
 
 func (e ContainerNotRunningError) Error() string {
 	return fmt.Sprintf("container %s is not running", e.Container)
-}
-
-func (e ContainerNotRunningError) ErrorCode() string {
-	return "container_not_running"
 }
 
 type DBClientDetectionError struct {
@@ -82,10 +70,6 @@ func (e DBClientDetectionError) Unwrap() error {
 	return e.Err
 }
 
-func (e DBClientDetectionError) ErrorCode() string {
-	return "restore_db_failed"
-}
-
 type DBExecutionError struct {
 	Action    string
 	Container string
@@ -98,8 +82,4 @@ func (e DBExecutionError) Error() string {
 
 func (e DBExecutionError) Unwrap() error {
 	return e.Err
-}
-
-func (e DBExecutionError) ErrorCode() string {
-	return "restore_db_failed"
 }

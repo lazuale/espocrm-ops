@@ -191,9 +191,6 @@ func TestCheckContainerRunningRejectsStoppedContainer(t *testing.T) {
 	if !errors.As(err, &notRunning) {
 		t.Fatalf("expected typed not-running error, got %T: %v", err, err)
 	}
-	if notRunning.ErrorCode() != "container_not_running" {
-		t.Fatalf("unexpected error code: %s", notRunning.ErrorCode())
-	}
 }
 
 func TestCheckDockerAvailableMissingBinaryReturnsTypedError(t *testing.T) {
@@ -207,9 +204,6 @@ func TestCheckDockerAvailableMissingBinaryReturnsTypedError(t *testing.T) {
 	var unavailable UnavailableError
 	if !errors.As(err, &unavailable) {
 		t.Fatalf("expected typed unavailable error, got %T: %v", err, err)
-	}
-	if unavailable.ErrorCode() != "docker_unavailable" {
-		t.Fatalf("unexpected error code: %s", unavailable.ErrorCode())
 	}
 }
 
@@ -265,9 +259,6 @@ func TestRestoreMySQLDumpGzCapturesDockerExecStderr(t *testing.T) {
 	if !errors.As(err, &execErr) {
 		t.Fatalf("expected DBExecutionError, got %T: %v", err, err)
 	}
-	if execErr.ErrorCode() != "restore_db_failed" {
-		t.Fatalf("unexpected error code: %s", execErr.ErrorCode())
-	}
 	if !strings.Contains(err.Error(), "permission denied") {
 		t.Fatalf("expected stderr in restore error, got: %v", err)
 	}
@@ -288,8 +279,5 @@ func TestDetectDBClientReturnsTypedErrorWhenNoClientDetected(t *testing.T) {
 	var typedErr DBClientDetectionError
 	if !errors.As(err, &typedErr) {
 		t.Fatalf("expected DBClientDetectionError, got %T: %v", err, err)
-	}
-	if typedErr.ErrorCode() != "restore_db_failed" {
-		t.Fatalf("unexpected error code: %s", typedErr.ErrorCode())
 	}
 }

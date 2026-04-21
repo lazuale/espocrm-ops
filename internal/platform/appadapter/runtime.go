@@ -1,40 +1,47 @@
 package appadapter
 
 import (
+	"errors"
+
 	runtimeport "github.com/lazuale/espocrm-ops/internal/app/ports/runtimeport"
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 )
 
 type Runtime struct{}
 
 func (Runtime) Up(target runtimeport.Target, services ...string) error {
-	return platformdocker.ComposeUp(composeTarget(target), services...)
+	return classifyRuntimeError(platformdocker.ComposeUp(composeTarget(target), services...))
 }
 
 func (Runtime) Stop(target runtimeport.Target, services ...string) error {
-	return platformdocker.ComposeStop(composeTarget(target), services...)
+	return classifyRuntimeError(platformdocker.ComposeStop(composeTarget(target), services...))
 }
 
 func (Runtime) DockerClientVersion() (string, error) {
-	return platformdocker.DockerClientVersion()
+	version, err := platformdocker.DockerClientVersion()
+	return version, classifyRuntimeError(err)
 }
 
 func (Runtime) DockerServerVersion() (string, error) {
-	return platformdocker.DockerServerVersion()
+	version, err := platformdocker.DockerServerVersion()
+	return version, classifyRuntimeError(err)
 }
 
 func (Runtime) ComposeVersion() (string, error) {
-	return platformdocker.ComposeVersion()
+	version, err := platformdocker.ComposeVersion()
+	return version, classifyRuntimeError(err)
 }
 
 func (Runtime) RunningServices(target runtimeport.Target) ([]string, error) {
-	return platformdocker.ComposeRunningServices(composeTarget(target))
+	services, err := platformdocker.ComposeRunningServices(composeTarget(target))
+	return services, classifyRuntimeError(err)
 }
 
 func (Runtime) ServiceState(target runtimeport.Target, service string) (runtimeport.ServiceState, error) {
 	state, err := platformdocker.ComposeServiceStateFor(composeTarget(target), service)
 	if err != nil {
-		return runtimeport.ServiceState{}, err
+		return runtimeport.ServiceState{}, classifyRuntimeError(err)
 	}
 
 	return runtimeport.ServiceState{
@@ -44,39 +51,40 @@ func (Runtime) ServiceState(target runtimeport.Target, service string) (runtimep
 }
 
 func (Runtime) ServiceContainerID(target runtimeport.Target, service string) (string, error) {
-	return platformdocker.ComposeServiceContainerID(composeTarget(target), service)
+	container, err := platformdocker.ComposeServiceContainerID(composeTarget(target), service)
+	return container, classifyRuntimeError(err)
 }
 
 func (Runtime) WaitForServicesReady(target runtimeport.Target, timeoutSeconds int, services ...string) error {
-	return platformdocker.WaitForServicesReady(composeTarget(target), timeoutSeconds, services...)
+	return classifyRuntimeError(platformdocker.WaitForServicesReady(composeTarget(target), timeoutSeconds, services...))
 }
 
 func (Runtime) ValidateComposeConfig(target runtimeport.Target) error {
-	return platformdocker.ValidateComposeConfig(composeTarget(target))
+	return classifyRuntimeError(platformdocker.ValidateComposeConfig(composeTarget(target)))
 }
 
 func (Runtime) CheckDockerAvailable() error {
-	return platformdocker.CheckDockerAvailable()
+	return classifyRuntimeError(platformdocker.CheckDockerAvailable())
 }
 
 func (Runtime) CheckContainerRunning(container string) error {
-	return platformdocker.CheckContainerRunning(container)
+	return classifyRuntimeError(platformdocker.CheckContainerRunning(container))
 }
 
 func (Runtime) DumpMySQLDumpGz(target runtimeport.Target, service, user, password, dbName, destPath string) error {
-	return platformdocker.DumpMySQLDumpGz(composeTarget(target), service, user, password, dbName, destPath)
+	return classifyRuntimeError(platformdocker.DumpMySQLDumpGz(composeTarget(target), service, user, password, dbName, destPath))
 }
 
 func (Runtime) ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser string) error {
-	return platformdocker.ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser)
+	return classifyRuntimeError(platformdocker.ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser))
 }
 
 func (Runtime) CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage string) error {
-	return platformdocker.CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage)
+	return classifyRuntimeError(platformdocker.CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage))
 }
 
 func (Runtime) ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string) error {
-	return platformdocker.ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage)
+	return classifyRuntimeError(platformdocker.ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage))
 }
 
 func composeTarget(target runtimeport.Target) platformdocker.ComposeConfig {
@@ -85,4 +93,37 @@ func composeTarget(target runtimeport.Target) platformdocker.ComposeConfig {
 		ComposeFile: target.ComposeFile,
 		EnvFile:     target.EnvFile,
 	}
+}
+
+func classifyRuntimeError(err error) error {
+	if err == nil {
+		return nil
+	}
+
+	var unavailableErr platformdocker.UnavailableError
+	if errors.As(err, &unavailableErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindExternal, Code: "docker_unavailable", Err: err}
+	}
+
+	var inspectErr platformdocker.ContainerInspectError
+	if errors.As(err, &inspectErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindExternal, Code: "container_inspect_failed", Err: err}
+	}
+
+	var notRunningErr platformdocker.ContainerNotRunningError
+	if errors.As(err, &notRunningErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindExternal, Code: "container_not_running", Err: err}
+	}
+
+	var detectErr platformdocker.DBClientDetectionError
+	if errors.As(err, &detectErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindExternal, Code: "restore_db_failed", Err: err}
+	}
+
+	var execErr platformdocker.DBExecutionError
+	if errors.As(err, &execErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindExternal, Code: "restore_db_failed", Err: err}
+	}
+
+	return err
 }

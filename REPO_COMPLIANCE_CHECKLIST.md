@@ -283,10 +283,13 @@ Helpers may:
 Helpers must not:
 - perform final app/transport wrapping
 - decide final public error code mapping
+- implement public `ErrorCode()` carriers for adapter/local failures
 
 Application boundaries must own:
 - final error classification
 - final external/app wrapping
+
+Public `ErrorCode()` carriers must remain limited to final app/transport wrappers.
 
 Diagnostic/report boundaries may return a structured report that the CLI maps to exit semantics when the report is non-ready, as long as helpers and adapters do not own that mapping.
 

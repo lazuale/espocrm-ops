@@ -66,7 +66,8 @@ make ci
 
 - CLI is edge-only: validate flags, normalize input, call one usecase boundary, render one structured result.
 - Mutating app modules expose `Execute(req)`, run a linear workflow, and return structured `Info`, `Warnings`, `Steps`, `Counts()`, and `Ready()`.
-- Final `apperr` wrapping belongs to the `Execute()` boundary. Helpers return raw errors or lightweight local typed failures.
+- Final public error meaning belongs to the application boundary. Helpers return raw errors or lightweight local typed failures; diagnostic non-ready reports stay report-owned until the CLI maps them to transport semantics.
+- Public `ErrorCode()` ownership belongs to final app/transport carriers only. Adapter/local typed causes may be typed, but must not masquerade as final public error codes.
 - Keep helpers package-local. Do not add framework packages, generic engines, or unnecessary shared helper packages.
 - Prefer explicit request-level injection or small local interfaces in tests. Do not add mutable package-global hooks.
 

@@ -318,11 +318,15 @@ Error ownership is strict.
 - apply final app/transport wrappers
 - own final public error category mapping
 - decide transport contract behavior
+- implement public `ErrorCode()` carriers for adapter/local failures
 
 ### 6.3 Application boundaries own:
 - final error classification
 - final app/transport wrapping
 - final external error code mapping
+
+Public `ErrorCode()` carriers belong only to final app/transport wrappers.
+Adapter-local and helper-local typed causes may stay typed, but they must not present themselves as final public error-code owners.
 
 The boundary is the only place where final external error semantics may be decided.
 

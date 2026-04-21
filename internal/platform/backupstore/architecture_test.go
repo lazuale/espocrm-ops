@@ -43,17 +43,10 @@ func TestBackupStoreExportedSurfaceIsIntentional(t *testing.T) {
 	}
 }
 
-func TestBackupStoreErrorCodesStayOnWrapperErrors(t *testing.T) {
+func TestBackupStoreDoesNotOwnErrorCodes(t *testing.T) {
 	receivers := errorCodeReceivers(t)
-	want := []string{"ManifestError", "VerificationError"}
-
-	if len(receivers) != len(want) {
-		t.Fatalf("unexpected ErrorCode receivers: got %#v want %#v", receivers, want)
-	}
-	for i := range want {
-		if receivers[i] != want[i] {
-			t.Fatalf("unexpected ErrorCode receivers: got %#v want %#v", receivers, want)
-		}
+	if len(receivers) != 0 {
+		t.Fatalf("backupstore must not define ErrorCode methods, found %#v", receivers)
 	}
 }
 

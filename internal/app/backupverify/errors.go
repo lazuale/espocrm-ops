@@ -22,9 +22,6 @@ func wrapAppError(err error, defaultCode string) error {
 		}
 		return apperr.Wrap(kind, code, err)
 	}
-	if code, ok := apperr.CodeOf(err); ok {
-		return apperr.Wrap(errorKindForCode(code), normalizeErrorCode(code, defaultCode), err)
-	}
 
 	return apperr.Wrap(apperr.KindInternal, defaultCode, err)
 }
@@ -49,16 +46,5 @@ func normalizeErrorCode(code, defaultCode string) string {
 		return defaultCode
 	default:
 		return code
-	}
-}
-
-func errorKindForCode(code string) apperr.Kind {
-	switch normalizeErrorCode(code, "") {
-	case "manifest_invalid":
-		return apperr.KindManifest
-	case "backup_verification_failed":
-		return apperr.KindValidation
-	default:
-		return apperr.KindInternal
 	}
 }

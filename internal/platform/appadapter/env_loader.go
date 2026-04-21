@@ -1,6 +1,8 @@
 package appadapter
 
 import (
+	"errors"
+
 	envport "github.com/lazuale/espocrm-ops/internal/app/ports/envport"
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
@@ -59,12 +61,25 @@ func (EnvLoader) ResolveDBRootPassword(req envport.DBPasswordRequest) (string, e
 }
 
 func classifyPasswordError(err error) error {
-	switch err.(type) {
-	case platformconfig.PasswordFileReadError:
+	var readErr platformconfig.PasswordFileReadError
+	if errors.As(err, &readErr) {
 		return domainfailure.Failure{Kind: domainfailure.KindIO, Code: "filesystem_error", Err: err}
-	case platformconfig.PasswordSourceConflictError, platformconfig.PasswordFileEmptyError, platformconfig.PasswordRequiredError:
-		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "preflight_failed", Err: err}
-	default:
-		return err
 	}
+
+	var conflictErr platformconfig.PasswordSourceConflictError
+	if errors.As(err, &conflictErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "preflight_failed", Err: err}
+	}
+
+	var emptyErr platformconfig.PasswordFileEmptyError
+	if errors.As(err, &emptyErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "preflight_failed", Err: err}
+	}
+
+	var requiredErr platformconfig.PasswordRequiredError
+	if errors.As(err, &requiredErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "preflight_failed", Err: err}
+	}
+
+	return err
 }

@@ -59,25 +59,25 @@ func Wrap(kind Kind, code string, err error) Error {
 	}
 }
 
-type kinded interface {
+type carrier interface {
 	ErrorKind() Kind
-}
-
-type coded interface {
 	ErrorCode() string
 }
 
 func KindOf(err error) (Kind, bool) {
-	var k kinded
-	if errors.As(err, &k) {
-		return k.ErrorKind(), true
+	var c carrier
+	if errors.As(err, &c) {
+		kind := c.ErrorKind()
+		if kind != "" {
+			return kind, true
+		}
 	}
 
 	return "", false
 }
 
 func CodeOf(err error) (string, bool) {
-	var c coded
+	var c carrier
 	if errors.As(err, &c) {
 		code := c.ErrorCode()
 		if code != "" {

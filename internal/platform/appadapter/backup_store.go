@@ -1,6 +1,8 @@
 package appadapter
 
 import (
+	"errors"
+
 	backupstoreport "github.com/lazuale/espocrm-ops/internal/app/ports/backupstoreport"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
@@ -71,12 +73,16 @@ func classifyBackupStoreError(err error) error {
 	if err == nil {
 		return nil
 	}
-	switch err.(type) {
-	case platformbackupstore.ManifestError:
+
+	var manifestErr platformbackupstore.ManifestError
+	if errors.As(err, &manifestErr) {
 		return domainfailure.Failure{Kind: domainfailure.KindManifest, Code: "manifest_invalid", Err: err}
-	case platformbackupstore.VerificationError:
-		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "backup_verification_failed", Err: err}
-	default:
-		return err
 	}
+
+	var verificationErr platformbackupstore.VerificationError
+	if errors.As(err, &verificationErr) {
+		return domainfailure.Failure{Kind: domainfailure.KindValidation, Code: "backup_verification_failed", Err: err}
+	}
+
+	return err
 }

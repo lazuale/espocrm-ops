@@ -58,6 +58,19 @@ func TestErrorCodeForError_UsesAppErrorMachineCode(t *testing.T) {
 	}
 }
 
+func TestErrorCodeForError_UsesTransportCodeCarrier(t *testing.T) {
+	err := CodeError{
+		Code:    exitcode.ValidationError,
+		Err:     errors.New("boom"),
+		ErrCode: "doctor_failed",
+	}
+
+	got := errorCodeForError(err, "fallback_error")
+	if got != "doctor_failed" {
+		t.Fatalf("expected transport error code, got %q", got)
+	}
+}
+
 func TestErrorResult_IncludesTypedMachineFields(t *testing.T) {
 	err := apperr.Wrap(apperr.KindNotFound, "operation_not_found", errors.New("missing operation"))
 
@@ -98,6 +111,9 @@ func TestErrorResult_PropagatesWarningsFromCodeError(t *testing.T) {
 	}
 	if res.Warnings[0] != "failed to write journal entry: journal writer is not configured" {
 		t.Fatalf("unexpected warning: %#v", res.Warnings)
+	}
+	if res.Error == nil || res.Error.Code != "restore_failed" {
+		t.Fatalf("expected restore_failed error code, got %#v", res.Error)
 	}
 }
 
