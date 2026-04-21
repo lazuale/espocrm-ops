@@ -70,6 +70,13 @@ make ci
 - Keep helpers package-local. Do not add framework packages, generic engines, or unnecessary shared helper packages.
 - Prefer explicit request-level injection or small local interfaces in tests. Do not add mutable package-global hooks.
 
+## PR Review Gate
+
+- Reject any PR that expands top-level `internal/app/*` production surface beyond the canonical boundary shape.
+- Reject any PR that reintroduces direct `internal/app -> internal/platform/*` imports.
+- Reject any PR that introduces a second owner for an existing operational semantic.
+- If a change intentionally moves the architecture baseline, require an updated formal audit and an updated [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md).
+
 ## Typical Change Flow
 
 1. Make the Go change.
@@ -82,4 +89,5 @@ make ci
 - Example contour env files live under `env/`.
 - `compose.yaml` and `deploy/` describe the runtime the tool operates against.
 - Architecture rules and the layer model live in [ARCHITECTURE.md](ARCHITECTURE.md).
+- The current accepted compliance baseline lives in [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md).
 - Repository rules and cleanup constraints live in [AGENTS.md](AGENTS.md).
