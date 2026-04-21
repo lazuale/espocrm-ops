@@ -35,10 +35,6 @@ type ManifestBuildRequest struct {
 	FilesChecksum   string
 }
 
-func ResolveArtifactPath(manifestPath, kind, fileName string) string {
-	return ResolveManifestArtifactPath(manifestPath, kind, fileName)
-}
-
 func BuildManifest(req ManifestBuildRequest) (Manifest, error) {
 	manifest := Manifest{
 		Version:   1,

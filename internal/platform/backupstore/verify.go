@@ -28,8 +28,8 @@ func VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error) {
 		return VerifiedBackup{}, err
 	}
 
-	dbPath := domainbackup.ResolveArtifactPath(manifestPath, "db", manifest.Artifacts.DBBackup)
-	filesPath := domainbackup.ResolveArtifactPath(manifestPath, "files", manifest.Artifacts.FilesBackup)
+	dbPath := domainbackup.ResolveManifestArtifactPath(manifestPath, "db", manifest.Artifacts.DBBackup)
+	filesPath := domainbackup.ResolveManifestArtifactPath(manifestPath, "files", manifest.Artifacts.FilesBackup)
 
 	if err := verifyManifestCoherence(manifestPath, manifest); err != nil {
 		return VerifiedBackup{}, ValidationError{Err: err}
