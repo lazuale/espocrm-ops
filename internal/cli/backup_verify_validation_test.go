@@ -6,7 +6,122 @@ import (
 	"testing"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
+	"github.com/spf13/cobra"
 )
+
+func newBackupVerifyValidationCmd() *cobra.Command {
+	cmd := &cobra.Command{}
+	cmd.Flags().String("manifest", "", "")
+	cmd.Flags().String("backup-root", "", "")
+	return cmd
+}
+
+func TestValidateBackupVerifyInput_NormalizesManifestPath(t *testing.T) {
+	cmd := newBackupVerifyValidationCmd()
+	raw := "  " + filepath.Join(".", "fixtures", "..", "manifest.json") + "  "
+	if err := cmd.Flags().Set("manifest", raw); err != nil {
+		t.Fatal(err)
+	}
+
+	in := backupVerifyInput{manifestPath: raw}
+	if err := validateBackupVerifyInput(cmd, &in); err != nil {
+		t.Fatalf("validateBackupVerifyInput returned error: %v", err)
+	}
+
+	want, err := filepath.Abs(filepath.Clean(filepath.Join(".", "fixtures", "..", "manifest.json")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.manifestPath != want {
+		t.Fatalf("unexpected manifest path: got %q want %q", in.manifestPath, want)
+	}
+	if in.backupRoot != "" {
+		t.Fatalf("expected empty backup root, got %q", in.backupRoot)
+	}
+}
+
+func TestValidateBackupVerifyInput_NormalizesBackupRoot(t *testing.T) {
+	cmd := newBackupVerifyValidationCmd()
+	raw := "  " + filepath.Join(".", "backups", "..", "backup-root") + "  "
+	if err := cmd.Flags().Set("backup-root", raw); err != nil {
+		t.Fatal(err)
+	}
+
+	in := backupVerifyInput{backupRoot: raw}
+	if err := validateBackupVerifyInput(cmd, &in); err != nil {
+		t.Fatalf("validateBackupVerifyInput returned error: %v", err)
+	}
+
+	want, err := filepath.Abs(filepath.Clean(filepath.Join(".", "backups", "..", "backup-root")))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if in.backupRoot != want {
+		t.Fatalf("unexpected backup root: got %q want %q", in.backupRoot, want)
+	}
+	if in.manifestPath != "" {
+		t.Fatalf("expected empty manifest path, got %q", in.manifestPath)
+	}
+}
+
+func TestValidateBackupVerifyInput_BlankAfterTrimIsUsageError(t *testing.T) {
+	cmd := newBackupVerifyValidationCmd()
+	if err := cmd.Flags().Set("manifest", "   "); err != nil {
+		t.Fatal(err)
+	}
+
+	in := backupVerifyInput{manifestPath: "   "}
+	err := validateBackupVerifyInput(cmd, &in)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !IsUsageError(err) {
+		t.Fatalf("expected usage error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "--manifest must not be blank") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateBackupVerifyInput_ManifestAndBackupRootConflictIsUsageError(t *testing.T) {
+	cmd := newBackupVerifyValidationCmd()
+	if err := cmd.Flags().Set("manifest", filepath.Join(".", "manifest.json")); err != nil {
+		t.Fatal(err)
+	}
+	if err := cmd.Flags().Set("backup-root", filepath.Join(".", "backups")); err != nil {
+		t.Fatal(err)
+	}
+
+	in := backupVerifyInput{
+		manifestPath: filepath.Join(".", "manifest.json"),
+		backupRoot:   filepath.Join(".", "backups"),
+	}
+	err := validateBackupVerifyInput(cmd, &in)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !IsUsageError(err) {
+		t.Fatalf("expected usage error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "use either --manifest or --backup-root") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestValidateBackupVerifyInput_RequiresManifestOrBackupRoot(t *testing.T) {
+	cmd := newBackupVerifyValidationCmd()
+
+	err := validateBackupVerifyInput(cmd, &backupVerifyInput{})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !IsUsageError(err) {
+		t.Fatalf("expected usage error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "--manifest or --backup-root is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
 
 func TestSchema_BackupVerify_JSON_Error_MissingManifest_NoJournal(t *testing.T) {
 	tmp := t.TempDir()
@@ -35,7 +150,7 @@ func TestSchema_BackupVerify_JSON_Error_BlankManifest_NoJournal(t *testing.T) {
 		"--manifest", "   ",
 	)
 
-	assertUsageErrorOutput(t, outcome, "--manifest is required")
+	assertUsageErrorOutput(t, outcome, "--manifest must not be blank")
 	assertNoJournalFiles(t, journalDir)
 }
 
@@ -68,7 +183,7 @@ func TestSchema_BackupVerify_JSON_Error_BlankBackupRoot_NoJournal(t *testing.T) 
 		"--backup-root", "   ",
 	)
 
-	assertUsageErrorOutput(t, outcome, "--backup-root is required")
+	assertUsageErrorOutput(t, outcome, "--backup-root must not be blank")
 	assertNoJournalFiles(t, journalDir)
 }
 

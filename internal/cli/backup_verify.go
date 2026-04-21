@@ -19,7 +19,11 @@ func newBackupVerifyCmd() *cobra.Command {
 		Short: "Verify backup set from manifest",
 		Args:  noArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if err := validateBackupVerifyInput(manifestPath, backupRoot); err != nil {
+			in := backupVerifyInput{
+				manifestPath: manifestPath,
+				backupRoot:   backupRoot,
+			}
+			if err := validateBackupVerifyInput(cmd, &in); err != nil {
 				return err
 			}
 
@@ -31,13 +35,13 @@ func newBackupVerifyCmd() *cobra.Command {
 			}, func() (result.Result, error) {
 				res := result.Result{
 					Artifacts: result.BackupVerifyArtifacts{
-						Manifest: manifestPath,
+						Manifest: in.manifestPath,
 					},
 				}
 
 				report, err := appForCommand(cmd).backupVerify.Diagnose(backupverifyapp.Request{
-					ManifestPath: manifestPath,
-					BackupRoot:   backupRoot,
+					ManifestPath: in.manifestPath,
+					BackupRoot:   in.backupRoot,
 				})
 				if err != nil {
 					return res, err
@@ -65,17 +69,26 @@ func newBackupVerifyCmd() *cobra.Command {
 	return cmd
 }
 
-func validateBackupVerifyInput(manifestPath, backupRoot string) error {
-	hasManifest := manifestPath != ""
-	hasBackupRoot := backupRoot != ""
+type backupVerifyInput struct {
+	manifestPath string
+	backupRoot   string
+}
+
+func validateBackupVerifyInput(cmd *cobra.Command, in *backupVerifyInput) error {
+	if err := normalizeOptionalAbsolutePathFlag(cmd, "manifest", &in.manifestPath); err != nil {
+		return err
+	}
+	if err := normalizeOptionalAbsolutePathFlag(cmd, "backup-root", &in.backupRoot); err != nil {
+		return err
+	}
+
+	hasManifest := in.manifestPath != ""
+	hasBackupRoot := in.backupRoot != ""
 	if hasManifest && hasBackupRoot {
 		return usageError(fmt.Errorf("use either --manifest or --backup-root, not both"))
 	}
-	if hasManifest {
-		return requireNonBlankFlag("--manifest", manifestPath)
-	}
-	if hasBackupRoot {
-		return requireNonBlankFlag("--backup-root", backupRoot)
+	if hasManifest || hasBackupRoot {
+		return nil
 	}
 
 	return usageError(fmt.Errorf("--manifest or --backup-root is required"))
