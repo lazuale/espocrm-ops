@@ -3,7 +3,7 @@ package workflow
 type Status string
 
 const (
-	StatusPlanned   Status = "would_run"
+	StatusPlanned   Status = "planned"
 	StatusCompleted Status = "completed"
 	StatusSkipped   Status = "skipped"
 	StatusBlocked   Status = "blocked"
