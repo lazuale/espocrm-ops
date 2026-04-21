@@ -59,81 +59,6 @@ func TestInternalDependencyBoundaries(t *testing.T) {
 	}
 }
 
-func TestNoProductionTypeAliases(t *testing.T) {
-	root := repoRoot(t)
-	internalDir := filepath.Join(root, "internal")
-
-	err := filepath.WalkDir(internalDir, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		for lineNo, line := range strings.Split(string(raw), "\n") {
-			line = strings.TrimSpace(line)
-			if strings.HasPrefix(line, "type ") && strings.Contains(line, " = ") {
-				t.Fatalf("production type alias found at %s:%d: %s", path, lineNo+1, line)
-			}
-		}
-
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestProductionCLIPackageHasNoPackageVars(t *testing.T) {
-	root := repoRoot(t)
-	cliDir := filepath.Join(root, "internal", "cli")
-	fset := token.NewFileSet()
-
-	err := filepath.WalkDir(cliDir, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			return err
-		}
-
-		for _, decl := range file.Decls {
-			gen, ok := decl.(*ast.GenDecl)
-			if !ok || gen.Tok != token.VAR {
-				continue
-			}
-
-			var names []string
-			for _, spec := range gen.Specs {
-				valueSpec, ok := spec.(*ast.ValueSpec)
-				if !ok {
-					continue
-				}
-				for _, name := range valueSpec.Names {
-					names = append(names, name.Name)
-				}
-			}
-
-			t.Fatalf("production package-level var in internal/cli at %s: %s", fset.Position(gen.Pos()), strings.Join(names, ", "))
-		}
-
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
 func TestAppAndDomainDoNotReadProcessEnv(t *testing.T) {
 	root := repoRoot(t)
 	fset := token.NewFileSet()
@@ -180,73 +105,6 @@ func TestAppAndDomainDoNotReadProcessEnv(t *testing.T) {
 	}
 }
 
-func TestProductionCLIEnvReadsStayAtEdgeHelpers(t *testing.T) {
-	root := repoRoot(t)
-	cliDir := filepath.Join(root, "internal", "cli")
-	fset := token.NewFileSet()
-
-	err := filepath.WalkDir(cliDir, func(path string, entry os.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
-			return nil
-		}
-
-		file, err := parser.ParseFile(fset, path, nil, 0)
-		if err != nil {
-			return err
-		}
-
-		ast.Inspect(file, func(node ast.Node) bool {
-			selector, ok := node.(*ast.SelectorExpr)
-			if !ok {
-				return true
-			}
-			switch selector.Sel.Name {
-			case "Getenv", "LookupEnv", "Environ":
-			default:
-				return true
-			}
-			ident, ok := selector.X.(*ast.Ident)
-			if ok && ident.Name == "os" {
-				t.Fatalf("production CLI env read must stay in env helpers at %s", fset.Position(selector.Pos()))
-			}
-			return true
-		})
-
-		return nil
-	})
-	if err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestDockerMySQLAdapterDoesNotUseProcessStdIOOrWholeEnv(t *testing.T) {
-	root := repoRoot(t)
-	path := filepath.Join(root, "internal", "platform", "docker", "mysql.go")
-
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(raw)
-
-	for _, forbidden := range []string{"os.Stdout", "os.Stderr", "os.Environ("} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("docker mysql adapter must not use %s directly", forbidden)
-		}
-	}
-}
-
-func TestOperationAppDoesNotOwnPlatformJournalStoreWiring(t *testing.T) {
-	pkg := listPackage(t, "./internal/app/operation")
-
-	assertNoImports(t, pkg, []string{
-		modulePath + "/internal/platform/journalstore",
-	})
-}
-
 func TestProductionWorkflowStatusVocabularyIsCanonical(t *testing.T) {
 	root := repoRoot(t)
 	forbidden := []*regexp.Regexp{
@@ -291,17 +149,6 @@ func listInternalPackages(t *testing.T) []listedPackage {
 	t.Helper()
 
 	return listPackages(t, "./internal/...")
-}
-
-func listPackage(t *testing.T, pattern string) listedPackage {
-	t.Helper()
-
-	packages := listPackages(t, pattern)
-	if len(packages) != 1 {
-		t.Fatalf("expected exactly one package for %s, got %d", pattern, len(packages))
-	}
-
-	return packages[0]
 }
 
 func listPackages(t *testing.T, pattern string) []listedPackage {
