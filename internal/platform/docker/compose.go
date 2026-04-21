@@ -156,9 +156,7 @@ func composeServiceContainerID(cfg ComposeConfig, service string) (string, error
 }
 
 func inspectContainerServiceStatus(containerID string) (string, error) {
-	res, err := runCommand(
-		commandOptions{Env: dockerCommandEnv()},
-		"docker",
+	res, err := runDockerCommand(
 		"inspect",
 		"--format",
 		"{{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}}",
@@ -172,9 +170,7 @@ func inspectContainerServiceStatus(containerID string) (string, error) {
 }
 
 func inspectContainerHealthMessage(containerID string) (string, error) {
-	res, err := runCommand(
-		commandOptions{Env: dockerCommandEnv()},
-		"docker",
+	res, err := runDockerCommand(
 		"inspect",
 		"--format",
 		"{{if .State.Health}}{{range .State.Health.Log}}{{.Output}}{{printf \"\\n\"}}{{end}}{{end}}",
@@ -204,6 +200,11 @@ func ValidateComposeConfig(cfg ComposeConfig) error {
 }
 
 func runCompose(cfg ComposeConfig, args ...string) (Result, error) {
+	cfg, err := normalizeComposeConfig(cfg)
+	if err != nil {
+		return Result{}, err
+	}
+
 	composeArgs := []string{
 		"compose",
 		"--project-directory", cfg.ProjectDir,
@@ -212,7 +213,22 @@ func runCompose(cfg ComposeConfig, args ...string) (Result, error) {
 	}
 	composeArgs = append(composeArgs, args...)
 
-	return runCommand(commandOptions{
-		Env: dockerCommandEnv(),
-	}, "docker", composeArgs...)
+	return runDockerCommand(composeArgs...)
+}
+
+func normalizeComposeConfig(cfg ComposeConfig) (ComposeConfig, error) {
+	cfg.ProjectDir = strings.TrimSpace(cfg.ProjectDir)
+	cfg.ComposeFile = strings.TrimSpace(cfg.ComposeFile)
+	cfg.EnvFile = strings.TrimSpace(cfg.EnvFile)
+
+	switch {
+	case cfg.ProjectDir == "":
+		return ComposeConfig{}, fmt.Errorf("compose project dir is required")
+	case cfg.ComposeFile == "":
+		return ComposeConfig{}, fmt.Errorf("compose file is required")
+	case cfg.EnvFile == "":
+		return ComposeConfig{}, fmt.Errorf("compose env file is required")
+	}
+
+	return cfg, nil
 }

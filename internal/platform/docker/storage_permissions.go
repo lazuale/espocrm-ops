@@ -13,11 +13,11 @@ func ResolveEspoRuntimeOwner(espocrmImage string) (int, int, error) {
 	if image == "" {
 		return 0, 0, fmt.Errorf("ESPOCRM_IMAGE is required to resolve runtime storage ownership")
 	}
-	if _, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "image", "inspect", image); err != nil {
+	if _, err := runDockerCommand("image", "inspect", image); err != nil {
 		return 0, 0, fmt.Errorf("inspect image %s: %w", image, err)
 	}
 
-	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker",
+	res, err := runDockerCommand(
 		"run",
 		"--pull=never",
 		"--rm",
@@ -25,24 +25,7 @@ func ResolveEspoRuntimeOwner(espocrmImage string) (int, int, error) {
 		"--entrypoint", "sh",
 		image,
 		"-euc",
-		`
-for path in \
-  /var/www/html/data \
-  /var/www/html/custom \
-  /var/www/html/client/custom \
-  /var/www/html/upload \
-  /var/www/html
-do
-  if [ -e "$path" ]; then
-    set -- $(ls -nd "$path")
-    [ "$#" -ge 4 ] || exit 1
-    printf "%s:%s\n" "$3" "$4"
-    exit 0
-  fi
-done
-
-exit 1
-`,
+		resolveEspoRuntimeOwnerScript,
 	)
 	if err != nil {
 		return 0, 0, fmt.Errorf("inspect runtime owner from image %s: %w", image, err)
@@ -82,17 +65,17 @@ func ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string)
 		return err
 	}
 
-	helperImage, err := selectCleanupHelperImage(mariaDBTag, espocrmImage)
+	helperImage, err := selectLocalHelperImage(mariaDBTag, espocrmImage)
 	if err != nil {
 		return err
 	}
 
-	if _, err := runCommand(commandOptions{
-		Env: dockerCommandEnv(
+	if _, err := runDockerCommandWithOptions(commandOptions{
+		Env: []string{
 			fmt.Sprintf("ESPO_RUNTIME_UID=%d", runtimeUID),
 			fmt.Sprintf("ESPO_RUNTIME_GID=%d", runtimeGID),
-		),
-	}, "docker",
+		},
+	},
 		"run",
 		"--pull=never",
 		"--rm",
@@ -103,7 +86,34 @@ func ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string)
 		"-e", "ESPO_RUNTIME_GID",
 		helperImage,
 		"-euc",
-		`
+		reconcileEspoStoragePermissionsScript,
+	); err != nil {
+		return fmt.Errorf("reconcile EspoCRM storage permissions under %s: %w", targetDir, err)
+	}
+
+	return nil
+}
+
+const resolveEspoRuntimeOwnerScript = `
+for path in \
+  /var/www/html/data \
+  /var/www/html/custom \
+  /var/www/html/client/custom \
+  /var/www/html/upload \
+  /var/www/html
+do
+  if [ -e "$path" ]; then
+    set -- $(ls -nd "$path")
+    [ "$#" -ge 4 ] || exit 1
+    printf "%s:%s\n" "$3" "$4"
+    exit 0
+  fi
+done
+
+exit 1
+`
+
+const reconcileEspoStoragePermissionsScript = `
 storage="/espo-storage"
 
 chown -R "$ESPO_RUNTIME_UID:$ESPO_RUNTIME_GID" "$storage"
@@ -116,10 +126,4 @@ for relative in data custom client/custom upload; do
     find "$path" -type f -exec chmod 0664 {} +
   fi
 done
-`,
-	); err != nil {
-		return fmt.Errorf("reconcile EspoCRM storage permissions under %s: %w", targetDir, err)
-	}
-
-	return nil
-}
+`

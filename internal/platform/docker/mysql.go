@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"os/exec"
 	"strings"
 )
 
@@ -41,9 +40,10 @@ func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPat
 		}
 	}()
 
-	var stderr strings.Builder
-	cmd := exec.Command(
-		"docker",
+	if _, err := runDockerCommandWithOptions(commandOptions{
+		Stdout: gz,
+		Env:    []string{"MYSQL_PWD=" + password},
+	},
 		"exec", "-i",
 		"-e", "MYSQL_PWD",
 		container,
@@ -55,13 +55,8 @@ func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPat
 		"--routines",
 		"--triggers",
 		"--events",
-	)
-	cmd.Env = dockerCommandEnv("MYSQL_PWD=" + password)
-	cmd.Stdout = gz
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("dump mysql database %s in container %s: %w%s", dbName, container, err, commandErrorSuffix(stderr.String()))
+	); err != nil {
+		return fmt.Errorf("dump mysql database %s in container %s: %w", dbName, container, err)
 	}
 	if err := gz.Close(); err != nil {
 		return fmt.Errorf("finish db backup gzip: %w", err)
@@ -89,11 +84,10 @@ func RestoreMySQLDumpGz(dbPath, container, user, password, dbName string) (err e
 		return err
 	}
 
-	if _, err := runCommand(commandOptions{
+	if _, err := runDockerCommandWithOptions(commandOptions{
 		Stdin: gz,
-		Env:   dockerCommandEnv("MYSQL_PWD=" + password),
-	},
-		"docker", "exec", "-i",
+		Env:   []string{"MYSQL_PWD=" + password},
+	}, "exec", "-i",
 		"-e", "MYSQL_PWD",
 		container,
 		client,
@@ -155,12 +149,19 @@ func ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser
 }
 
 func DetectDBClient(container string) (string, error) {
+	container = strings.TrimSpace(container)
+	if container == "" {
+		return "", DBClientDetectionError{Container: container, Err: errors.New("container is required")}
+	}
+
 	var lastErr error
 	for _, client := range []string{"mariadb", "mysql"} {
-		if _, err := Run("docker", "exec", container, client, "--version"); err == nil {
+		if _, err := runDockerCommand("exec", container, client, "--version"); err == nil {
 			return client, nil
-		} else {
+		} else if isDockerCommandMissing(err) {
 			lastErr = err
+		} else {
+			return "", DBClientDetectionError{Container: container, Err: err}
 		}
 	}
 
@@ -168,12 +169,19 @@ func DetectDBClient(container string) (string, error) {
 }
 
 func detectDBDumpClient(container string) (string, error) {
+	container = strings.TrimSpace(container)
+	if container == "" {
+		return "", fmt.Errorf("detect db dump client in container %s: %w", container, errors.New("container is required"))
+	}
+
 	var lastErr error
 	for _, client := range []string{"mariadb-dump", "mysqldump"} {
-		if _, err := Run("docker", "exec", container, client, "--version"); err == nil {
+		if _, err := runDockerCommand("exec", container, client, "--version"); err == nil {
 			return client, nil
-		} else {
+		} else if isDockerCommandMissing(err) {
 			lastErr = err
+		} else {
+			return "", fmt.Errorf("detect db dump client in container %s: %w", container, err)
 		}
 	}
 
@@ -211,33 +219,12 @@ func pipeMySQL(container, client, password, dbName string, input io.Reader) erro
 		args = append(args, dbName)
 	}
 
-	if _, err := runCommand(commandOptions{
+	if _, err := runDockerCommandWithOptions(commandOptions{
 		Stdin: input,
-		Env:   dockerCommandEnv("MYSQL_PWD=" + password),
-	}, "docker", args...); err != nil {
+		Env:   []string{"MYSQL_PWD=" + password},
+	}, args...); err != nil {
 		return err
 	}
 
 	return nil
-}
-
-func commandErrorSuffix(stderr string) string {
-	if line := lastNonBlankLine(stderr); line != "" {
-		return ": " + line
-	}
-
-	return ""
-}
-
-func lastNonBlankLine(text string) string {
-	text = strings.ReplaceAll(text, "\r", "")
-	lines := strings.Split(text, "\n")
-	for i := len(lines) - 1; i >= 0; i-- {
-		line := strings.TrimSpace(lines[i])
-		if line != "" {
-			return line
-		}
-	}
-
-	return ""
 }

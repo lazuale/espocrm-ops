@@ -2,6 +2,7 @@ package docker
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"os/exec"
@@ -13,13 +14,10 @@ type Result struct {
 	Stderr string
 }
 
-func Run(name string, args ...string) (Result, error) {
-	return runCommand(commandOptions{}, name, args...)
-}
-
 type commandOptions struct {
-	Stdin io.Reader
-	Env   []string
+	Stdin  io.Reader
+	Stdout io.Writer
+	Env    []string
 }
 
 func runCommand(opts commandOptions, name string, args ...string) (Result, error) {
@@ -31,7 +29,11 @@ func runCommand(opts commandOptions, name string, args ...string) (Result, error
 	if len(opts.Env) != 0 {
 		cmd.Env = opts.Env
 	}
-	cmd.Stdout = &stdout
+	if opts.Stdout != nil {
+		cmd.Stdout = opts.Stdout
+	} else {
+		cmd.Stdout = &stdout
+	}
 	cmd.Stderr = &stderr
 
 	err := cmd.Run()
@@ -96,6 +98,15 @@ func setEnvEntry(env []string, entry string) []string {
 	return append(env, entry)
 }
 
+func runDockerCommand(args ...string) (Result, error) {
+	return runDockerCommandWithOptions(commandOptions{}, args...)
+}
+
+func runDockerCommandWithOptions(opts commandOptions, args ...string) (Result, error) {
+	opts.Env = dockerCommandEnv(opts.Env...)
+	return runCommand(opts, "docker", args...)
+}
+
 func envKey(entry string) string {
 	if before, _, ok := strings.Cut(entry, "="); ok {
 		return before
@@ -112,12 +123,50 @@ func CheckDockerCLIAvailable() error {
 	return nil
 }
 
+func isDockerImageMissing(err error) bool {
+	return commandErrorContainsAny(err,
+		"no such image",
+		"no such object",
+	)
+}
+
+func isDockerCommandMissing(err error) bool {
+	return commandErrorContainsAny(err,
+		"executable file not found",
+		"not found",
+		"unknown command",
+	)
+}
+
+func commandErrorContainsAny(err error, fragments ...string) bool {
+	var cmdErr CommandRunError
+	if !errors.As(err, &cmdErr) {
+		return false
+	}
+
+	text := strings.ToLower(strings.TrimSpace(cmdErr.Stderr))
+	if details := strings.ToLower(strings.TrimSpace(cmdErr.Err.Error())); details != "" {
+		if text != "" {
+			text += "\n"
+		}
+		text += details
+	}
+
+	for _, fragment := range fragments {
+		if strings.Contains(text, fragment) {
+			return true
+		}
+	}
+
+	return false
+}
+
 func DockerClientVersion() (string, error) {
 	if err := CheckDockerCLIAvailable(); err != nil {
 		return "", err
 	}
 
-	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "version", "--format", "{{.Client.Version}}")
+	res, err := runDockerCommand("version", "--format", "{{.Client.Version}}")
 	if err != nil {
 		return "", UnavailableError{Err: err}
 	}
@@ -130,7 +179,7 @@ func DockerServerVersion() (string, error) {
 		return "", err
 	}
 
-	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "version", "--format", "{{.Server.Version}}")
+	res, err := runDockerCommand("version", "--format", "{{.Server.Version}}")
 	if err != nil {
 		return "", UnavailableError{Err: err}
 	}
@@ -143,7 +192,7 @@ func ComposeVersion() (string, error) {
 		return "", err
 	}
 
-	res, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "compose", "version", "--short")
+	res, err := runDockerCommand("compose", "version", "--short")
 	if err != nil {
 		return "", UnavailableError{Err: err}
 	}
@@ -160,7 +209,12 @@ func CheckDockerAvailable() error {
 }
 
 func CheckContainerRunning(container string) error {
-	res, err := Run("docker", "inspect", "--format", "{{.State.Running}}", container)
+	container = strings.TrimSpace(container)
+	if container == "" {
+		return ContainerInspectError{Container: container, Err: errors.New("container is required")}
+	}
+
+	res, err := runDockerCommand("inspect", "--format", "{{.State.Running}}", container)
 	if err != nil {
 		return ContainerInspectError{Container: container, Err: err}
 	}

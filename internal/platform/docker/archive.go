@@ -24,27 +24,22 @@ func CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage 
 		return fmt.Errorf("ensure archive dir: %w", err)
 	}
 
-	image, err := selectCleanupHelperImage(mariaDBTag, espocrmImage)
+	image, err := selectLocalHelperImage(mariaDBTag, espocrmImage)
 	if err != nil {
 		return err
 	}
 
-	if _, err := runCommand(commandOptions{
-		Env: dockerCommandEnv(
-			"ARCHIVE_SOURCE_BASENAME="+sourceBase,
-			"ARCHIVE_OUTPUT_BASENAME="+archiveBase,
-		),
-	}, "docker",
+	if _, err := runDockerCommand(
 		"run",
 		"--pull=never",
 		"--rm",
-		"--entrypoint", "sh",
+		"--entrypoint", "tar",
 		"-v", sourceParent+":/archive-source:ro",
 		"-v", archiveDir+":/archive-target",
-		"-e", "ARCHIVE_SOURCE_BASENAME",
-		"-e", "ARCHIVE_OUTPUT_BASENAME",
 		image,
-		"-euc", `tar -C /archive-source -czf "/archive-target/$ARCHIVE_OUTPUT_BASENAME" "$ARCHIVE_SOURCE_BASENAME"`,
+		"-C", "/archive-source",
+		"-czf", filepath.Join("/archive-target", archiveBase),
+		sourceBase,
 	); err != nil {
 		return fmt.Errorf("docker tar archive fallback: %w", err)
 	}
@@ -52,23 +47,45 @@ func CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage 
 	return nil
 }
 
-func selectCleanupHelperImage(mariaDBTag, espocrmImage string) (string, error) {
-	candidates := []string{"alpine:3.20", "busybox:1.36"}
-	if candidate := strings.TrimSpace(mariaDBTag); candidate != "" {
-		candidates = append(candidates, "mariadb:"+candidate)
-	}
-	if candidate := strings.TrimSpace(espocrmImage); candidate != "" {
-		candidates = append(candidates, candidate)
+func selectLocalHelperImage(mariaDBTag, espocrmImage string) (string, error) {
+	candidates := helperImageCandidates(mariaDBTag, espocrmImage)
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("no helper image candidates configured")
 	}
 
 	for _, candidate := range candidates {
-		if candidate == "" {
-			continue
-		}
-		if _, err := runCommand(commandOptions{Env: dockerCommandEnv()}, "docker", "image", "inspect", candidate); err == nil {
+		if _, err := runDockerCommand("image", "inspect", candidate); err == nil {
 			return candidate, nil
+		} else if !isDockerImageMissing(err) {
+			return "", fmt.Errorf("inspect helper image %s: %w", candidate, err)
 		}
 	}
 
-	return "", fmt.Errorf("no cleanup helper image is available locally")
+	return "", fmt.Errorf("no local helper image is available (checked: %s)", strings.Join(candidates, ", "))
+}
+
+func helperImageCandidates(mariaDBTag, espocrmImage string) []string {
+	candidates := make([]string, 0, 4)
+	appendUniqueHelperImageCandidate(&candidates, strings.TrimSpace(espocrmImage))
+	if tag := strings.TrimSpace(mariaDBTag); tag != "" {
+		appendUniqueHelperImageCandidate(&candidates, "mariadb:"+tag)
+	}
+	appendUniqueHelperImageCandidate(&candidates, "alpine:3.20")
+	appendUniqueHelperImageCandidate(&candidates, "busybox:1.36")
+	return candidates
+}
+
+func appendUniqueHelperImageCandidate(candidates *[]string, candidate string) {
+	candidate = strings.TrimSpace(candidate)
+	if candidate == "" {
+		return
+	}
+
+	for _, existing := range *candidates {
+		if existing == candidate {
+			return
+		}
+	}
+
+	*candidates = append(*candidates, candidate)
 }

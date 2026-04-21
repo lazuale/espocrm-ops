@@ -7,7 +7,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"testing"
 )
@@ -66,6 +65,7 @@ func TestDumpMySQLDumpGzUsesArgvWithoutShell(t *testing.T) {
 		mysqlAvailable:   true,
 		dumpStdout:       "create table test(id int);\n",
 		inspectRunning:   "true",
+		runningServices:  []string{"db"},
 	})
 
 	cfg := ComposeConfig{
@@ -291,170 +291,5 @@ func TestDetectDBClientReturnsTypedErrorWhenNoClientDetected(t *testing.T) {
 	}
 	if typedErr.ErrorCode() != "restore_db_failed" {
 		t.Fatalf("unexpected error code: %s", typedErr.ErrorCode())
-	}
-}
-
-type fakeDockerOptions struct {
-	logPath          string
-	stdinPath        string
-	envLogPath       string
-	mariaDBAvailable bool
-	mysqlAvailable   bool
-	dumpStdout       string
-	inspectRunning   string
-	execStderr       string
-	execExitCode     int
-}
-
-func prependFakeDocker(t *testing.T, opts fakeDockerOptions) {
-	t.Helper()
-
-	binDir := t.TempDir()
-	dockerPath := filepath.Join(binDir, "docker")
-	script := `#!/usr/bin/env bash
-set -euo pipefail
-
-args=" $* "
-
-if [[ "${1:-}" == "version" ]]; then
-  echo "11.0.0"
-  exit 0
-fi
-
-if [[ "${1:-}" == "compose" && "$args" == *" ps "* && "$args" == *" -q "* ]]; then
-  service="${*: -1}"
-  echo "mock-${service}"
-  exit 0
-fi
-
-if [[ "${1:-}" == "inspect" ]]; then
-  echo "${DOCKER_INSPECT_RUNNING:-true}"
-  exit 0
-fi
-
-if [[ "${1:-}" == "exec" && "${3:-}" == "mariadb" && "${4:-}" == "--version" ]]; then
-  if [[ "${DOCKER_MARIADB_AVAILABLE:-true}" == "true" ]]; then
-    echo "mariadb from 11.0.0"
-    exit 0
-  fi
-  echo "mariadb missing" >&2
-  exit 2
-fi
-
-if [[ "${1:-}" == "exec" && "${3:-}" == "mysql" && "${4:-}" == "--version" ]]; then
-  if [[ "${DOCKER_MYSQL_AVAILABLE:-true}" != "true" ]]; then
-    echo "mysql missing" >&2
-    exit 2
-  fi
-  echo "mysql from 8.0.0"
-  exit 0
-fi
-
-if [[ "${1:-}" == "exec" && "${3:-}" == "mariadb-dump" && "${4:-}" == "--version" ]]; then
-  if [[ "${DOCKER_MARIADB_AVAILABLE:-true}" == "true" ]]; then
-    echo "mariadb-dump from 11.0.0"
-    exit 0
-  fi
-  echo "mariadb-dump missing" >&2
-  exit 2
-fi
-
-if [[ "${1:-}" == "exec" && "${3:-}" == "mysqldump" && "${4:-}" == "--version" ]]; then
-  if [[ "${DOCKER_MYSQL_AVAILABLE:-true}" != "true" ]]; then
-    echo "mysqldump missing" >&2
-    exit 2
-  fi
-  echo "mysqldump from 8.0.0"
-  exit 0
-fi
-
-if [[ "${1:-}" == "exec" && "${2:-}" == "-i" ]]; then
-  if [[ -n "${DOCKER_LOG:-}" ]]; then
-    printf '%s\n' "$*" >> "$DOCKER_LOG"
-  fi
-  if [[ " $* " == *" mariadb-dump "* || " $* " == *" mysqldump "* ]]; then
-    if [[ -n "${DOCKER_DUMP_STDOUT:-}" ]]; then
-      printf '%s' "${DOCKER_DUMP_STDOUT}"
-    fi
-    exit 0
-  fi
-  if [[ -n "${DOCKER_ENV_LOG:-}" ]]; then
-    env | sort > "$DOCKER_ENV_LOG"
-  fi
-  if [[ -n "${DOCKER_STDIN_LOG:-}" ]]; then
-    cat >> "$DOCKER_STDIN_LOG"
-  else
-    cat >/dev/null
-  fi
-  if [[ -n "${DOCKER_EXEC_STDERR:-}" ]]; then
-    printf '%s\n' "$DOCKER_EXEC_STDERR" >&2
-  fi
-  if [[ -n "${DOCKER_EXEC_EXIT_CODE:-}" ]]; then
-    exit "$DOCKER_EXEC_EXIT_CODE"
-  fi
-  exit 0
-fi
-
-echo "unexpected docker invocation: $*" >&2
-exit 98
-`
-	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	if opts.logPath != "" {
-		t.Setenv("DOCKER_LOG", opts.logPath)
-	}
-	if opts.stdinPath != "" {
-		t.Setenv("DOCKER_STDIN_LOG", opts.stdinPath)
-	}
-	if opts.envLogPath != "" {
-		t.Setenv("DOCKER_ENV_LOG", opts.envLogPath)
-	}
-	if opts.inspectRunning == "" {
-		opts.inspectRunning = "true"
-	}
-	t.Setenv("DOCKER_INSPECT_RUNNING", opts.inspectRunning)
-	if opts.mariaDBAvailable {
-		t.Setenv("DOCKER_MARIADB_AVAILABLE", "true")
-	} else {
-		t.Setenv("DOCKER_MARIADB_AVAILABLE", "false")
-	}
-	if opts.mysqlAvailable {
-		t.Setenv("DOCKER_MYSQL_AVAILABLE", "true")
-	} else {
-		t.Setenv("DOCKER_MYSQL_AVAILABLE", "false")
-	}
-	if opts.execStderr != "" {
-		t.Setenv("DOCKER_EXEC_STDERR", opts.execStderr)
-	}
-	if opts.dumpStdout != "" {
-		t.Setenv("DOCKER_DUMP_STDOUT", opts.dumpStdout)
-	}
-	if opts.execExitCode != 0 {
-		t.Setenv("DOCKER_EXEC_EXIT_CODE", strconv.Itoa(opts.execExitCode))
-	}
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
-func writeTestGzipFile(t *testing.T, path string, body []byte) {
-	t.Helper()
-
-	f, err := os.Create(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		if closeErr := f.Close(); closeErr != nil {
-			t.Fatalf("close test gzip file: %v", closeErr)
-		}
-	}()
-
-	gz := gzip.NewWriter(f)
-	if _, err := gz.Write(body); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
 	}
 }
