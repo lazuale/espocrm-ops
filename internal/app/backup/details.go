@@ -105,8 +105,8 @@ func flagWarnings(req PreparedRequest) []string {
 	return warnings
 }
 
-func notRunBackupStep(code, summary string) domainworkflow.Step {
-	return domainworkflow.NewStep(code, domainworkflow.StatusNotRun, summary, "", "")
+func blockedBackupStep(code, summary string) domainworkflow.Step {
+	return domainworkflow.NewStep(code, domainworkflow.StatusBlocked, summary, "", "")
 }
 
 func failureSummary(err error, fallback string) string {

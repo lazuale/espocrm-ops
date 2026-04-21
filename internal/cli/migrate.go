@@ -5,10 +5,10 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
-	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	migrateusecase "github.com/lazuale/espocrm-ops/internal/app/migrate"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
+	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
 )
 
@@ -164,7 +164,7 @@ func runMigrateExecute(cmd *cobra.Command, in migrateInput) error {
 }
 
 func migrateResult(info migrateusecase.ExecuteInfo) result.Result {
-	completed, skipped, failed, notRun := info.Counts()
+	completed, skipped, blocked, failed := info.Counts()
 	message := "backup migration completed"
 	if !info.Ready() {
 		message = "backup migration failed"
@@ -173,13 +173,7 @@ func migrateResult(info migrateusecase.ExecuteInfo) result.Result {
 	items := make([]any, 0, len(info.Steps))
 	for _, step := range info.Steps {
 		items = append(items, result.MigrateItem{
-			SectionItem: result.SectionItem{
-				Code:    step.Code,
-				Status:  step.Status,
-				Summary: step.Summary,
-				Details: step.Details,
-				Action:  step.Action,
-			},
+			SectionItem: newSectionItem(step.Code, step.Status, step.Summary, step.Details, step.Action),
 		})
 	}
 
@@ -197,8 +191,8 @@ func migrateResult(info migrateusecase.ExecuteInfo) result.Result {
 			Steps:                  len(info.Steps),
 			Completed:              completed,
 			Skipped:                skipped,
+			Blocked:                blocked,
 			Failed:                 failed,
-			NotRun:                 notRun,
 			Warnings:               len(info.Warnings),
 			SkipDB:                 info.SkipDB,
 			SkipFiles:              info.SkipFiles,
@@ -287,10 +281,10 @@ func renderMigrateText(w io.Writer, res result.Result) error {
 	if _, err := fmt.Fprintf(w, "  Skipped:      %d\n", details.Skipped); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "  Failed:       %d\n", details.Failed); err != nil {
+	if _, err := fmt.Fprintf(w, "  Blocked:      %d\n", details.Blocked); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "  Not run:      %d\n", details.NotRun); err != nil {
+	if _, err := fmt.Fprintf(w, "  Failed:       %d\n", details.Failed); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Warnings:     %d\n", details.Warnings); err != nil {

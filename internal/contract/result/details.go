@@ -20,8 +20,8 @@ type BackupDetails struct {
 	Steps                  int    `json:"steps,omitempty"`
 	Completed              int    `json:"completed,omitempty"`
 	Skipped                int    `json:"skipped,omitempty"`
+	Blocked                int    `json:"blocked,omitempty"`
 	Failed                 int    `json:"failed,omitempty"`
-	NotRun                 int    `json:"not_run,omitempty"`
 	Warnings               int    `json:"warnings,omitempty"`
 	SkipDB                 bool   `json:"skip_db"`
 	SkipFiles              bool   `json:"skip_files"`
@@ -105,8 +105,8 @@ type MigrateDetails struct {
 	Steps                  int    `json:"steps"`
 	Completed              int    `json:"completed"`
 	Skipped                int    `json:"skipped"`
+	Blocked                int    `json:"blocked"`
 	Failed                 int    `json:"failed"`
-	NotRun                 int    `json:"not_run"`
 	Warnings               int    `json:"warnings"`
 	SkipDB                 bool   `json:"skip_db"`
 	SkipFiles              bool   `json:"skip_files"`

@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
+	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
 func sourceSelectionSummary(selection sourceSelection) string {
@@ -128,10 +129,10 @@ func flagWarnings(req ExecuteRequest) []string {
 	return warnings
 }
 
-func notRunMigrateStep(code, summary string) ExecuteStep {
+func blockedMigrateStep(code, summary string) ExecuteStep {
 	return ExecuteStep{
 		Code:    code,
-		Status:  MigrateStepStatusNotRun,
+		Status:  domainworkflow.StatusBlocked,
 		Summary: summary,
 	}
 }

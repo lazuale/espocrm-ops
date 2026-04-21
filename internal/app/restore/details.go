@@ -5,8 +5,9 @@ import (
 	"fmt"
 	"strings"
 
-	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
+	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 )
 
 func runtimePrepareDetails(info runtimePrepareInfo, req ExecuteRequest) string {
@@ -57,14 +58,14 @@ func filesRestoreDetails(ctx maintenanceusecase.OperationContext, source execute
 	return details
 }
 
-func runtimeReturnStatus(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo, validatedServices []string) string {
+func runtimeReturnStatus(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo, validatedServices []string) domainworkflow.Status {
 	if len(validatedServices) != 0 || len(ret.RestartedAppServices) != 0 || ret.StoppedDB {
-		return RestoreStepStatusCompleted
+		return domainworkflow.StatusCompleted
 	}
 	if len(prep.StoppedAppServices) != 0 && req.NoStart && !req.NoStop {
-		return RestoreStepStatusSkipped
+		return domainworkflow.StatusSkipped
 	}
-	return RestoreStepStatusSkipped
+	return domainworkflow.StatusSkipped
 }
 
 func runtimeReturnSummary(req ExecuteRequest, prep runtimePrepareInfo, ret runtimeReturnInfo, validatedServices []string) string {
@@ -127,7 +128,7 @@ func flagWarnings(req ExecuteRequest) []string {
 func blockedRestoreStep(code, summary string) ExecuteStep {
 	return ExecuteStep{
 		Code:    code,
-		Status:  RestoreStepStatusBlocked,
+		Status:  domainworkflow.StatusBlocked,
 		Summary: summary,
 	}
 }

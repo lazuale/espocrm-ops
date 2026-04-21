@@ -11,15 +11,8 @@ import (
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
+	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
-)
-
-const (
-	RestoreStepStatusWouldRun  = "would_run"
-	RestoreStepStatusCompleted = "completed"
-	RestoreStepStatusSkipped   = "skipped"
-	RestoreStepStatusBlocked   = "blocked"
-	RestoreStepStatusFailed    = "failed"
 )
 
 type ExecuteRequest struct {
@@ -42,7 +35,7 @@ type ExecuteRequest struct {
 
 type ExecuteStep struct {
 	Code    string
-	Status  string
+	Status  domainworkflow.Status
 	Summary string
 	Details string
 	Action  string
@@ -142,7 +135,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "operation_preflight",
-				Status:  RestoreStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Restore preflight failed",
 				Details: err.Error(),
 				Action:  "Resolve env, lock, or filesystem readiness before rerunning restore.",
@@ -164,7 +157,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	info.BackupRoot = ctx.BackupRoot
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "operation_preflight",
-		Status:  RestoreStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: "Restore preflight completed",
 		Details: fmt.Sprintf("Using %s for contour %s.", info.EnvFile, info.Scope),
 	})
@@ -174,7 +167,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "source_resolution",
-				Status:  RestoreStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: failureSummary(err, "Restore source resolution failed"),
 				Details: err.Error(),
 				Action:  failureAction(err, "Resolve the restore source selection first and rerun restore."),
@@ -196,7 +189,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	info.FilesBackupPath = source.FilesBackup
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "source_resolution",
-		Status:  RestoreStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: restoreSourceSummary(source),
 		Details: restoreSourceDetails(source),
 	})
@@ -206,7 +199,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "runtime_prepare",
-				Status:  RestoreStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Runtime preparation planning failed",
 				Details: err.Error(),
 				Action:  "Resolve the runtime state inspection failure before rerunning restore.",
@@ -229,7 +222,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "runtime_prepare",
-				Status:  RestoreStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Runtime preparation failed",
 				Details: err.Error(),
 				Action:  "Resolve the runtime preparation failure before rerunning restore.",
@@ -245,7 +238,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	info.StartedDBTemporarily = runtimePrep.StartedDBTemporarily
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "runtime_prepare",
-		Status:  RestoreStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: "Runtime preparation completed",
 		Details: runtimePrepareDetails(runtimePrep, req),
 	})
@@ -253,7 +246,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if req.NoSnapshot {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "snapshot_recovery_point",
-			Status:  RestoreStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Emergency recovery point skipped",
 			Details: "The pre-restore emergency recovery point was skipped because of --no-snapshot.",
 		})
@@ -263,7 +256,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "snapshot_recovery_point",
-					Status:  RestoreStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Emergency recovery point failed",
 					Details: snapshotReqErr.Error(),
 					Action:  "Resolve the snapshot backup configuration failure before rerunning restore.",
@@ -279,7 +272,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "snapshot_recovery_point",
-					Status:  RestoreStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Emergency recovery point failed",
 					Details: err.Error(),
 					Action:  "Resolve the recovery-point backup failure before rerunning restore.",
@@ -299,7 +292,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.SnapshotFilesChecksum = snapshotInfo.FilesSidecarPath
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "snapshot_recovery_point",
-			Status:  RestoreStepStatusCompleted,
+			Status:  domainworkflow.StatusCompleted,
 			Summary: "Emergency recovery point completed",
 			Details: snapshotDetails(snapshotInfo),
 		})
@@ -308,7 +301,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if req.SkipDB {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "db_restore",
-			Status:  RestoreStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Database restore skipped",
 			Details: "The database restore was skipped because of --skip-db.",
 		})
@@ -317,7 +310,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "db_restore",
-					Status:  RestoreStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Database restore failed",
 					Details: err.Error(),
 					Action:  "Resolve the database restore failure before rerunning restore.",
@@ -329,7 +322,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		}
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "db_restore",
-			Status:  RestoreStepStatusCompleted,
+			Status:  domainworkflow.StatusCompleted,
 			Summary: "Database restore completed",
 			Details: dbRestoreDetails(ctx, source, runtimePrep.DBContainer),
 		})
@@ -338,7 +331,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if req.SkipFiles {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
-			Status:  RestoreStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Files restore skipped",
 			Details: "The files restore was skipped because of --skip-files.",
 		})
@@ -348,7 +341,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",
-					Status:  RestoreStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Files restore failed",
 					Details: err.Error(),
 					Action:  "Resolve the files restore failure before rerunning restore.",
@@ -365,7 +358,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",
-					Status:  RestoreStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Files restore failed",
 					Details: fmt.Sprintf("Files were restored but runtime permission reconciliation failed: %v", err),
 					Action:  "Resolve the permission reconciliation failure before rerunning restore.",
@@ -376,7 +369,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		}
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
-			Status:  RestoreStepStatusCompleted,
+			Status:  domainworkflow.StatusCompleted,
 			Summary: "Files restore completed",
 			Details: filesRestoreDetails(ctx, source),
 		})
@@ -386,7 +379,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if err != nil {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "runtime_return",
-			Status:  RestoreStepStatusFailed,
+			Status:  domainworkflow.StatusFailed,
 			Summary: "Runtime return failed",
 			Details: err.Error(),
 			Action:  "Resolve the contour return failure before relying on the restored state.",
@@ -402,7 +395,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if err != nil {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "runtime_return",
-			Status:  RestoreStepStatusFailed,
+			Status:  domainworkflow.StatusFailed,
 			Summary: "Runtime return failed",
 			Details: err.Error(),
 			Action:  "Repair the restored contour health before treating this restore as successful.",
@@ -420,27 +413,27 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	return info, nil
 }
 
-func (i ExecuteInfo) Counts() (wouldRun, completed, skipped, blocked, failed int) {
+func (i ExecuteInfo) Counts() (planned, completed, skipped, blocked, failed int) {
 	for _, step := range i.Steps {
 		switch step.Status {
-		case RestoreStepStatusWouldRun:
-			wouldRun++
-		case RestoreStepStatusCompleted:
+		case domainworkflow.StatusPlanned:
+			planned++
+		case domainworkflow.StatusCompleted:
 			completed++
-		case RestoreStepStatusSkipped:
+		case domainworkflow.StatusSkipped:
 			skipped++
-		case RestoreStepStatusBlocked:
+		case domainworkflow.StatusBlocked:
 			blocked++
-		case RestoreStepStatusFailed:
+		case domainworkflow.StatusFailed:
 			failed++
 		}
 	}
-	return wouldRun, completed, skipped, blocked, failed
+	return planned, completed, skipped, blocked, failed
 }
 
 func (i ExecuteInfo) Ready() bool {
 	for _, step := range i.Steps {
-		if step.Status == RestoreStepStatusFailed || step.Status == RestoreStepStatusBlocked {
+		if step.Status == domainworkflow.StatusFailed || step.Status == domainworkflow.StatusBlocked {
 			return false
 		}
 	}

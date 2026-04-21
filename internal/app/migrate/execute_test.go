@@ -16,6 +16,7 @@ import (
 
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
+	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
 	"github.com/lazuale/espocrm-ops/internal/platform/locks"
 )
 
@@ -37,13 +38,13 @@ func TestExecute_SkipDBNoStart_ReconcilesFilesPermissions(t *testing.T) {
 		t.Fatal("expected migrate info to be ready")
 	}
 
-	completed, skipped, failed, notRun := info.Counts()
-	if completed != 6 || skipped != 2 || failed != 0 || notRun != 0 {
-		t.Fatalf("unexpected step counts: completed=%d skipped=%d failed=%d not_run=%d", completed, skipped, failed, notRun)
+	completed, skipped, blocked, failed := info.Counts()
+	if completed != 6 || skipped != 2 || blocked != 0 || failed != 0 {
+		t.Fatalf("unexpected step counts: completed=%d skipped=%d blocked=%d failed=%d", completed, skipped, blocked, failed)
 	}
 
 	filesStep := requireExecuteStep(t, info, "files_restore")
-	if filesStep.Status != MigrateStepStatusCompleted {
+	if filesStep.Status != domainworkflow.StatusCompleted {
 		t.Fatalf("expected files_restore completed, got %s", filesStep.Status)
 	}
 
@@ -89,13 +90,13 @@ func TestExecute_FailsClosedWhenFilesPermissionReconcileFails(t *testing.T) {
 		t.Fatal("expected migrate info to report failure")
 	}
 
-	completed, skipped, failed, notRun := info.Counts()
-	if completed != 5 || skipped != 1 || failed != 1 || notRun != 1 {
-		t.Fatalf("unexpected step counts: completed=%d skipped=%d failed=%d not_run=%d", completed, skipped, failed, notRun)
+	completed, skipped, blocked, failed := info.Counts()
+	if completed != 5 || skipped != 1 || blocked != 1 || failed != 1 {
+		t.Fatalf("unexpected step counts: completed=%d skipped=%d blocked=%d failed=%d", completed, skipped, blocked, failed)
 	}
 
 	filesStep := requireExecuteStep(t, info, "files_restore")
-	if filesStep.Status != MigrateStepStatusFailed {
+	if filesStep.Status != domainworkflow.StatusFailed {
 		t.Fatalf("expected files_restore failed, got %s", filesStep.Status)
 	}
 	if !strings.Contains(filesStep.Details, "permission reconcile failed") {
@@ -103,8 +104,8 @@ func TestExecute_FailsClosedWhenFilesPermissionReconcileFails(t *testing.T) {
 	}
 
 	targetStartStep := requireExecuteStep(t, info, "target_start")
-	if targetStartStep.Status != MigrateStepStatusNotRun {
-		t.Fatalf("expected target_start not_run, got %s", targetStartStep.Status)
+	if targetStartStep.Status != domainworkflow.StatusBlocked {
+		t.Fatalf("expected target_start blocked, got %s", targetStartStep.Status)
 	}
 
 	if _, err := os.Stat(filepath.Join(fixture.storageDir, ".permissions-reconciled")); !os.IsNotExist(err) {

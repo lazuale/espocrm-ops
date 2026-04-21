@@ -4,10 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
 	platformlocks "github.com/lazuale/espocrm-ops/internal/platform/locks"
-	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 )
 
 func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req ExecuteRequest, info ExecuteInfo, source executeSource, runtimeInfo runtimePrepareInfo) (ExecuteInfo, error) {
@@ -15,7 +16,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 	info.AppServicesWereRunning = runtimeInfo.AppServicesWereRunning
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "runtime_prepare",
-		Status:  RestoreStepStatusWouldRun,
+		Status:  domainworkflow.StatusPlanned,
 		Summary: "Runtime preparation would run",
 		Details: runtimePrepareDetails(runtimeInfo, req),
 	})
@@ -23,14 +24,14 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 	if req.NoSnapshot {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "snapshot_recovery_point",
-			Status:  RestoreStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Emergency recovery point skipped",
 			Details: "The pre-restore emergency recovery point would be skipped because of --no-snapshot.",
 		})
 	} else {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "snapshot_recovery_point",
-			Status:  RestoreStepStatusWouldRun,
+			Status:  domainworkflow.StatusPlanned,
 			Summary: "Emergency recovery point would run",
 			Details: snapshotPlanDetails(req),
 		})
@@ -39,7 +40,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 	if req.SkipDB {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "db_restore",
-			Status:  RestoreStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Database restore skipped",
 			Details: "The database restore would be skipped because of --skip-db.",
 		})
@@ -48,7 +49,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "db_restore",
-					Status:  RestoreStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Database restore planning failed",
 					Details: err.Error(),
 					Action:  "Resolve the database restore planning failure before rerunning restore.",
@@ -60,7 +61,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 		}
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "db_restore",
-			Status:  RestoreStepStatusWouldRun,
+			Status:  domainworkflow.StatusPlanned,
 			Summary: "Database restore would run",
 			Details: dryRunDBDetails(ctx, source, runtimeInfo),
 		})
@@ -69,7 +70,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 	if req.SkipFiles {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
-			Status:  RestoreStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Files restore skipped",
 			Details: "The files restore would be skipped because of --skip-files.",
 		})
@@ -78,7 +79,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",
-					Status:  RestoreStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Files restore planning failed",
 					Details: err.Error(),
 					Action:  "Resolve the files restore planning failure before rerunning restore.",
@@ -89,7 +90,7 @@ func (s Service) buildDryRun(ctx maintenanceusecase.OperationContext, req Execut
 		}
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
-			Status:  RestoreStepStatusWouldRun,
+			Status:  domainworkflow.StatusPlanned,
 			Summary: "Files restore would run",
 			Details: dryRunFilesDetails(ctx, source),
 		})
@@ -180,18 +181,18 @@ func dryRunFilesDetails(ctx maintenanceusecase.OperationContext, source executeS
 	return fmt.Sprintf("Would replace %s from %s and then reconcile the storage permissions to the runtime image contract.", targetDir, source.FilesBackup)
 }
 
-func dryRunRuntimeReturnStatus(runtimeInfo runtimePrepareInfo, noStart bool) string {
+func dryRunRuntimeReturnStatus(runtimeInfo runtimePrepareInfo, noStart bool) domainworkflow.Status {
 	if len(runtimeInfo.StoppedAppServices) == 0 && !runtimeInfo.StartedDBTemporarily {
-		return RestoreStepStatusSkipped
+		return domainworkflow.StatusSkipped
 	}
 	if len(runtimeInfo.StoppedAppServices) != 0 && noStart {
-		return RestoreStepStatusSkipped
+		return domainworkflow.StatusSkipped
 	}
-	return RestoreStepStatusWouldRun
+	return domainworkflow.StatusPlanned
 }
 
 func dryRunRuntimeReturnSummary(runtimeInfo runtimePrepareInfo, noStart bool) string {
-	if dryRunRuntimeReturnStatus(runtimeInfo, noStart) == RestoreStepStatusWouldRun {
+	if dryRunRuntimeReturnStatus(runtimeInfo, noStart) == domainworkflow.StatusPlanned {
 		return "Runtime return would run"
 	}
 	return "Runtime return skipped"

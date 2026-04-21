@@ -9,15 +9,9 @@ import (
 	maintenanceusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainruntime "github.com/lazuale/espocrm-ops/internal/domain/runtime"
+	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
 	platformconfig "github.com/lazuale/espocrm-ops/internal/platform/config"
 	platformdocker "github.com/lazuale/espocrm-ops/internal/platform/docker"
-)
-
-const (
-	MigrateStepStatusCompleted = "completed"
-	MigrateStepStatusSkipped   = "skipped"
-	MigrateStepStatusFailed    = "failed"
-	MigrateStepStatusNotRun    = "not_run"
 )
 
 type ExecuteRequest struct {
@@ -35,7 +29,7 @@ type ExecuteRequest struct {
 
 type ExecuteStep struct {
 	Code    string
-	Status  string
+	Status  domainworkflow.Status
 	Summary string
 	Details string
 	Action  string
@@ -122,18 +116,18 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "source_preflight",
-				Status:  MigrateStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Source contour preflight failed",
 				Details: err.Error(),
 				Action:  "Resolve the source env file or source backup root settings before rerunning migrate.",
 			},
-			notRunMigrateStep("target_preflight", "Target contour preflight did not run because source contour preflight failed"),
-			notRunMigrateStep("source_selection", "Source backup selection did not run because source contour preflight failed"),
-			notRunMigrateStep("compatibility", "Migration compatibility checks did not run because source contour preflight failed"),
-			notRunMigrateStep("runtime_prepare", "Target runtime preparation did not run because source contour preflight failed"),
-			notRunMigrateStep("db_restore", "Database restore did not run because source contour preflight failed"),
-			notRunMigrateStep("files_restore", "Files restore did not run because source contour preflight failed"),
-			notRunMigrateStep("target_start", "Target contour start did not run because source contour preflight failed"),
+			blockedMigrateStep("target_preflight", "Target contour preflight did not run because source contour preflight failed"),
+			blockedMigrateStep("source_selection", "Source backup selection did not run because source contour preflight failed"),
+			blockedMigrateStep("compatibility", "Migration compatibility checks did not run because source contour preflight failed"),
+			blockedMigrateStep("runtime_prepare", "Target runtime preparation did not run because source contour preflight failed"),
+			blockedMigrateStep("db_restore", "Database restore did not run because source contour preflight failed"),
+			blockedMigrateStep("files_restore", "Files restore did not run because source contour preflight failed"),
+			blockedMigrateStep("target_start", "Target contour start did not run because source contour preflight failed"),
 		)
 		return info, wrapExecuteError(classifyMigrationEnvError(err))
 	}
@@ -142,7 +136,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	info.SourceBackupRoot = platformconfig.ResolveProjectPath(info.ProjectDir, sourceEnv.BackupRoot())
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "source_preflight",
-		Status:  MigrateStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: "Source contour preflight completed",
 		Details: fmt.Sprintf("Using %s with backup root %s.", info.SourceEnvFile, info.SourceBackupRoot),
 	})
@@ -157,17 +151,17 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "target_preflight",
-				Status:  MigrateStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Target contour preflight failed",
 				Details: err.Error(),
 				Action:  "Resolve env, lock, or filesystem readiness before rerunning migrate.",
 			},
-			notRunMigrateStep("source_selection", "Source backup selection did not run because target contour preflight failed"),
-			notRunMigrateStep("compatibility", "Migration compatibility checks did not run because target contour preflight failed"),
-			notRunMigrateStep("runtime_prepare", "Target runtime preparation did not run because target contour preflight failed"),
-			notRunMigrateStep("db_restore", "Database restore did not run because target contour preflight failed"),
-			notRunMigrateStep("files_restore", "Files restore did not run because target contour preflight failed"),
-			notRunMigrateStep("target_start", "Target contour start did not run because target contour preflight failed"),
+			blockedMigrateStep("source_selection", "Source backup selection did not run because target contour preflight failed"),
+			blockedMigrateStep("compatibility", "Migration compatibility checks did not run because target contour preflight failed"),
+			blockedMigrateStep("runtime_prepare", "Target runtime preparation did not run because target contour preflight failed"),
+			blockedMigrateStep("db_restore", "Database restore did not run because target contour preflight failed"),
+			blockedMigrateStep("files_restore", "Files restore did not run because target contour preflight failed"),
+			blockedMigrateStep("target_start", "Target contour start did not run because target contour preflight failed"),
 		)
 		return info, wrapExecuteError(err)
 	}
@@ -179,7 +173,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	info.TargetBackupRoot = targetCtx.BackupRoot
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "target_preflight",
-		Status:  MigrateStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: "Target contour preflight completed",
 		Details: fmt.Sprintf("Using %s with backup root %s.", info.TargetEnvFile, info.TargetBackupRoot),
 	})
@@ -189,16 +183,16 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "source_selection",
-				Status:  MigrateStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: failureSummary(err, "Source backup selection failed"),
 				Details: err.Error(),
 				Action:  failureAction(err, "Resolve the source backup selection error before rerunning migrate."),
 			},
-			notRunMigrateStep("compatibility", "Migration compatibility checks did not run because source backup selection failed"),
-			notRunMigrateStep("runtime_prepare", "Target runtime preparation did not run because source backup selection failed"),
-			notRunMigrateStep("db_restore", "Database restore did not run because source backup selection failed"),
-			notRunMigrateStep("files_restore", "Files restore did not run because source backup selection failed"),
-			notRunMigrateStep("target_start", "Target contour start did not run because source backup selection failed"),
+			blockedMigrateStep("compatibility", "Migration compatibility checks did not run because source backup selection failed"),
+			blockedMigrateStep("runtime_prepare", "Target runtime preparation did not run because source backup selection failed"),
+			blockedMigrateStep("db_restore", "Database restore did not run because source backup selection failed"),
+			blockedMigrateStep("files_restore", "Files restore did not run because source backup selection failed"),
+			blockedMigrateStep("target_start", "Target contour start did not run because source backup selection failed"),
 		)
 		return info, wrapExecuteError(executeFailure{Kind: domainfailure.KindValidation, Err: err})
 	}
@@ -213,7 +207,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	info.Warnings = append(info.Warnings, selection.Warnings...)
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "source_selection",
-		Status:  MigrateStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: sourceSelectionSummary(selection),
 		Details: sourceSelectionDetails(selection),
 	})
@@ -222,21 +216,21 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "compatibility",
-				Status:  MigrateStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: failureSummary(err, "Migration compatibility contract failed"),
 				Details: err.Error(),
 				Action:  failureAction(err, "Align the shared settings first and rerun espops doctor --scope all --project-dir <repo>."),
 			},
-			notRunMigrateStep("runtime_prepare", "Target runtime preparation did not run because migration compatibility checks failed"),
-			notRunMigrateStep("db_restore", "Database restore did not run because migration compatibility checks failed"),
-			notRunMigrateStep("files_restore", "Files restore did not run because migration compatibility checks failed"),
-			notRunMigrateStep("target_start", "Target contour start did not run because migration compatibility checks failed"),
+			blockedMigrateStep("runtime_prepare", "Target runtime preparation did not run because migration compatibility checks failed"),
+			blockedMigrateStep("db_restore", "Database restore did not run because migration compatibility checks failed"),
+			blockedMigrateStep("files_restore", "Files restore did not run because migration compatibility checks failed"),
+			blockedMigrateStep("target_start", "Target contour start did not run because migration compatibility checks failed"),
 		)
 		return info, wrapExecuteError(err)
 	}
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "compatibility",
-		Status:  MigrateStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: "Migration compatibility contract passed",
 		Details: fmt.Sprintf("The source contour %s and target contour %s match on the governed migration settings.", info.SourceScope, info.TargetScope),
 	})
@@ -246,21 +240,21 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		info.Steps = append(info.Steps,
 			ExecuteStep{
 				Code:    "runtime_prepare",
-				Status:  MigrateStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Target runtime preparation failed",
 				Details: err.Error(),
 				Action:  "Resolve the target runtime preparation failure before rerunning migrate.",
 			},
-			notRunMigrateStep("db_restore", "Database restore did not run because target runtime preparation failed"),
-			notRunMigrateStep("files_restore", "Files restore did not run because target runtime preparation failed"),
-			notRunMigrateStep("target_start", "Target contour start did not run because target runtime preparation failed"),
+			blockedMigrateStep("db_restore", "Database restore did not run because target runtime preparation failed"),
+			blockedMigrateStep("files_restore", "Files restore did not run because target runtime preparation failed"),
+			blockedMigrateStep("target_start", "Target contour start did not run because target runtime preparation failed"),
 		)
 		return info, wrapExecuteError(err)
 	}
 	info.StartedDBTemporarily = runtimePrep.StartedDBTemporarily
 	info.Steps = append(info.Steps, ExecuteStep{
 		Code:    "runtime_prepare",
-		Status:  MigrateStepStatusCompleted,
+		Status:  domainworkflow.StatusCompleted,
 		Summary: "Target runtime preparation completed",
 		Details: runtimePrepareDetails(runtimePrep),
 	})
@@ -268,7 +262,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if req.SkipDB {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "db_restore",
-			Status:  MigrateStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Database restore skipped",
 			Details: "The database restore was skipped because of --skip-db.",
 		})
@@ -278,13 +272,13 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "db_restore",
-					Status:  MigrateStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Database restore failed",
 					Details: err.Error(),
 					Action:  "Resolve the target db container state before rerunning migrate.",
 				},
-				notRunMigrateStep("files_restore", "Files restore did not run because database restore failed"),
-				notRunMigrateStep("target_start", "Target contour start did not run because database restore failed"),
+				blockedMigrateStep("files_restore", "Files restore did not run because database restore failed"),
+				blockedMigrateStep("target_start", "Target contour start did not run because database restore failed"),
 			)
 			return info, wrapExecuteError(err)
 		}
@@ -293,20 +287,20 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "db_restore",
-					Status:  MigrateStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Database restore failed",
 					Details: err.Error(),
 					Action:  "Resolve the database restore failure before rerunning migrate.",
 				},
-				notRunMigrateStep("files_restore", "Files restore did not run because database restore failed"),
-				notRunMigrateStep("target_start", "Target contour start did not run because database restore failed"),
+				blockedMigrateStep("files_restore", "Files restore did not run because database restore failed"),
+				blockedMigrateStep("target_start", "Target contour start did not run because database restore failed"),
 			)
 			return info, wrapExecuteError(err)
 		}
 
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "db_restore",
-			Status:  MigrateStepStatusCompleted,
+			Status:  domainworkflow.StatusCompleted,
 			Summary: "Database restore completed",
 			Details: dbRestoreDetails(targetCtx, info),
 		})
@@ -315,7 +309,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if req.SkipFiles {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
-			Status:  MigrateStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Files restore skipped",
 			Details: "The files restore was skipped because of --skip-files.",
 		})
@@ -325,12 +319,12 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",
-					Status:  MigrateStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Files restore failed",
 					Details: err.Error(),
 					Action:  "Resolve the files restore failure before rerunning migrate.",
 				},
-				notRunMigrateStep("target_start", "Target contour start did not run because files restore failed"),
+				blockedMigrateStep("target_start", "Target contour start did not run because files restore failed"),
 			)
 			return info, wrapExecuteError(err)
 		}
@@ -342,19 +336,19 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 			info.Steps = append(info.Steps,
 				ExecuteStep{
 					Code:    "files_restore",
-					Status:  MigrateStepStatusFailed,
+					Status:  domainworkflow.StatusFailed,
 					Summary: "Files restore failed",
 					Details: fmt.Sprintf("Files were restored but runtime permission reconciliation failed: %v", err),
 					Action:  "Resolve the permission reconciliation failure before rerunning migrate.",
 				},
-				notRunMigrateStep("target_start", "Target contour start did not run because files restore failed"),
+				blockedMigrateStep("target_start", "Target contour start did not run because files restore failed"),
 			)
 			return info, wrapExecuteError(executeFailure{Kind: domainfailure.KindExternal, Err: err})
 		}
 
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "files_restore",
-			Status:  MigrateStepStatusCompleted,
+			Status:  domainworkflow.StatusCompleted,
 			Summary: "Files restore completed",
 			Details: filesRestoreDetails(targetCtx, info),
 		})
@@ -363,7 +357,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	if req.NoStart {
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "target_start",
-			Status:  MigrateStepStatusSkipped,
+			Status:  domainworkflow.StatusSkipped,
 			Summary: "Target contour start skipped",
 			Details: "The target application services were left stopped because of --no-start.",
 		})
@@ -376,7 +370,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		if err := platformdocker.ComposeUp(cfg); err != nil {
 			info.Steps = append(info.Steps, ExecuteStep{
 				Code:    "target_start",
-				Status:  MigrateStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Target contour start failed",
 				Details: err.Error(),
 				Action:  "Resolve the target contour start failure before rerunning migrate.",
@@ -387,7 +381,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		if err := platformdocker.WaitForServicesReady(cfg, domainruntime.DefaultReadinessTimeoutSeconds, validatedServices...); err != nil {
 			info.Steps = append(info.Steps, ExecuteStep{
 				Code:    "target_start",
-				Status:  MigrateStepStatusFailed,
+				Status:  domainworkflow.StatusFailed,
 				Summary: "Target contour start failed",
 				Details: err.Error(),
 				Action:  "Repair the target contour runtime health before treating this migration as successful.",
@@ -397,7 +391,7 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 
 		info.Steps = append(info.Steps, ExecuteStep{
 			Code:    "target_start",
-			Status:  MigrateStepStatusCompleted,
+			Status:  domainworkflow.StatusCompleted,
 			Summary: "Target contour start completed",
 			Details: fmt.Sprintf("Started the target contour %s with docker compose up -d and confirmed runtime health for: %s.", info.TargetScope, strings.Join(validatedServices, ", ")),
 		})
@@ -407,26 +401,26 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	return info, nil
 }
 
-func (i ExecuteInfo) Counts() (completed, skipped, failed, notRun int) {
+func (i ExecuteInfo) Counts() (completed, skipped, blocked, failed int) {
 	for _, step := range i.Steps {
 		switch step.Status {
-		case MigrateStepStatusCompleted:
+		case domainworkflow.StatusCompleted:
 			completed++
-		case MigrateStepStatusSkipped:
+		case domainworkflow.StatusSkipped:
 			skipped++
-		case MigrateStepStatusFailed:
+		case domainworkflow.StatusBlocked:
+			blocked++
+		case domainworkflow.StatusFailed:
 			failed++
-		case MigrateStepStatusNotRun:
-			notRun++
 		}
 	}
 
-	return completed, skipped, failed, notRun
+	return completed, skipped, blocked, failed
 }
 
 func (i ExecuteInfo) Ready() bool {
 	for _, step := range i.Steps {
-		if step.Status == MigrateStepStatusFailed {
+		if step.Status == domainworkflow.StatusFailed || step.Status == domainworkflow.StatusBlocked {
 			return false
 		}
 	}

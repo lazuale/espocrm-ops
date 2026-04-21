@@ -87,12 +87,12 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		}
 		info.Steps = append(info.Steps,
 			domainworkflow.NewStep("input_validation", domainworkflow.StatusFailed, failureSummary(err, "Backup input validation failed"), err.Error(), failureAction(err, "Fix the backup command flags before rerunning backup.")),
-			notRunBackupStep("artifact_allocation", "Artifact allocation did not run because backup input validation failed"),
-			notRunBackupStep("runtime_prepare", "Runtime preparation did not run because backup input validation failed"),
-			notRunBackupStep("db_backup", "Database backup did not run because backup input validation failed"),
-			notRunBackupStep("files_backup", "Files backup did not run because backup input validation failed"),
-			notRunBackupStep("finalize", "Manifest finalization did not run because backup input validation failed"),
-			notRunBackupStep("retention", "Retention cleanup did not run because backup input validation failed"),
+			blockedBackupStep("artifact_allocation", "Artifact allocation did not run because backup input validation failed"),
+			blockedBackupStep("runtime_prepare", "Runtime preparation did not run because backup input validation failed"),
+			blockedBackupStep("db_backup", "Database backup did not run because backup input validation failed"),
+			blockedBackupStep("files_backup", "Files backup did not run because backup input validation failed"),
+			blockedBackupStep("finalize", "Manifest finalization did not run because backup input validation failed"),
+			blockedBackupStep("retention", "Retention cleanup did not run because backup input validation failed"),
 		)
 		return info, wrapBackupExecuteError(err)
 	}
@@ -101,11 +101,11 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 	if err != nil {
 		info.Steps = append(info.Steps,
 			domainworkflow.NewStep("artifact_allocation", domainworkflow.StatusFailed, "Artifact allocation failed", err.Error(), "Resolve the backup directory or filesystem failure before rerunning backup."),
-			notRunBackupStep("runtime_prepare", "Runtime preparation did not run because artifact allocation failed"),
-			notRunBackupStep("db_backup", "Database backup did not run because artifact allocation failed"),
-			notRunBackupStep("files_backup", "Files backup did not run because artifact allocation failed"),
-			notRunBackupStep("finalize", "Manifest finalization did not run because artifact allocation failed"),
-			notRunBackupStep("retention", "Retention cleanup did not run because artifact allocation failed"),
+			blockedBackupStep("runtime_prepare", "Runtime preparation did not run because artifact allocation failed"),
+			blockedBackupStep("db_backup", "Database backup did not run because artifact allocation failed"),
+			blockedBackupStep("files_backup", "Files backup did not run because artifact allocation failed"),
+			blockedBackupStep("finalize", "Manifest finalization did not run because artifact allocation failed"),
+			blockedBackupStep("retention", "Retention cleanup did not run because artifact allocation failed"),
 		)
 		return info, wrapBackupExecuteError(domainfailure.Failure{
 			Kind:    domainfailure.KindIO,
@@ -166,10 +166,10 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		if err != nil {
 			info.Steps = append(info.Steps,
 				domainworkflow.NewStep("runtime_prepare", domainworkflow.StatusFailed, "Runtime preparation failed", err.Error(), "Resolve the runtime preparation failure before rerunning backup."),
-				notRunBackupStep("db_backup", "Database backup did not run because runtime preparation failed"),
-				notRunBackupStep("files_backup", "Files backup did not run because runtime preparation failed"),
-				notRunBackupStep("finalize", "Manifest finalization did not run because runtime preparation failed"),
-				notRunBackupStep("retention", "Retention cleanup did not run because runtime preparation failed"),
+				blockedBackupStep("db_backup", "Database backup did not run because runtime preparation failed"),
+				blockedBackupStep("files_backup", "Files backup did not run because runtime preparation failed"),
+				blockedBackupStep("finalize", "Manifest finalization did not run because runtime preparation failed"),
+				blockedBackupStep("retention", "Retention cleanup did not run because runtime preparation failed"),
 			)
 			return info, wrapBackupExecuteError(domainfailure.Failure{
 				Kind:    domainfailure.KindExternal,
@@ -192,9 +192,9 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		if err := s.runtime.DumpMySQLDumpGz(target, "db", req.DBUser, req.DBPassword, req.DBName, state.set.DBBackup.Path+".tmp"); err != nil {
 			info.Steps = append(info.Steps,
 				domainworkflow.NewStep("db_backup", domainworkflow.StatusFailed, "Database backup failed", err.Error(), "Resolve the database dump failure before rerunning backup."),
-				notRunBackupStep("files_backup", "Files backup did not run because database backup failed"),
-				notRunBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
-				notRunBackupStep("retention", "Retention cleanup did not run because database backup failed"),
+				blockedBackupStep("files_backup", "Files backup did not run because database backup failed"),
+				blockedBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
+				blockedBackupStep("retention", "Retention cleanup did not run because database backup failed"),
 			)
 			return info, wrapBackupExecuteError(domainfailure.Failure{
 				Kind:    domainfailure.KindExternal,
@@ -207,9 +207,9 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		if err := saveTempFile(state.set.DBBackup.Path+".tmp", state.set.DBBackup.Path, "save db backup"); err != nil {
 			info.Steps = append(info.Steps,
 				domainworkflow.NewStep("db_backup", domainworkflow.StatusFailed, "Database backup failed", err.Error(), "Resolve the database backup write failure before rerunning backup."),
-				notRunBackupStep("files_backup", "Files backup did not run because database backup failed"),
-				notRunBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
-				notRunBackupStep("retention", "Retention cleanup did not run because database backup failed"),
+				blockedBackupStep("files_backup", "Files backup did not run because database backup failed"),
+				blockedBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
+				blockedBackupStep("retention", "Retention cleanup did not run because database backup failed"),
 			)
 			return info, wrapBackupExecuteError(domainfailure.Failure{
 				Kind:    domainfailure.KindIO,
@@ -231,16 +231,16 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		if archiveErr != nil {
 			info.Steps = append(info.Steps,
 				domainworkflow.NewStep("files_backup", domainworkflow.StatusFailed, failureSummary(archiveErr, "Files backup failed"), archiveErr.Error(), failureAction(archiveErr, "Resolve the files backup failure before rerunning backup.")),
-				notRunBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
-				notRunBackupStep("retention", "Retention cleanup did not run because files backup failed"),
+				blockedBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
+				blockedBackupStep("retention", "Retention cleanup did not run because files backup failed"),
 			)
 			return info, wrapBackupExecuteError(archiveErr)
 		}
 		if err := saveTempFile(state.set.FilesBackup.Path+".tmp", state.set.FilesBackup.Path, "save files backup"); err != nil {
 			info.Steps = append(info.Steps,
 				domainworkflow.NewStep("files_backup", domainworkflow.StatusFailed, "Files backup failed", err.Error(), "Resolve the files backup write failure before rerunning backup."),
-				notRunBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
-				notRunBackupStep("retention", "Retention cleanup did not run because files backup failed"),
+				blockedBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
+				blockedBackupStep("retention", "Retention cleanup did not run because files backup failed"),
 			)
 			return info, wrapBackupExecuteError(domainfailure.Failure{
 				Kind:    domainfailure.KindIO,
@@ -262,7 +262,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 	if err := s.finalizeBackupArtifacts(req, &state, &info); err != nil {
 		info.Steps = append(info.Steps,
 			domainworkflow.NewStep("finalize", domainworkflow.StatusFailed, "Manifest finalization failed", err.Error(), "Resolve the manifest or checksum write failure before relying on this backup set."),
-			notRunBackupStep("retention", "Retention cleanup did not run because manifest finalization failed"),
+			blockedBackupStep("retention", "Retention cleanup did not run because manifest finalization failed"),
 		)
 		return info, wrapBackupExecuteError(domainfailure.Failure{
 			Kind:    domainfailure.KindIO,
@@ -309,26 +309,26 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 	return info, nil
 }
 
-func (i ExecuteInfo) Counts() (completed, skipped, failed, notRun int) {
+func (i ExecuteInfo) Counts() (completed, skipped, blocked, failed int) {
 	for _, step := range i.Steps {
 		switch step.Status {
-		case string(domainworkflow.StatusCompleted):
+		case domainworkflow.StatusCompleted:
 			completed++
-		case string(domainworkflow.StatusSkipped):
+		case domainworkflow.StatusSkipped:
 			skipped++
-		case string(domainworkflow.StatusFailed):
+		case domainworkflow.StatusBlocked:
+			blocked++
+		case domainworkflow.StatusFailed:
 			failed++
-		case string(domainworkflow.StatusNotRun):
-			notRun++
 		}
 	}
 
-	return completed, skipped, failed, notRun
+	return completed, skipped, blocked, failed
 }
 
 func (i ExecuteInfo) Ready() bool {
 	for _, step := range i.Steps {
-		if step.Status == string(domainworkflow.StatusFailed) {
+		if step.Status == domainworkflow.StatusFailed || step.Status == domainworkflow.StatusBlocked {
 			return false
 		}
 	}

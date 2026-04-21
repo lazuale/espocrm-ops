@@ -5,8 +5,8 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
+	"github.com/lazuale/espocrm-ops/internal/contract/result"
 )
 
 type stepRenderOptions struct {
@@ -64,10 +64,10 @@ func restoreExecutionItems(steps []restoreusecase.ExecuteStep) []any {
 	})
 }
 
-func newSectionItem(code, status, summary, details, action string) result.SectionItem {
+func newSectionItem(code string, status fmt.Stringer, summary, details, action string) result.SectionItem {
 	return result.SectionItem{
 		Code:    code,
-		Status:  status,
+		Status:  status.String(),
 		Summary: summary,
 		Details: details,
 		Action:  action,

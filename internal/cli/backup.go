@@ -105,7 +105,7 @@ func runBackup(cmd *cobra.Command, in backupInput) error {
 }
 
 func backupResult(info backupusecase.ExecuteInfo) result.Result {
-	completed, skipped, failed, notRun := info.Counts()
+	completed, skipped, blocked, failed := info.Counts()
 	message := "backup completed"
 	if !info.Ready() {
 		message = "backup failed"
@@ -130,8 +130,8 @@ func backupResult(info backupusecase.ExecuteInfo) result.Result {
 			Steps:                  len(info.Steps),
 			Completed:              completed,
 			Skipped:                skipped,
+			Blocked:                blocked,
 			Failed:                 failed,
-			NotRun:                 notRun,
 			Warnings:               len(info.Warnings),
 			SkipDB:                 info.SkipDB,
 			SkipFiles:              info.SkipFiles,
@@ -203,10 +203,10 @@ func renderBackupText(w io.Writer, res result.Result) error {
 	if _, err := fmt.Fprintf(w, "  Skipped:      %d\n", details.Skipped); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "  Failed:       %d\n", details.Failed); err != nil {
+	if _, err := fmt.Fprintf(w, "  Blocked:      %d\n", details.Blocked); err != nil {
 		return err
 	}
-	if _, err := fmt.Fprintf(w, "  Not run:      %d\n", details.NotRun); err != nil {
+	if _, err := fmt.Fprintf(w, "  Failed:       %d\n", details.Failed); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "  Warnings:     %d\n", details.Warnings); err != nil {

@@ -15,10 +15,10 @@
   },
   "command": "migrate",
   "details": {
+    "blocked": 0,
     "completed": 8,
     "failed": 0,
     "no_start": false,
-    "not_run": 0,
     "ready": true,
     "requested_selection_mode": "auto_latest_complete",
     "selection_mode": "auto_latest_complete",
