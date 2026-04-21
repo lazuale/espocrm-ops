@@ -13,13 +13,17 @@ type VerifyInfo struct {
 }
 
 func (s Service) Verify(req VerifyRequest) error {
-	return s.store.VerifyManifest(req.ManifestPath)
+	if err := s.store.VerifyManifest(req.ManifestPath); err != nil {
+		return wrapBackupVerifyError(err)
+	}
+
+	return nil
 }
 
 func (s Service) VerifyDetailed(req VerifyRequest) (VerifyInfo, error) {
 	info, err := s.store.VerifyManifestDetailed(req.ManifestPath)
 	if err != nil {
-		return VerifyInfo{}, err
+		return VerifyInfo{}, wrapBackupVerifyError(err)
 	}
 
 	return VerifyInfo{

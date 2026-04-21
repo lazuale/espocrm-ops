@@ -15,7 +15,7 @@ type ManifestCandidate struct {
 func (s Service) LatestCompleteManifest(backupRoot string) (string, error) {
 	candidates, err := s.ManifestCandidates(backupRoot)
 	if err != nil {
-		return "", err
+		return "", wrapBackupVerifyError(err)
 	}
 
 	for _, candidate := range candidates {
@@ -24,17 +24,17 @@ func (s Service) LatestCompleteManifest(backupRoot string) (string, error) {
 		}
 	}
 
-	return "", domainfailure.Failure{
+	return "", wrapBackupVerifyError(domainfailure.Failure{
 		Kind: domainfailure.KindValidation,
 		Code: "backup_verification_failed",
 		Err:  fmt.Errorf("no complete backup set found in %s", backupRoot),
-	}
+	})
 }
 
 func (s Service) ManifestCandidates(backupRoot string) ([]ManifestCandidate, error) {
 	candidates, err := s.store.ManifestCandidates(backupRoot)
 	if err != nil {
-		return nil, err
+		return nil, wrapBackupVerifyError(err)
 	}
 
 	out := make([]ManifestCandidate, 0, len(candidates))

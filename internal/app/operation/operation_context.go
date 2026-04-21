@@ -6,7 +6,9 @@ import (
 	"io"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/app/ports"
+	envport "github.com/lazuale/espocrm-ops/internal/app/ports/envport"
+	filesport "github.com/lazuale/espocrm-ops/internal/app/ports/filesport"
+	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
@@ -20,15 +22,15 @@ type OperationContextRequest struct {
 }
 
 type Dependencies struct {
-	Env   ports.EnvLoader
-	Files ports.Files
-	Locks ports.Locks
+	Env   envport.Loader
+	Files filesport.Files
+	Locks lockport.Locks
 }
 
 type Service struct {
-	env   ports.EnvLoader
-	files ports.Files
-	locks ports.Locks
+	env   envport.Loader
+	files filesport.Files
+	locks lockport.Locks
 }
 
 type OperationContext struct {
@@ -38,8 +40,8 @@ type OperationContext struct {
 	Env            domainenv.OperationEnv
 	ComposeProject string
 	BackupRoot     string
-	opLock         ports.Releaser
-	maintenance    ports.Releaser
+	opLock         lockport.Releaser
+	maintenance    lockport.Releaser
 }
 
 func NewService(deps Dependencies) Service {

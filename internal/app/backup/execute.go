@@ -7,8 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/lazuale/espocrm-ops/internal/app/ports"
-	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
+	runtimeport "github.com/lazuale/espocrm-ops/internal/app/ports/runtimeport"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	domainworkflow "github.com/lazuale/espocrm-ops/internal/domain/workflow"
 )
@@ -130,7 +129,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 	}
 	info.Steps = append(info.Steps, domainworkflow.NewStep("artifact_allocation", domainworkflow.StatusCompleted, "Artifact allocation completed", allocationDetails(state, info), ""))
 
-	target := ports.RuntimeTarget{ProjectDir: info.ProjectDir, ComposeFile: info.ComposeFile, EnvFile: info.EnvFile}
+	target := runtimeport.Target{ProjectDir: info.ProjectDir, ComposeFile: info.ComposeFile, EnvFile: info.EnvFile}
 
 	var runtimePrep runtimePrepareInfo
 	runtimeNeedsReturn := false
@@ -155,7 +154,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 			return
 		}
 
-			info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_return", domainworkflow.StatusCompleted, "Runtime return completed after backup failure", runtimeReturnDetails(runtimeReturn), ""))
+		info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_return", domainworkflow.StatusCompleted, "Runtime return completed after backup failure", runtimeReturnDetails(runtimeReturn), ""))
 		info.Warnings = append(info.Warnings, "Backup failed after stopping application services; the contour runtime was returned to its prior state.")
 		runtimeReturnRecorded = true
 	}()
@@ -184,7 +183,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		info.AppServicesWereRunning = runtimePrep.AppServicesWereRunning
 		state.appServicesWereRunning = runtimePrep.AppServicesWereRunning
 		runtimeNeedsReturn = runtimePrep.AppServicesWereRunning
-			info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_prepare", domainworkflow.StatusCompleted, "Runtime preparation completed", runtimePrepareDetails(runtimePrep), ""))
+		info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_prepare", domainworkflow.StatusCompleted, "Runtime preparation completed", runtimePrepareDetails(runtimePrep), ""))
 	}
 
 	if req.SkipDB {
@@ -192,7 +191,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 	} else {
 		if err := s.runtime.DumpMySQLDumpGz(target, "db", req.DBUser, req.DBPassword, req.DBName, state.set.DBBackup.Path+".tmp"); err != nil {
 			info.Steps = append(info.Steps,
-					domainworkflow.NewStep("db_backup", domainworkflow.StatusFailed, "Database backup failed", err.Error(), "Resolve the database dump failure before rerunning backup."),
+				domainworkflow.NewStep("db_backup", domainworkflow.StatusFailed, "Database backup failed", err.Error(), "Resolve the database dump failure before rerunning backup."),
 				notRunBackupStep("files_backup", "Files backup did not run because database backup failed"),
 				notRunBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
 				notRunBackupStep("retention", "Retention cleanup did not run because database backup failed"),
@@ -207,7 +206,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		}
 		if err := saveTempFile(state.set.DBBackup.Path+".tmp", state.set.DBBackup.Path, "save db backup"); err != nil {
 			info.Steps = append(info.Steps,
-					domainworkflow.NewStep("db_backup", domainworkflow.StatusFailed, "Database backup failed", err.Error(), "Resolve the database backup write failure before rerunning backup."),
+				domainworkflow.NewStep("db_backup", domainworkflow.StatusFailed, "Database backup failed", err.Error(), "Resolve the database backup write failure before rerunning backup."),
 				notRunBackupStep("files_backup", "Files backup did not run because database backup failed"),
 				notRunBackupStep("finalize", "Manifest finalization did not run because database backup failed"),
 				notRunBackupStep("retention", "Retention cleanup did not run because database backup failed"),
@@ -222,7 +221,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		}
 
 		info.DBBackupCreated = true
-			info.Steps = append(info.Steps, domainworkflow.NewStep("db_backup", domainworkflow.StatusCompleted, "Database backup completed", dbBackupDetails(state), ""))
+		info.Steps = append(info.Steps, domainworkflow.NewStep("db_backup", domainworkflow.StatusCompleted, "Database backup completed", dbBackupDetails(state), ""))
 	}
 
 	if req.SkipFiles {
@@ -231,7 +230,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		archiveInfo, archiveErr := s.createFilesBackupArchive(req, state.set.FilesBackup.Path+".tmp")
 		if archiveErr != nil {
 			info.Steps = append(info.Steps,
-					domainworkflow.NewStep("files_backup", domainworkflow.StatusFailed, failureSummary(archiveErr, "Files backup failed"), archiveErr.Error(), failureAction(archiveErr, "Resolve the files backup failure before rerunning backup.")),
+				domainworkflow.NewStep("files_backup", domainworkflow.StatusFailed, failureSummary(archiveErr, "Files backup failed"), archiveErr.Error(), failureAction(archiveErr, "Resolve the files backup failure before rerunning backup.")),
 				notRunBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
 				notRunBackupStep("retention", "Retention cleanup did not run because files backup failed"),
 			)
@@ -239,7 +238,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		}
 		if err := saveTempFile(state.set.FilesBackup.Path+".tmp", state.set.FilesBackup.Path, "save files backup"); err != nil {
 			info.Steps = append(info.Steps,
-					domainworkflow.NewStep("files_backup", domainworkflow.StatusFailed, "Files backup failed", err.Error(), "Resolve the files backup write failure before rerunning backup."),
+				domainworkflow.NewStep("files_backup", domainworkflow.StatusFailed, "Files backup failed", err.Error(), "Resolve the files backup write failure before rerunning backup."),
 				notRunBackupStep("finalize", "Manifest finalization did not run because files backup failed"),
 				notRunBackupStep("retention", "Retention cleanup did not run because files backup failed"),
 			)
@@ -257,7 +256,7 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 		}
 
 		info.FilesBackupCreated = true
-			info.Steps = append(info.Steps, domainworkflow.NewStep("files_backup", domainworkflow.StatusCompleted, "Files backup completed", filesBackupDetails(state, archiveInfo), ""))
+		info.Steps = append(info.Steps, domainworkflow.NewStep("files_backup", domainworkflow.StatusCompleted, "Files backup completed", filesBackupDetails(state, archiveInfo), ""))
 	}
 
 	if err := s.finalizeBackupArtifacts(req, &state, &info); err != nil {
@@ -300,10 +299,10 @@ func (s Service) ExecutePrepared(req PreparedRequest) (info ExecuteInfo, err err
 			})
 		}
 
-			info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_return", domainworkflow.StatusCompleted, "Runtime return completed", runtimeReturnDetails(runtimeReturn), ""))
+		info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_return", domainworkflow.StatusCompleted, "Runtime return completed", runtimeReturnDetails(runtimeReturn), ""))
 		runtimeReturnRecorded = true
 	} else {
-			info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_return", domainworkflow.StatusSkipped, "Runtime return skipped", runtimeReturnSkippedDetails(req, runtimePrep), ""))
+		info.Steps = append(info.Steps, domainworkflow.NewStep("runtime_return", domainworkflow.StatusSkipped, "Runtime return skipped", runtimeReturnSkippedDetails(req, runtimePrep), ""))
 		runtimeReturnRecorded = true
 	}
 
@@ -335,20 +334,4 @@ func (i ExecuteInfo) Ready() bool {
 	}
 
 	return true
-}
-
-func wrapBackupExecuteError(err error) error {
-	var failure domainfailure.Failure
-	if errors.As(err, &failure) && failure.Kind != "" {
-		code := failure.Code
-		if code == "" {
-			code = "backup_failed"
-		}
-		return apperr.Wrap(apperr.Kind(failure.Kind), code, err)
-	}
-	if kind, ok := apperr.KindOf(err); ok {
-		return apperr.Wrap(kind, "backup_failed", err)
-	}
-
-	return apperr.Wrap(apperr.KindInternal, "backup_failed", err)
 }

@@ -4,8 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
 )
 
@@ -50,11 +50,11 @@ func runCommandWithMode(cmd *cobra.Command, spec CommandSpec, fn func() (result.
 	}
 
 	if mode == commandRunModeWithJournal {
-		var finishErr error
-		res, finishErr = exec.FinishSuccess(res)
+		completion, finishErr := exec.FinishSuccess(journalRecordFromResult(&res))
 		if finishErr != nil {
 			return finishErr
 		}
+		applyExecutionCompletion(&res, completion)
 	}
 
 	return renderCommandResult(cmd, spec, res)
@@ -65,7 +65,7 @@ func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, mode command
 	warnings := []string{}
 
 	if mode == commandRunModeWithJournal {
-		if journalErr := exec.FinishFailure(res, err, errCode); journalErr != nil {
+		if journalErr := exec.FinishFailure(journalRecordFromResult(&res), err, errCode); journalErr != nil {
 			message := fmt.Sprintf("failed to write journal entry: %v", journalErr)
 			if app.JSONEnabled() {
 				warnings = append(warnings, message)
@@ -98,19 +98,20 @@ func renderCommandResult(cmd *cobra.Command, spec CommandSpec, res result.Result
 }
 
 func finishJournaledCommandSuccess(cmd *cobra.Command, spec CommandSpec, exec operationusecase.Execution, res result.Result) error {
-	finished, err := exec.FinishSuccess(res)
+	completion, err := exec.FinishSuccess(journalRecordFromResult(&res))
 	if err != nil {
 		return err
 	}
+	applyExecutionCompletion(&res, completion)
 
-	return renderCommandResult(cmd, spec, finished)
+	return renderCommandResult(cmd, spec, res)
 }
 
 func finishJournaledCommandFailure(cmd *cobra.Command, spec CommandSpec, exec operationusecase.Execution, res result.Result, err error) error {
 	res.Command = spec.Name
 	errCode := errorCodeForError(err, spec.ErrorCode)
 
-	if journalErr := exec.FinishFailure(res, err, errCode); journalErr != nil {
+	if journalErr := exec.FinishFailure(journalRecordFromResult(&res), err, errCode); journalErr != nil {
 		message := fmt.Sprintf("failed to write journal entry: %v", journalErr)
 		if appForCommand(cmd).JSONEnabled() {
 			res.Warnings = append(res.Warnings, message)

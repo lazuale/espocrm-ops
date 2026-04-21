@@ -1,12 +1,10 @@
 package operation
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
 
-	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	domainjournal "github.com/lazuale/espocrm-ops/internal/domain/journal"
 )
 
@@ -25,6 +23,26 @@ type DisabledWriter struct{}
 
 func (DisabledWriter) Write(entry domainjournal.Entry) error {
 	return ErrJournalWriterDisabled
+}
+
+type JournalPayload struct {
+	Artifacts map[string]any
+	Details   map[string]any
+	Items     []any
+}
+
+type JournalRecord struct {
+	DryRun   bool
+	Message  string
+	Warnings []string
+	Payload  JournalPayload
+}
+
+type Completion struct {
+	StartedAt  string
+	FinishedAt string
+	DurationMS int64
+	Warnings   []string
 }
 
 type Execution struct {
@@ -49,40 +67,36 @@ func Begin(runtime Runtime, writer Writer, command string) Execution {
 	}
 }
 
-func (e Execution) FinishSuccess(res result.Result) (result.Result, error) {
+func (e Execution) FinishSuccess(record JournalRecord) (Completion, error) {
 	finishedAt := e.now()
-	artifacts, details, items := serializeJournalPayload(&res)
-
-	res.Command = e.command
-	res.OK = true
-	res.Timing = &result.TimingInfo{
+	completion := Completion{
 		StartedAt:  e.startedAt.Format(TimeFormat),
 		FinishedAt: finishedAt.Format(TimeFormat),
 		DurationMS: finishedAt.Sub(e.startedAt).Milliseconds(),
+		Warnings:   append([]string(nil), record.Warnings...),
 	}
 
 	if err := e.write(domainjournal.Entry{
 		OperationID: e.operationID,
 		Command:     e.command,
-		StartedAt:   e.startedAt.Format(TimeFormat),
-		FinishedAt:  finishedAt.Format(TimeFormat),
+		StartedAt:   completion.StartedAt,
+		FinishedAt:  completion.FinishedAt,
 		OK:          true,
-		DryRun:      res.DryRun,
-		Message:     res.Message,
-		Artifacts:   artifacts,
-		Details:     details,
-		Items:       items,
-		Warnings:    res.Warnings,
+		DryRun:      record.DryRun,
+		Message:     record.Message,
+		Artifacts:   record.Payload.Artifacts,
+		Details:     record.Payload.Details,
+		Items:       record.Payload.Items,
+		Warnings:    record.Warnings,
 	}); err != nil {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("failed to write journal entry: %v", err))
+		completion.Warnings = append(completion.Warnings, fmt.Sprintf("failed to write journal entry: %v", err))
 	}
 
-	return res, nil
+	return completion, nil
 }
 
-func (e Execution) FinishFailure(res result.Result, err error, errCode string) error {
+func (e Execution) FinishFailure(record JournalRecord, err error, errCode string) error {
 	finishedAt := e.now()
-	artifacts, details, items := serializeJournalPayload(&res)
 
 	return e.write(domainjournal.Entry{
 		OperationID:  e.operationID,
@@ -90,14 +104,14 @@ func (e Execution) FinishFailure(res result.Result, err error, errCode string) e
 		StartedAt:    e.startedAt.Format(TimeFormat),
 		FinishedAt:   finishedAt.Format(TimeFormat),
 		OK:           false,
-		DryRun:       res.DryRun,
-		Message:      res.Message,
+		DryRun:       record.DryRun,
+		Message:      record.Message,
 		ErrorCode:    errCode,
 		ErrorMessage: err.Error(),
-		Artifacts:    artifacts,
-		Details:      details,
-		Items:        items,
-		Warnings:     res.Warnings,
+		Artifacts:    record.Payload.Artifacts,
+		Details:      record.Payload.Details,
+		Items:        record.Payload.Items,
+		Warnings:     record.Warnings,
 	})
 }
 
@@ -115,59 +129,4 @@ func (e Execution) write(entry domainjournal.Entry) error {
 	}
 
 	return e.writer.Write(entry)
-}
-
-func serializeJournalPayload(res *result.Result) (map[string]any, map[string]any, []any) {
-	artifacts, artifactErr := toJSONObjectMap(res.Artifacts)
-	if artifactErr != nil {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal artifacts: %v", artifactErr))
-	}
-
-	details, detailsErr := toJSONObjectMap(res.Details)
-	if detailsErr != nil {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal details: %v", detailsErr))
-	}
-
-	items, itemsErr := toJSONArray(res.Items)
-	if itemsErr != nil {
-		res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal items: %v", itemsErr))
-	}
-
-	return artifacts, details, items
-}
-
-func toJSONObjectMap(v any) (map[string]any, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("marshal object: %w", err)
-	}
-
-	var out map[string]any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("unmarshal object into map: %w", err)
-	}
-
-	return out, nil
-}
-
-func toJSONArray(v any) ([]any, error) {
-	if v == nil {
-		return nil, nil
-	}
-
-	raw, err := json.Marshal(v)
-	if err != nil {
-		return nil, fmt.Errorf("marshal array: %w", err)
-	}
-
-	var out []any
-	if err := json.Unmarshal(raw, &out); err != nil {
-		return nil, fmt.Errorf("unmarshal array: %w", err)
-	}
-
-	return out, nil
 }

@@ -8,26 +8,28 @@ import (
 	"time"
 
 	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
-	"github.com/lazuale/espocrm-ops/internal/app/ports"
-	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
+	backupstoreport "github.com/lazuale/espocrm-ops/internal/app/ports/backupstoreport"
+	envport "github.com/lazuale/espocrm-ops/internal/app/ports/envport"
+	filesport "github.com/lazuale/espocrm-ops/internal/app/ports/filesport"
+	runtimeport "github.com/lazuale/espocrm-ops/internal/app/ports/runtimeport"
 	domainenv "github.com/lazuale/espocrm-ops/internal/domain/env"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
 
 type Dependencies struct {
 	Operations operationapp.Service
-	Env        ports.EnvLoader
-	Runtime    ports.Runtime
-	Files      ports.Files
-	Store      ports.BackupStore
+	Env        envport.Loader
+	Runtime    runtimeport.Runtime
+	Files      filesport.Files
+	Store      backupstoreport.Store
 }
 
 type Service struct {
 	operations operationapp.Service
-	env        ports.EnvLoader
-	runtime    ports.Runtime
-	files      ports.Files
-	store      ports.BackupStore
+	env        envport.Loader
+	runtime    runtimeport.Runtime
+	files      filesport.Files
+	store      backupstoreport.Store
 }
 
 type Request struct {
@@ -132,20 +134,4 @@ func (s Service) buildPreparedRequest(ctx operationapp.OperationContext, req Req
 	}
 
 	return prepared, nil
-}
-
-func wrapBackupBoundaryError(err error) error {
-	var failure domainfailure.Failure
-	if errors.As(err, &failure) && failure.Kind != "" {
-		code := failure.Code
-		if code == "" {
-			code = "backup_failed"
-		}
-		return apperr.Wrap(apperr.Kind(failure.Kind), code, err)
-	}
-	if kind, ok := apperr.KindOf(err); ok {
-		return apperr.Wrap(kind, "backup_failed", err)
-	}
-
-	return apperr.Wrap(apperr.KindInternal, "backup_failed", err)
 }
