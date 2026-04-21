@@ -82,4 +82,5 @@ make ci
 
 - Example contour env files live under `env/`.
 - `compose.yaml` and `deploy/` describe the runtime the tool operates against.
+- Architecture rules and the layer model live in [ARCHITECTURE.md](ARCHITECTURE.md).
 - Repository rules and cleanup constraints live in [AGENTS.md](AGENTS.md).
