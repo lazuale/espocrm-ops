@@ -21,9 +21,9 @@ func TestNewSiblingStage_ReturnsTypedErrorWhenParentCannotBeEnsured(t *testing.T
 		t.Fatal("expected stage creation to fail")
 	}
 
-	var typed EnsureDirError
+	var typed ensureDirError
 	if !errors.As(err, &typed) {
-		t.Fatalf("expected EnsureDirError, got %T", err)
+		t.Fatalf("expected ensureDirError, got %T", err)
 	}
 }
 
@@ -36,9 +36,9 @@ func TestPreparedTreeRoot_ReturnsTypedErrors(t *testing.T) {
 			t.Fatal("expected empty archive error")
 		}
 
-		var typed StageEmptyError
+		var typed stageEmptyError
 		if !errors.As(err, &typed) {
-			t.Fatalf("expected StageEmptyError, got %T", err)
+			t.Fatalf("expected stageEmptyError, got %T", err)
 		}
 	})
 
@@ -56,9 +56,9 @@ func TestPreparedTreeRoot_ReturnsTypedErrors(t *testing.T) {
 			t.Fatal("expected mixed root error")
 		}
 
-		var typed StageMixedRootError
+		var typed stageMixedRootError
 		if !errors.As(err, &typed) {
-			t.Fatalf("expected StageMixedRootError, got %T", err)
+			t.Fatalf("expected stageMixedRootError, got %T", err)
 		}
 	})
 
@@ -73,9 +73,9 @@ func TestPreparedTreeRoot_ReturnsTypedErrors(t *testing.T) {
 			t.Fatal("expected exact root mismatch")
 		}
 
-		var typed StageRootMismatchError
+		var typed stageRootMismatchError
 		if !errors.As(err, &typed) {
-			t.Fatalf("expected StageRootMismatchError, got %T", err)
+			t.Fatalf("expected stageRootMismatchError, got %T", err)
 		}
 	})
 }

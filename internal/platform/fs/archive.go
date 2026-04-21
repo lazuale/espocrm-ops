@@ -32,96 +32,20 @@ func VerifyGzipReadable(filePath string) (err error) {
 }
 
 func VerifyTarGzReadable(filePath string, validateHeader func(*tar.Header) error) (err error) {
-	f, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer closeArchiveResource(f, fmt.Sprintf("archive file %s", filePath), &err)
-
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer closeArchiveResource(gz, fmt.Sprintf("gzip reader for %s", filePath), &err)
-
-	tr := tar.NewReader(gz)
-	var found bool
-
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-
-		if validateHeader != nil {
-			if err := validateHeader(hdr); err != nil {
-				return err
-			}
-		}
-
-		cleanName := pathpkg.Clean(hdr.Name)
-		if cleanName != "." && cleanName != "/" {
-			found = true
-		}
-
-		if _, err := io.Copy(io.Discard, tr); err != nil {
-			return err
-		}
-	}
-
-	if !found {
-		return fmt.Errorf("tar archive is empty")
-	}
-
-	return nil
+	return walkTarGz(filePath, validateHeader, func(string, *tar.Header, *tar.Reader) error {
+		return nil
+	})
 }
 
-func UnpackTarGz(archivePath, destDir string, validateHeader func(*tar.Header) error) (err error) {
-	f, err := os.Open(archivePath)
-	if err != nil {
-		return err
-	}
-	defer closeArchiveResource(f, fmt.Sprintf("archive file %s", archivePath), &err)
-
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return ArchiveReadError{Path: archivePath, Err: err}
-	}
-	defer closeArchiveResource(gz, fmt.Sprintf("gzip reader for %s", archivePath), &err)
-
-	tr := tar.NewReader(gz)
-	found := false
-
-	for {
-		hdr, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return ArchiveReadError{Path: archivePath, Err: err}
-		}
-
-		if validateHeader != nil {
-			if err := validateHeader(hdr); err != nil {
-				return err
-			}
-		}
-
-		name := pathpkg.Clean(hdr.Name)
-		if name == "." || name == "/" {
-			continue
-		}
-
+func UnpackTarGz(archivePath, destDir string, validateHeader func(*tar.Header) error) error {
+	return walkTarGz(archivePath, validateHeader, func(name string, hdr *tar.Header, tr *tar.Reader) error {
 		targetPath := filepath.Join(destDir, filepath.FromSlash(name))
 		rel, err := filepath.Rel(destDir, targetPath)
 		if err != nil {
 			return err
 		}
 		if rel == ".." || hasFilesystemDotDotPrefix(rel) {
-			return ArchiveEntryEscapeError{ArchivePath: archivePath, EntryName: hdr.Name}
+			return archiveEntryEscapeError{ArchivePath: archivePath, EntryName: hdr.Name}
 		}
 
 		switch hdr.Typeflag {
@@ -151,14 +75,63 @@ func UnpackTarGz(archivePath, destDir string, validateHeader func(*tar.Header) e
 				return err
 			}
 		default:
-			return ArchiveUnexpectedEntryTypeError{ArchivePath: archivePath, EntryName: hdr.Name, Typeflag: hdr.Typeflag}
+			return archiveUnexpectedEntryTypeError{ArchivePath: archivePath, EntryName: hdr.Name, Typeflag: hdr.Typeflag}
 		}
 
-		found = true
+		return nil
+	})
+}
+
+func walkTarGz(filePath string, validateHeader func(*tar.Header) error, handleEntry func(string, *tar.Header, *tar.Reader) error) (err error) {
+	f, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer closeArchiveResource(f, fmt.Sprintf("archive file %s", filePath), &err)
+
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return archiveReadError{Path: filePath, Err: err}
+	}
+	defer closeArchiveResource(gz, fmt.Sprintf("gzip reader for %s", filePath), &err)
+
+	tr := tar.NewReader(gz)
+	var found bool
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return archiveReadError{Path: filePath, Err: err}
+		}
+
+		if validateHeader != nil {
+			if err := validateHeader(hdr); err != nil {
+				return err
+			}
+		}
+
+		cleanName := pathpkg.Clean(hdr.Name)
+		if cleanName != "." && cleanName != "/" {
+			found = true
+		}
+
+		if handleEntry != nil {
+			if err := handleEntry(cleanName, hdr, tr); err != nil {
+				return err
+			}
+			continue
+		}
+
+		if _, err := io.Copy(io.Discard, tr); err != nil {
+			return archiveReadError{Path: filePath, Err: err}
+		}
 	}
 
 	if !found {
-		return ArchiveEmptyError{ArchivePath: archivePath}
+		return archiveEmptyError{ArchivePath: filePath}
 	}
 
 	return nil
@@ -185,16 +158,16 @@ func hasFilesystemDotDotPrefix(p string) bool {
 }
 
 func ensureArchiveDirTarget(destDir, archivePath, entryName, targetPath string) error {
-	conflictPath, err := firstNonDirPath(destDir, targetPath)
+	conflictPath, err := firstNonDirOrSymlinkPath(destDir, targetPath)
 	if err != nil {
 		return err
 	}
 	if conflictPath != "" {
-		return ArchiveEntryConflictError{
+		return archiveEntryConflictError{
 			ArchivePath:  archivePath,
 			EntryName:    entryName,
 			ConflictPath: conflictPath,
-			Reason:       "directory path resolves through a file",
+			Reason:       "directory path resolves through a file or symlink",
 		}
 	}
 
@@ -203,23 +176,31 @@ func ensureArchiveDirTarget(destDir, archivePath, entryName, targetPath string) 
 
 func ensureArchiveFileTarget(destDir, archivePath, entryName, targetPath string) error {
 	parent := filepath.Dir(targetPath)
-	conflictPath, err := firstNonDirPath(destDir, parent)
+	conflictPath, err := firstNonDirOrSymlinkPath(destDir, parent)
 	if err != nil {
 		return err
 	}
 	if conflictPath != "" {
-		return ArchiveEntryConflictError{
+		return archiveEntryConflictError{
 			ArchivePath:  archivePath,
 			EntryName:    entryName,
 			ConflictPath: conflictPath,
-			Reason:       "parent path resolves through a file",
+			Reason:       "parent path resolves through a file or symlink",
 		}
 	}
 
-	fi, err := os.Stat(targetPath)
+	fi, err := os.Lstat(targetPath)
 	if err == nil {
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return archiveEntryConflictError{
+				ArchivePath:  archivePath,
+				EntryName:    entryName,
+				ConflictPath: targetPath,
+				Reason:       "target path is already a symlink",
+			}
+		}
 		if fi.IsDir() {
-			return ArchiveEntryConflictError{
+			return archiveEntryConflictError{
 				ArchivePath:  archivePath,
 				EntryName:    entryName,
 				ConflictPath: targetPath,
@@ -235,7 +216,7 @@ func ensureArchiveFileTarget(destDir, archivePath, entryName, targetPath string)
 	return err
 }
 
-func firstNonDirPath(baseDir, targetPath string) (string, error) {
+func firstNonDirOrSymlinkPath(baseDir, targetPath string) (string, error) {
 	rel, err := filepath.Rel(baseDir, targetPath)
 	if err != nil {
 		return "", err
@@ -248,12 +229,15 @@ func firstNonDirPath(baseDir, targetPath string) (string, error) {
 	for _, segment := range strings.Split(rel, string(os.PathSeparator)) {
 		current = filepath.Join(current, segment)
 
-		fi, err := os.Stat(current)
+		fi, err := os.Lstat(current)
 		if os.IsNotExist(err) {
 			return "", nil
 		}
 		if err != nil {
 			return "", err
+		}
+		if fi.Mode()&os.ModeSymlink != 0 {
+			return current, nil
 		}
 		if !fi.IsDir() {
 			return current, nil

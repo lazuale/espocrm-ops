@@ -17,18 +17,18 @@ func NewSiblingStage(targetDir, prefix string) (Stage, error) {
 
 	parent := filepath.Dir(targetDir)
 	if err := os.MkdirAll(parent, 0o755); err != nil {
-		return Stage{}, EnsureDirError{Path: parent, Err: err}
+		return Stage{}, ensureDirError{Path: parent, Err: err}
 	}
 
 	workDir, err := os.MkdirTemp(parent, "."+prefix+".")
 	if err != nil {
-		return Stage{}, StageCreateRootError{Path: parent, Err: err}
+		return Stage{}, stageCreateRootError{Path: parent, Err: err}
 	}
 
 	preparedDir := filepath.Join(workDir, "stage")
 	if err := os.MkdirAll(preparedDir, 0o755); err != nil {
 		_ = os.RemoveAll(workDir)
-		return Stage{}, StagePrepareDirError{Path: preparedDir, Err: err}
+		return Stage{}, stagePrepareDirError{Path: preparedDir, Err: err}
 	}
 
 	return Stage{
@@ -46,38 +46,35 @@ func (s Stage) Cleanup() error {
 }
 
 func PreparedTreeRoot(stageDir, targetBase string) (string, error) {
+	return preparedTreeRoot(stageDir, targetBase, false)
+}
+
+func PreparedTreeRootExact(stageDir, targetBase string) (string, error) {
+	return preparedTreeRoot(stageDir, targetBase, true)
+}
+
+func preparedTreeRoot(stageDir, targetBase string, requireExactRoot bool) (string, error) {
 	entries, err := os.ReadDir(stageDir)
 	if err != nil {
-		return "", StageReadError{Path: stageDir, Err: err}
+		return "", stageReadError{Path: stageDir, Err: err}
 	}
 	if len(entries) == 0 {
-		return "", StageEmptyError{Path: stageDir}
+		return "", stageEmptyError{Path: stageDir}
 	}
 
 	if len(entries) == 1 && entries[0].IsDir() && entries[0].Name() == targetBase {
 		return filepath.Join(stageDir, entries[0].Name()), nil
 	}
 
+	if requireExactRoot {
+		return "", stageRootMismatchError{Path: stageDir, TargetBase: targetBase}
+	}
+
 	for _, entry := range entries {
 		if entry.Name() == targetBase {
-			return "", StageMixedRootError{Path: stageDir, TargetBase: targetBase}
+			return "", stageMixedRootError{Path: stageDir, TargetBase: targetBase}
 		}
 	}
 
 	return stageDir, nil
-}
-
-func PreparedTreeRootExact(stageDir, targetBase string) (string, error) {
-	entries, err := os.ReadDir(stageDir)
-	if err != nil {
-		return "", StageReadError{Path: stageDir, Err: err}
-	}
-	if len(entries) == 0 {
-		return "", StageEmptyError{Path: stageDir}
-	}
-	if len(entries) != 1 || !entries[0].IsDir() || entries[0].Name() != targetBase {
-		return "", StageRootMismatchError{Path: stageDir, TargetBase: targetBase}
-	}
-
-	return filepath.Join(stageDir, entries[0].Name()), nil
 }

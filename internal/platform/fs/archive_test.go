@@ -26,9 +26,9 @@ func TestUnpackTarGz_ReturnsTypedArchiveReadErrorForInvalidGzip(t *testing.T) {
 		t.Fatal("expected invalid gzip to fail")
 	}
 
-	var typed ArchiveReadError
+	var typed archiveReadError
 	if !errors.As(err, &typed) {
-		t.Fatalf("expected ArchiveReadError, got %T", err)
+		t.Fatalf("expected archiveReadError, got %T", err)
 	}
 }
 
@@ -48,9 +48,9 @@ func TestUnpackTarGz_ReturnsTypedSemanticErrors(t *testing.T) {
 			t.Fatal("expected empty archive error")
 		}
 
-		var typed ArchiveEmptyError
+		var typed archiveEmptyError
 		if !errors.As(err, &typed) {
-			t.Fatalf("expected ArchiveEmptyError, got %T", err)
+			t.Fatalf("expected archiveEmptyError, got %T", err)
 		}
 	})
 
@@ -74,9 +74,9 @@ func TestUnpackTarGz_ReturnsTypedSemanticErrors(t *testing.T) {
 			t.Fatal("expected escape validation error")
 		}
 
-		var typed ArchiveEntryEscapeError
+		var typed archiveEntryEscapeError
 		if !errors.As(err, &typed) {
-			t.Fatalf("expected ArchiveEntryEscapeError, got %T", err)
+			t.Fatalf("expected archiveEntryEscapeError, got %T", err)
 		}
 	})
 
@@ -100,9 +100,9 @@ func TestUnpackTarGz_ReturnsTypedSemanticErrors(t *testing.T) {
 			t.Fatal("expected unexpected type error")
 		}
 
-		var typed ArchiveUnexpectedEntryTypeError
+		var typed archiveUnexpectedEntryTypeError
 		if !errors.As(err, &typed) {
-			t.Fatalf("expected ArchiveUnexpectedEntryTypeError, got %T", err)
+			t.Fatalf("expected archiveUnexpectedEntryTypeError, got %T", err)
 		}
 	})
 
@@ -136,9 +136,48 @@ func TestUnpackTarGz_ReturnsTypedSemanticErrors(t *testing.T) {
 			t.Fatal("expected archive entry conflict error")
 		}
 
-		var typed ArchiveEntryConflictError
+		var typed archiveEntryConflictError
 		if !errors.As(err, &typed) {
-			t.Fatalf("expected ArchiveEntryConflictError, got %T", err)
+			t.Fatalf("expected archiveEntryConflictError, got %T", err)
+		}
+	})
+
+	t.Run("destination symlink path", func(t *testing.T) {
+		tmp := t.TempDir()
+		archivePath := filepath.Join(tmp, "symlink-conflict.tar.gz")
+		destDir := filepath.Join(tmp, "dest")
+		outsideDir := filepath.Join(tmp, "outside")
+
+		writeTarGzArchive(t, archivePath, tar.Header{
+			Name:     "storage/file.txt",
+			Typeflag: tar.TypeReg,
+			Mode:     0o644,
+			Size:     int64(len("payload")),
+		}, []byte("payload"))
+		if err := os.MkdirAll(destDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.MkdirAll(outsideDir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(outsideDir, filepath.Join(destDir, "storage")); err != nil {
+			t.Fatal(err)
+		}
+
+		err := UnpackTarGz(archivePath, destDir, nil)
+		if err == nil {
+			t.Fatal("expected symlink conflict error")
+		}
+
+		var typed archiveEntryConflictError
+		if !errors.As(err, &typed) {
+			t.Fatalf("expected archiveEntryConflictError, got %T", err)
+		}
+		if typed.ConflictPath != filepath.Join(destDir, "storage") {
+			t.Fatalf("unexpected conflict path: %s", typed.ConflictPath)
+		}
+		if _, err := os.Stat(filepath.Join(outsideDir, "file.txt")); !os.IsNotExist(err) {
+			t.Fatalf("expected archive extraction to stay inside destination, got: %v", err)
 		}
 	})
 

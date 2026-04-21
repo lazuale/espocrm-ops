@@ -2,338 +2,262 @@ package fs
 
 import "fmt"
 
-type PathStatError struct {
+type pathStatError struct {
 	Label string
 	Path  string
 	Err   error
 }
 
-func (e PathStatError) Error() string {
+func (e pathStatError) Error() string {
 	return fmt.Sprintf("stat %s: %v", e.Label, e.Err)
 }
 
-func (e PathStatError) Unwrap() error {
+func (e pathStatError) Unwrap() error {
 	return e.Err
 }
 
-func (e PathStatError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type FileIsDirectoryError struct {
+type fileIsDirectoryError struct {
 	Label string
 	Path  string
 }
 
-func (e FileIsDirectoryError) Error() string {
+func (e fileIsDirectoryError) Error() string {
 	return fmt.Sprintf("%s is a directory: %s", e.Label, e.Path)
 }
 
-func (e FileIsDirectoryError) ErrorCode() string {
-	return "preflight_failed"
-}
-
-type FileEmptyError struct {
+type fileEmptyError struct {
 	Label string
 	Path  string
 }
 
-func (e FileEmptyError) Error() string {
+func (e fileEmptyError) Error() string {
 	return fmt.Sprintf("%s file is empty: %s", e.Label, e.Path)
 }
 
-func (e FileEmptyError) ErrorCode() string {
-	return "preflight_failed"
-}
-
-type EnsureDirError struct {
+type ensureDirError struct {
 	Path string
 	Err  error
 }
 
-func (e EnsureDirError) Error() string {
+func (e ensureDirError) Error() string {
 	return fmt.Sprintf("ensure target parent dir: %v", e.Err)
 }
 
-func (e EnsureDirError) Unwrap() error {
+func (e ensureDirError) Unwrap() error {
 	return e.Err
 }
 
-func (e EnsureDirError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type DirCreateTempError struct {
+type dirCreateTempError struct {
 	Path string
 	Err  error
 }
 
-func (e DirCreateTempError) Error() string {
+func (e dirCreateTempError) Error() string {
 	return fmt.Sprintf("target parent dir is not writable: %v", e.Err)
 }
 
-func (e DirCreateTempError) Unwrap() error {
+func (e dirCreateTempError) Unwrap() error {
 	return e.Err
 }
 
-func (e DirCreateTempError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type DirWriteTestError struct {
+type dirWriteTestError struct {
 	Path string
 	Err  error
 }
 
-func (e DirWriteTestError) Error() string {
+func (e dirWriteTestError) Error() string {
 	return fmt.Sprintf("write target parent test file: %v", e.Err)
 }
 
-func (e DirWriteTestError) Unwrap() error {
+func (e dirWriteTestError) Unwrap() error {
 	return e.Err
 }
 
-func (e DirWriteTestError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type DirCloseTestError struct {
+type dirCloseTestError struct {
 	Path string
 	Err  error
 }
 
-func (e DirCloseTestError) Error() string {
+func (e dirCloseTestError) Error() string {
 	return fmt.Sprintf("close target parent test file: %v", e.Err)
 }
 
-func (e DirCloseTestError) Unwrap() error {
+func (e dirCloseTestError) Unwrap() error {
 	return e.Err
 }
 
-func (e DirCloseTestError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type FreeSpaceCheckError struct {
+type freeSpaceCheckError struct {
 	Path string
 	Err  error
 }
 
-func (e FreeSpaceCheckError) Error() string {
+func (e freeSpaceCheckError) Error() string {
 	return fmt.Sprintf("check free space: %v", e.Err)
 }
 
-func (e FreeSpaceCheckError) Unwrap() error {
+func (e freeSpaceCheckError) Unwrap() error {
 	return e.Err
 }
 
-func (e FreeSpaceCheckError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type InsufficientFreeSpaceError struct {
+type insufficientFreeSpaceError struct {
 	Path           string
 	NeededBytes    uint64
 	AvailableBytes uint64
 }
 
-func (e InsufficientFreeSpaceError) Error() string {
+func (e insufficientFreeSpaceError) Error() string {
 	return fmt.Sprintf("not enough free space in %s: need at least %d bytes, available %d bytes", e.Path, e.NeededBytes, e.AvailableBytes)
 }
 
-func (e InsufficientFreeSpaceError) ErrorCode() string {
-	return "preflight_failed"
-}
-
-type StageCreateRootError struct {
+type stageCreateRootError struct {
 	Path string
 	Err  error
 }
 
-func (e StageCreateRootError) Error() string {
+func (e stageCreateRootError) Error() string {
 	return fmt.Sprintf("create sibling stage root: %v", e.Err)
 }
 
-func (e StageCreateRootError) Unwrap() error {
+func (e stageCreateRootError) Unwrap() error {
 	return e.Err
 }
 
-func (e StageCreateRootError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type StagePrepareDirError struct {
+type stagePrepareDirError struct {
 	Path string
 	Err  error
 }
 
-func (e StagePrepareDirError) Error() string {
+func (e stagePrepareDirError) Error() string {
 	return fmt.Sprintf("create stage dir: %v", e.Err)
 }
 
-func (e StagePrepareDirError) Unwrap() error {
+func (e stagePrepareDirError) Unwrap() error {
 	return e.Err
 }
 
-func (e StagePrepareDirError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type StageReadError struct {
+type stageReadError struct {
 	Path string
 	Err  error
 }
 
-func (e StageReadError) Error() string {
+func (e stageReadError) Error() string {
 	return fmt.Sprintf("read stage dir: %v", e.Err)
 }
 
-func (e StageReadError) Unwrap() error {
+func (e stageReadError) Unwrap() error {
 	return e.Err
 }
 
-func (e StageReadError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type StageEmptyError struct {
+type stageEmptyError struct {
 	Path string
 }
 
-func (e StageEmptyError) Error() string {
+func (e stageEmptyError) Error() string {
 	return "archive is empty"
 }
 
-func (e StageEmptyError) ErrorCode() string {
-	return "restore_files_failed"
-}
-
-type StageMixedRootError struct {
+type stageMixedRootError struct {
 	Path       string
 	TargetBase string
 }
 
-func (e StageMixedRootError) Error() string {
+func (e stageMixedRootError) Error() string {
 	return fmt.Sprintf("archive mixes target root directory %q with sibling entries", e.TargetBase)
 }
 
-func (e StageMixedRootError) ErrorCode() string {
-	return "restore_files_failed"
-}
-
-type StageRootMismatchError struct {
+type stageRootMismatchError struct {
 	Path       string
 	TargetBase string
 }
 
-func (e StageRootMismatchError) Error() string {
+func (e stageRootMismatchError) Error() string {
 	return fmt.Sprintf("archive root must be exactly %q", e.TargetBase)
 }
 
-func (e StageRootMismatchError) ErrorCode() string {
-	return "restore_files_failed"
-}
-
-type PreparedDirNotDirectoryError struct {
+type preparedDirNotDirectoryError struct {
 	Path string
 }
 
-func (e PreparedDirNotDirectoryError) Error() string {
+func (e preparedDirNotDirectoryError) Error() string {
 	return fmt.Sprintf("prepared dir is not a directory: %s", e.Path)
 }
 
-func (e PreparedDirNotDirectoryError) ErrorCode() string {
-	return "restore_files_failed"
+type treeScratchPathExistsError struct {
+	Path string
 }
 
-type TreeStatError struct {
+func (e treeScratchPathExistsError) Error() string {
+	return fmt.Sprintf("replace-tree scratch path already exists: %s", e.Path)
+}
+
+type treeStatError struct {
 	Path string
 	Err  error
 }
 
-func (e TreeStatError) Error() string {
+func (e treeStatError) Error() string {
 	return fmt.Sprintf("stat target dir: %v", e.Err)
 }
 
-func (e TreeStatError) Unwrap() error {
+func (e treeStatError) Unwrap() error {
 	return e.Err
 }
 
-func (e TreeStatError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type TreeRenameError struct {
+type treeRenameError struct {
 	Action string
 	From   string
 	To     string
 	Err    error
 }
 
-func (e TreeRenameError) Error() string {
+func (e treeRenameError) Error() string {
 	return fmt.Sprintf("%s: %v", e.Action, e.Err)
 }
 
-func (e TreeRenameError) Unwrap() error {
+func (e treeRenameError) Unwrap() error {
 	return e.Err
 }
 
-func (e TreeRenameError) ErrorCode() string {
-	return "filesystem_error"
-}
-
-type ArchiveReadError struct {
+type archiveReadError struct {
 	Path string
 	Err  error
 }
 
-func (e ArchiveReadError) Error() string {
+func (e archiveReadError) Error() string {
 	return fmt.Sprintf("read archive %s: %v", e.Path, e.Err)
 }
 
-func (e ArchiveReadError) Unwrap() error {
+func (e archiveReadError) Unwrap() error {
 	return e.Err
 }
 
-func (e ArchiveReadError) ErrorCode() string {
-	return "restore_files_failed"
-}
-
-type ArchiveEntryEscapeError struct {
+type archiveEntryEscapeError struct {
 	ArchivePath string
 	EntryName   string
 }
 
-func (e ArchiveEntryEscapeError) Error() string {
+func (e archiveEntryEscapeError) Error() string {
 	return fmt.Sprintf("archive entry escapes destination: %s", e.EntryName)
 }
 
-func (e ArchiveEntryEscapeError) ErrorCode() string {
-	return "restore_files_failed"
-}
-
-type ArchiveUnexpectedEntryTypeError struct {
+type archiveUnexpectedEntryTypeError struct {
 	ArchivePath string
 	EntryName   string
 	Typeflag    byte
 }
 
-func (e ArchiveUnexpectedEntryTypeError) Error() string {
+func (e archiveUnexpectedEntryTypeError) Error() string {
 	return fmt.Sprintf("unexpected tar entry type after validation: %d", e.Typeflag)
 }
 
-func (e ArchiveUnexpectedEntryTypeError) ErrorCode() string {
-	return "restore_files_failed"
-}
-
-type ArchiveEntryConflictError struct {
+type archiveEntryConflictError struct {
 	ArchivePath  string
 	EntryName    string
 	ConflictPath string
 	Reason       string
 }
 
-func (e ArchiveEntryConflictError) Error() string {
+func (e archiveEntryConflictError) Error() string {
 	if e.Reason != "" {
 		return fmt.Sprintf("archive entry conflicts with existing path %s: %s", e.EntryName, e.Reason)
 	}
@@ -341,18 +265,10 @@ func (e ArchiveEntryConflictError) Error() string {
 	return fmt.Sprintf("archive entry conflicts with existing path: %s", e.EntryName)
 }
 
-func (e ArchiveEntryConflictError) ErrorCode() string {
-	return "restore_files_failed"
-}
-
-type ArchiveEmptyError struct {
+type archiveEmptyError struct {
 	ArchivePath string
 }
 
-func (e ArchiveEmptyError) Error() string {
+func (e archiveEmptyError) Error() string {
 	return "archive is empty"
-}
-
-func (e ArchiveEmptyError) ErrorCode() string {
-	return "restore_files_failed"
 }

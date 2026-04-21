@@ -45,7 +45,7 @@ func InspectDirReadiness(path string, minFreeMB int, hasMinFree bool) (DirReadin
 
 		if hasMinFree {
 			if err := EnsureFreeSpace(cleanPath, uint64(minFreeMB)*1024*1024); err != nil {
-				var freeErr InsufficientFreeSpaceError
+				var freeErr insufficientFreeSpaceError
 				if errors.As(err, &freeErr) {
 					readiness.FreeSpaceOK = false
 					return readiness, nil
@@ -60,7 +60,7 @@ func InspectDirReadiness(path string, minFreeMB int, hasMinFree bool) (DirReadin
 		return DirReadiness{}, fmt.Errorf("stat %s: %w", cleanPath, err)
 	}
 
-	parent, err := NearestExistingParent(cleanPath)
+	parent, err := nearestExistingParent(cleanPath)
 	if err != nil {
 		return DirReadiness{}, err
 	}
@@ -81,7 +81,7 @@ func InspectDirReadiness(path string, minFreeMB int, hasMinFree bool) (DirReadin
 
 	if hasMinFree {
 		if err := EnsureFreeSpace(parent, uint64(minFreeMB)*1024*1024); err != nil {
-			var freeErr InsufficientFreeSpaceError
+			var freeErr insufficientFreeSpaceError
 			if errors.As(err, &freeErr) {
 				readiness.FreeSpaceOK = false
 				return readiness, nil
@@ -93,7 +93,7 @@ func InspectDirReadiness(path string, minFreeMB int, hasMinFree bool) (DirReadin
 	return readiness, nil
 }
 
-func NearestExistingParent(path string) (string, error) {
+func nearestExistingParent(path string) (string, error) {
 	current := filepath.Clean(path)
 	for {
 		current = filepath.Dir(current)

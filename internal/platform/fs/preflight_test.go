@@ -17,9 +17,9 @@ func TestEnsureNonEmptyFileReportsTypedErrors(t *testing.T) {
 			t.Fatal("expected stat error")
 		}
 
-		var typedErr PathStatError
+		var typedErr pathStatError
 		if !errors.As(err, &typedErr) {
-			t.Fatalf("expected PathStatError, got %T: %v", err, err)
+			t.Fatalf("expected pathStatError, got %T: %v", err, err)
 		}
 		if typedErr.Path != path {
 			t.Fatalf("unexpected path: %s", typedErr.Path)
@@ -37,9 +37,9 @@ func TestEnsureNonEmptyFileReportsTypedErrors(t *testing.T) {
 			t.Fatal("expected directory error")
 		}
 
-		var typedErr FileIsDirectoryError
+		var typedErr fileIsDirectoryError
 		if !errors.As(err, &typedErr) {
-			t.Fatalf("expected FileIsDirectoryError, got %T: %v", err, err)
+			t.Fatalf("expected fileIsDirectoryError, got %T: %v", err, err)
 		}
 		if typedErr.Path != path {
 			t.Fatalf("unexpected path: %s", typedErr.Path)
@@ -57,9 +57,9 @@ func TestEnsureNonEmptyFileReportsTypedErrors(t *testing.T) {
 			t.Fatal("expected empty file error")
 		}
 
-		var typedErr FileEmptyError
+		var typedErr fileEmptyError
 		if !errors.As(err, &typedErr) {
-			t.Fatalf("expected FileEmptyError, got %T: %v", err, err)
+			t.Fatalf("expected fileEmptyError, got %T: %v", err, err)
 		}
 		if typedErr.Path != path {
 			t.Fatalf("unexpected path: %s", typedErr.Path)
@@ -79,9 +79,9 @@ func TestEnsureWritableDirReportsTypedError(t *testing.T) {
 		t.Fatal("expected ensure dir error")
 	}
 
-	var typedErr EnsureDirError
+	var typedErr ensureDirError
 	if !errors.As(err, &typedErr) {
-		t.Fatalf("expected EnsureDirError, got %T: %v", err, err)
+		t.Fatalf("expected ensureDirError, got %T: %v", err, err)
 	}
 }
 
@@ -94,9 +94,9 @@ func TestEnsureFreeSpaceReportsTypedErrors(t *testing.T) {
 			t.Fatal("expected free space check error")
 		}
 
-		var typedErr FreeSpaceCheckError
+		var typedErr freeSpaceCheckError
 		if !errors.As(err, &typedErr) {
-			t.Fatalf("expected FreeSpaceCheckError, got %T: %v", err, err)
+			t.Fatalf("expected freeSpaceCheckError, got %T: %v", err, err)
 		}
 		if typedErr.Path != path {
 			t.Fatalf("unexpected path: %s", typedErr.Path)
@@ -109,9 +109,9 @@ func TestEnsureFreeSpaceReportsTypedErrors(t *testing.T) {
 			t.Fatal("expected insufficient free space error")
 		}
 
-		var typedErr InsufficientFreeSpaceError
+		var typedErr insufficientFreeSpaceError
 		if !errors.As(err, &typedErr) {
-			t.Fatalf("expected InsufficientFreeSpaceError, got %T: %v", err, err)
+			t.Fatalf("expected insufficientFreeSpaceError, got %T: %v", err, err)
 		}
 	})
 }
