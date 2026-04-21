@@ -63,25 +63,13 @@ func TestGolden_BackupVerify_JSON(t *testing.T) {
 func normalizeBackupVerifyJSON(t *testing.T, raw []byte) []byte {
 	t.Helper()
 
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
-	}
-
-	artifacts, _ := obj["artifacts"].(map[string]any)
-	if artifacts != nil {
-		for _, key := range []string{"manifest", "db_backup", "files_backup"} {
-			if _, ok := artifacts[key]; ok {
-				artifacts[key] = "REPLACE_AT_RUNTIME"
-			}
-		}
-	}
-
-	out, err := json.Marshal(obj)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return out
+	obj := parseCLIJSONBytes(t, raw)
+	normalizeArtifactPlaceholders(obj, map[string]string{
+		"manifest":     "REPLACE_AT_RUNTIME",
+		"db_backup":    "REPLACE_AT_RUNTIME",
+		"files_backup": "REPLACE_AT_RUNTIME",
+	})
+	return marshalCLIJSON(t, obj)
 }
 
 func writeJSON(t *testing.T, path string, v any) {

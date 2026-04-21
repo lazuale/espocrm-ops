@@ -141,3 +141,69 @@ func TestProductionCLIExecutionBeginsOnlyInRunner(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestCLITestDockerHarnessStaysSingleOwner(t *testing.T) {
+	root := testutil.RepoRoot(t)
+	cliDir := filepath.Join(root, "internal", "cli")
+	owners := map[string]struct{}{
+		"recovery_test_helpers_test.go": {},
+	}
+	legacyPrefix := "DOCKER_" + "MOCK_"
+	harnessPrefix := "DOCKER_" + "TEST_"
+
+	err := filepath.WalkDir(cliDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(raw)
+		if strings.Contains(text, legacyPrefix) {
+			t.Fatalf("legacy docker mock env dialect remains in %s", path)
+		}
+		if !strings.Contains(text, harnessPrefix) {
+			return nil
+		}
+		if _, ok := owners[filepath.Base(path)]; !ok {
+			t.Fatalf("docker harness env plumbing must stay in recovery_test_helpers_test.go; found in %s", path)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestCLISchemaTestsDoNotAssertGoldenSnapshots(t *testing.T) {
+	root := testutil.RepoRoot(t)
+	cliDir := filepath.Join(root, "internal", "cli")
+
+	err := filepath.WalkDir(cliDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, "_schema_test.go") {
+			return nil
+		}
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if strings.Contains(string(raw), "assertGoldenJSON(") {
+			t.Fatalf("schema tests must stay separate from golden assertions; found in %s", path)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}

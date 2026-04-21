@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"testing"
@@ -24,7 +23,7 @@ func TestSchema_Doctor_JSON_FailureIncludesDetailedResult(t *testing.T) {
 		"APP_PORT": "18080",
 		"WS_PORT":  "18080",
 	})
-	prependDoctorFakeDocker(t)
+	newDockerHarness(t)
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
@@ -41,30 +40,26 @@ func TestSchema_Doctor_JSON_FailureIncludesDetailedResult(t *testing.T) {
 		t.Fatalf("expected empty stderr, got %q", outcome.Stderr)
 	}
 
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
-		t.Fatal(err)
-	}
+	obj := decodeCLIJSON(t, outcome.Stdout)
 
-	if command := requireJSONPath(t, obj, "command"); command != "doctor" {
+	if command := requireJSONString(t, obj, "command"); command != "doctor" {
 		t.Fatalf("unexpected command: %v", command)
 	}
-	if ok, _ := requireJSONPath(t, obj, "ok").(bool); ok {
+	if requireJSONBool(t, obj, "ok") {
 		t.Fatalf("expected ok=false")
 	}
-	if code := requireJSONPath(t, obj, "error", "code"); code != "doctor_failed" {
+	if code := requireJSONString(t, obj, "error", "code"); code != "doctor_failed" {
 		t.Fatalf("unexpected error code: %v", code)
 	}
-	if kind := requireJSONPath(t, obj, "error", "kind"); kind != "validation" {
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "validation" {
 		t.Fatalf("unexpected error kind: %v", kind)
 	}
-	exitCode, _ := requireJSONPath(t, obj, "error", "exit_code").(float64)
-	if int(exitCode) != exitcode.ValidationError {
+	if exitCode := requireJSONInt(t, obj, "error", "exit_code"); exitCode != exitcode.ValidationError {
 		t.Fatalf("unexpected error exit code: %v", exitCode)
 	}
 
-	items, ok := obj["items"].([]any)
-	if !ok || len(items) == 0 {
+	items := requireJSONArray(t, obj, "items")
+	if len(items) == 0 {
 		t.Fatalf("expected non-empty doctor items, got %#v", obj["items"])
 	}
 

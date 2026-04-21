@@ -1,11 +1,8 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
-	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -21,16 +18,9 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 		"espo/client/custom/app.js":      "client",
 		"espo/upload/blob.txt":           "upload",
 	})
-	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", fixture.logPath)
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
+	fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
+	fixture.docker.EnableLog(t)
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{
@@ -50,50 +40,27 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 		t.Fatalf("command failed\nstdout=%s\nstderr=%s", outcome.Stdout, outcome.Stderr)
 	}
 
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
-		t.Fatal(err)
+	obj := decodeCLIJSON(t, outcome.Stdout)
+	if command := requireJSONString(t, obj, "command"); command != "restore" {
+		t.Fatalf("unexpected command: %v", command)
 	}
-
-	requireJSONPath(t, obj, "command")
-	requireJSONPath(t, obj, "ok")
-	requireJSONPath(t, obj, "message")
-	requireJSONPath(t, obj, "details", "scope")
-	requireJSONPath(t, obj, "details", "selection_mode")
-	requireJSONPath(t, obj, "details", "source_kind")
-	requireJSONPath(t, obj, "details", "snapshot_enabled")
-	requireJSONPath(t, obj, "details", "completed")
-	requireJSONPath(t, obj, "artifacts", "manifest_json")
-	requireJSONPath(t, obj, "artifacts", "snapshot_manifest_json")
-	requireJSONPath(t, obj, "artifacts", "snapshot_db_backup")
-	requireJSONPath(t, obj, "artifacts", "snapshot_files_backup")
-	requireJSONPath(t, obj, "items")
-
-	if obj["command"] != "restore" {
-		t.Fatalf("unexpected command: %v", obj["command"])
+	if !requireJSONBool(t, obj, "ok") {
+		t.Fatalf("expected ok=true")
 	}
-	if ok, _ := obj["ok"].(bool); !ok {
-		t.Fatalf("expected ok=true, got %v", obj["ok"])
-	}
-	if selectionMode := requireJSONPath(t, obj, "details", "selection_mode"); selectionMode != "manifest_full" {
+	if selectionMode := requireJSONString(t, obj, "details", "selection_mode"); selectionMode != "manifest_full" {
 		t.Fatalf("expected manifest_full selection, got %v", selectionMode)
 	}
-	if sourceKind := requireJSONPath(t, obj, "details", "source_kind"); sourceKind != "manifest" {
+	if sourceKind := requireJSONString(t, obj, "details", "source_kind"); sourceKind != "manifest" {
 		t.Fatalf("expected manifest source kind, got %v", sourceKind)
 	}
-	if snapshotEnabled, _ := requireJSONPath(t, obj, "details", "snapshot_enabled").(bool); !snapshotEnabled {
+	if !requireJSONBool(t, obj, "details", "snapshot_enabled") {
 		t.Fatalf("expected snapshot_enabled=true")
 	}
-	if completed, _ := requireJSONPath(t, obj, "details", "completed").(float64); int(completed) != 7 {
+	if completed := requireJSONInt(t, obj, "details", "completed"); completed != 7 {
 		t.Fatalf("unexpected completed count: %v", completed)
 	}
 
-	for _, key := range []string{"manifest_json", "db_backup", "files_backup", "snapshot_manifest_json", "snapshot_db_backup", "snapshot_files_backup"} {
-		path, _ := requireJSONPath(t, obj, "artifacts", key).(string)
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected artifact %s at %s: %v", key, path, err)
-		}
-	}
+	requireArtifactPathsExist(t, obj, "manifest_json", "db_backup", "files_backup", "snapshot_manifest_json", "snapshot_db_backup", "snapshot_files_backup")
 
 	if got, err := os.ReadFile(filepath.Join(fixture.storageDir, "data", "nested", "file.txt")); err != nil {
 		t.Fatal(err)
@@ -113,11 +80,7 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 		t.Fatalf("unexpected client/custom file mode: %s", mode)
 	}
 
-	rawLog, err := os.ReadFile(fixture.logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := string(rawLog)
+	log := fixture.docker.ReadLog(t)
 	if !containsAll(log,
 		"compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" stop espocrm espocrm-daemon espocrm-websocket",
 		"exec -i -e MYSQL_PWD mock-db mariadb-dump -u espocrm espocrm --single-transaction --quick --routines --triggers --events",
@@ -137,7 +100,7 @@ func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
 		"espo/data/nested/file.txt": "hello",
 	})
 
-	otherSet := writeRestoreBackupSet(t, fixture.backupRoot, "espocrm-prod", "2026-04-19_07-00-00", "prod", map[string]string{
+	otherSet := writeBackupSet(t, fixture.backupRoot, "espocrm-prod", "2026-04-19_07-00-00", "prod", map[string]string{
 		"espo/data/nested/file.txt": "other",
 	})
 	writeJSON(t, fixture.backupSet.ManifestJSON, map[string]any{
@@ -175,18 +138,11 @@ func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
 	fixture := prepareRestoreCommandFixture(t, "prod", map[string]string{
 		"espo/data/nested/file.txt": "hello",
 	})
-	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
-	writeRuntimeStatusFile(t, fixture.stateDir, "espocrm", "unhealthy")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", fixture.logPath)
-	t.Setenv("DOCKER_MOCK_RECOVERY_HEALTH_MESSAGE", "app health failed")
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
+	fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
+	fixture.docker.SetServiceHealth(t, "espocrm", "unhealthy")
+	fixture.docker.EnableLog(t)
+	fixture.docker.SetHealthFailureMessage(t, "app health failed")
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{
@@ -213,15 +169,8 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 		"espo/data/nested/file.txt": "hello",
 		"espo/upload/blob.txt":      "blob",
 	})
-	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
+	fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
 
 	first := executeCLIWithOptions(
 		[]testAppOption{
@@ -240,12 +189,8 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 		t.Fatalf("first restore failed\nstdout=%s\nstderr=%s", first.Stdout, first.Stderr)
 	}
 
-	if err := os.WriteFile(filepath.Join(fixture.storageDir, "data", "nested", "file.txt"), []byte("drift\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(fixture.storageDir, "stale.txt"), []byte("stale\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	mustWriteFile(t, filepath.Join(fixture.storageDir, "data", "nested", "file.txt"), "drift\n")
+	mustWriteFile(t, filepath.Join(fixture.storageDir, "stale.txt"), "stale\n")
 
 	second := executeCLIWithOptions(
 		[]testAppOption{
@@ -264,21 +209,10 @@ func TestSchema_Restore_JSON_RepeatedManifestRestore_DeterministicState(t *testi
 		t.Fatalf("second restore failed\nstdout=%s\nstderr=%s", second.Stdout, second.Stderr)
 	}
 
-	var firstObj map[string]any
-	if err := json.Unmarshal([]byte(first.Stdout), &firstObj); err != nil {
-		t.Fatal(err)
-	}
-	var secondObj map[string]any
-	if err := json.Unmarshal([]byte(second.Stdout), &secondObj); err != nil {
-		t.Fatal(err)
-	}
-
-	if got := requireJSONPath(t, firstObj, "details", "selection_mode"); got != requireJSONPath(t, secondObj, "details", "selection_mode") {
-		t.Fatalf("selection_mode drifted across restores: first=%v second=%v", requireJSONPath(t, firstObj, "details", "selection_mode"), got)
-	}
-	if got := requireJSONPath(t, firstObj, "details", "completed"); got != requireJSONPath(t, secondObj, "details", "completed") {
-		t.Fatalf("completed count drifted across restores: first=%v second=%v", requireJSONPath(t, firstObj, "details", "completed"), got)
-	}
+	firstObj := decodeCLIJSON(t, first.Stdout)
+	secondObj := decodeCLIJSON(t, second.Stdout)
+	requireSameJSONValue(t, firstObj, secondObj, "details", "selection_mode")
+	requireSameJSONValue(t, firstObj, secondObj, "details", "completed")
 
 	if got, err := os.ReadFile(filepath.Join(fixture.storageDir, "data", "nested", "file.txt")); err != nil {
 		t.Fatal(err)
@@ -296,11 +230,7 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/restored.txt": "files-only",
 	})
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", fixture.logPath)
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
+	fixture.docker.EnableLog(t)
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{
@@ -322,18 +252,14 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 		t.Fatalf("command failed\nstdout=%s\nstderr=%s", outcome.Stdout, outcome.Stderr)
 	}
 
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
-		t.Fatal(err)
-	}
-
-	if selectionMode := requireJSONPath(t, obj, "details", "selection_mode"); selectionMode != "direct_files_only" {
+	obj := decodeCLIJSON(t, outcome.Stdout)
+	if selectionMode := requireJSONString(t, obj, "details", "selection_mode"); selectionMode != "direct_files_only" {
 		t.Fatalf("expected direct_files_only selection, got %v", selectionMode)
 	}
-	if skipped, _ := requireJSONPath(t, obj, "details", "skipped").(float64); int(skipped) != 3 {
+	if skipped := requireJSONInt(t, obj, "details", "skipped"); skipped != 3 {
 		t.Fatalf("expected three skipped steps, got %v", skipped)
 	}
-	if startedTemporarily, _ := requireJSONPath(t, obj, "details", "started_db_temporarily").(bool); startedTemporarily {
+	if requireJSONBool(t, obj, "details", "started_db_temporarily") {
 		t.Fatalf("did not expect started_db_temporarily for files-only restore")
 	}
 
@@ -349,11 +275,7 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 		t.Fatalf("unexpected restored file mode: %s", mode)
 	}
 
-	rawLog, err := os.ReadFile(fixture.logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := string(rawLog)
+	log := fixture.docker.ReadLog(t)
 	if stringsContainsAny(log, "mariadb-dump", "exec -i -e MYSQL_PWD mock-db mariadb -u root") {
 		t.Fatalf("did not expect database snapshot or restore commands in docker log:\n%s", log)
 	}
@@ -368,15 +290,8 @@ func TestSchema_Restore_JSON_DryRun(t *testing.T) {
 	fixture := prepareRestoreCommandFixture(t, "dev", map[string]string{
 		"espo/data/dry-run.txt": "dry-run",
 	})
-	if err := os.WriteFile(filepath.Join(fixture.stateDir, "running-services"), []byte("db\nespocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, fixture.stateDir, "db", "healthy")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", fixture.stateDir)
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_UID", strconv.Itoa(os.Getuid()))
-	t.Setenv("DOCKER_MOCK_RESTORE_RUNTIME_GID", strconv.Itoa(os.Getgid()))
+	fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{
@@ -395,47 +310,26 @@ func TestSchema_Restore_JSON_DryRun(t *testing.T) {
 		t.Fatalf("command failed\nstdout=%s\nstderr=%s", outcome.Stdout, outcome.Stderr)
 	}
 
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
-		t.Fatal(err)
-	}
+	obj := decodeCLIJSON(t, outcome.Stdout)
 	assertNoLegacyWorkflowVocabularyInJSON(t, obj)
 
-	if dryRun, _ := obj["dry_run"].(bool); !dryRun {
+	if !requireJSONBool(t, obj, "dry_run") {
 		t.Fatalf("expected dry_run=true")
 	}
-	if planned, _ := requireJSONPath(t, obj, "details", "planned").(float64); int(planned) != 5 {
+	if planned := requireJSONInt(t, obj, "details", "planned"); planned != 5 {
 		t.Fatalf("expected five planned steps, got %v", planned)
 	}
-	if _, ok := obj["details"].(map[string]any)["would_run"]; ok {
-		t.Fatalf("did not expect legacy would_run detail key in %#v", obj["details"])
+	details := requireJSONObject(t, obj, "details")
+	if _, ok := details["would_run"]; ok {
+		t.Fatalf("did not expect legacy would_run detail key in %#v", details)
 	}
-	if completed, _ := requireJSONPath(t, obj, "details", "completed").(float64); int(completed) != 2 {
+	if completed := requireJSONInt(t, obj, "details", "completed"); completed != 2 {
 		t.Fatalf("expected two completed steps, got %v", completed)
 	}
-	if items, ok := obj["items"].([]any); !ok || len(items) != 7 {
+	if items := requireJSONArray(t, obj, "items"); len(items) != 7 {
 		t.Fatalf("expected seven restore items, got %#v", obj["items"])
 	}
 	if _, err := os.Stat(filepath.Join(fixture.storageDir, "before.txt")); err != nil {
 		t.Fatalf("expected dry-run to avoid mutating storage: %v", err)
 	}
-}
-
-func mustFileMode(t *testing.T, path string) string {
-	t.Helper()
-
-	fi, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return strconv.FormatUint(uint64(fi.Mode().Perm()), 8)
-}
-
-func stringsContainsAny(text string, parts ...string) bool {
-	for _, part := range parts {
-		if strings.Contains(text, part) {
-			return true
-		}
-	}
-	return false
 }

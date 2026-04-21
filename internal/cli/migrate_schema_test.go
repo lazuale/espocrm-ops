@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -14,53 +13,22 @@ import (
 func TestSchema_Migrate_JSON_Success(t *testing.T) {
 	lockOpt := isolateRecoveryLocks(t)
 
-	tmp := t.TempDir()
-	projectDir := filepath.Join(tmp, "project")
-	journalDir := filepath.Join(tmp, "journal")
-	stateDir := filepath.Join(tmp, "docker-state")
-	logPath := filepath.Join(tmp, "docker.log")
-	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
-	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
-
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(storageDir, "before.txt"), []byte("before\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
-
-	writeDoctorEnvFile(t, projectDir, "dev", nil)
-	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
-	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", logPath)
+	fixture := prepareMigrateCommandFixture(t)
+	fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
+	fixture.docker.EnableLog(t)
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{
 			lockOpt,
-			withFixedTestRuntime(fixedNow, "op-migrate-1"),
+			withFixedTestRuntime(fixture.fixedNow, "op-migrate-1"),
 		},
-		"--journal-dir", journalDir,
+		"--journal-dir", fixture.journalDir,
 		"--json",
 		"migrate",
 		"--from", "dev",
 		"--to", "prod",
-		"--project-dir", projectDir,
+		"--project-dir", fixture.projectDir,
 		"--force",
 		"--confirm-prod", "prod",
 	)
@@ -68,85 +36,55 @@ func TestSchema_Migrate_JSON_Success(t *testing.T) {
 		t.Fatalf("command failed\nstdout=%s\nstderr=%s", outcome.Stdout, outcome.Stderr)
 	}
 
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
-		t.Fatal(err)
+	obj := decodeCLIJSON(t, outcome.Stdout)
+	if command := requireJSONString(t, obj, "command"); command != "migrate" {
+		t.Fatalf("unexpected command: %v", command)
 	}
-
-	requireJSONPath(t, obj, "command")
-	requireJSONPath(t, obj, "ok")
-	requireJSONPath(t, obj, "message")
-	requireJSONPath(t, obj, "details", "source_scope")
-	requireJSONPath(t, obj, "details", "target_scope")
-	requireJSONPath(t, obj, "details", "selection_mode")
-	requireJSONPath(t, obj, "details", "completed")
-	requireJSONPath(t, obj, "details", "started_db_temporarily")
-	requireJSONPath(t, obj, "artifacts", "source_env_file")
-	requireJSONPath(t, obj, "artifacts", "target_env_file")
-	requireJSONPath(t, obj, "artifacts", "manifest_json")
-	requireJSONPath(t, obj, "artifacts", "db_backup")
-	requireJSONPath(t, obj, "artifacts", "files_backup")
-	requireJSONPath(t, obj, "items")
-
-	if obj["command"] != "migrate" {
-		t.Fatalf("unexpected command: %v", obj["command"])
+	if !requireJSONBool(t, obj, "ok") {
+		t.Fatalf("expected ok=true")
 	}
-	if ok, _ := obj["ok"].(bool); !ok {
-		t.Fatalf("expected ok=true, got %v", obj["ok"])
-	}
-	if message := obj["message"]; message != "backup migration completed" {
+	if message := requireJSONString(t, obj, "message"); message != "backup migration completed" {
 		t.Fatalf("unexpected message: %v", message)
 	}
-	if sourceScope := requireJSONPath(t, obj, "details", "source_scope"); sourceScope != "dev" {
+	if sourceScope := requireJSONString(t, obj, "details", "source_scope"); sourceScope != "dev" {
 		t.Fatalf("expected source_scope=dev, got %v", sourceScope)
 	}
-	if targetScope := requireJSONPath(t, obj, "details", "target_scope"); targetScope != "prod" {
+	if targetScope := requireJSONString(t, obj, "details", "target_scope"); targetScope != "prod" {
 		t.Fatalf("expected target_scope=prod, got %v", targetScope)
 	}
-	if selectionMode := requireJSONPath(t, obj, "details", "selection_mode"); selectionMode != "auto_latest_complete" {
+	if selectionMode := requireJSONString(t, obj, "details", "selection_mode"); selectionMode != "auto_latest_complete" {
 		t.Fatalf("expected auto_latest_complete selection, got %v", selectionMode)
 	}
-	if completed, _ := requireJSONPath(t, obj, "details", "completed").(float64); int(completed) != 8 {
+	if completed := requireJSONInt(t, obj, "details", "completed"); completed != 8 {
 		t.Fatalf("unexpected completed count: %v", completed)
 	}
-	if startedTemporarily, _ := requireJSONPath(t, obj, "details", "started_db_temporarily").(bool); !startedTemporarily {
+	if !requireJSONBool(t, obj, "details", "started_db_temporarily") {
 		t.Fatalf("expected started_db_temporarily=true")
 	}
 
-	for _, key := range []string{"manifest_json", "db_backup", "files_backup"} {
-		path, _ := requireJSONPath(t, obj, "artifacts", key).(string)
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected artifact %s at %s: %v", key, path, err)
-		}
-	}
-
-	items, ok := obj["items"].([]any)
-	if !ok || len(items) != 8 {
+	requireArtifactPathsExist(t, obj, "manifest_json", "db_backup", "files_backup")
+	if items := requireJSONArray(t, obj, "items"); len(items) != 8 {
 		t.Fatalf("expected eight migrate items, got %#v", obj["items"])
 	}
 
-	restoredContent, err := os.ReadFile(filepath.Join(storageDir, "test.txt"))
+	restoredContent, err := os.ReadFile(filepath.Join(fixture.storageDir, "test.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
 	if string(restoredContent) != "hello" {
 		t.Fatalf("unexpected restored file content: %q", string(restoredContent))
 	}
-	if _, err := os.Stat(filepath.Join(storageDir, "before.txt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(fixture.storageDir, "before.txt")); !os.IsNotExist(err) {
 		t.Fatalf("expected old storage tree to be replaced, stat err=%v", err)
 	}
 
-	rawLog, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := string(rawLog)
+	log := fixture.docker.ReadLog(t)
 	if !containsAll(log,
-		"compose --project-directory "+projectDir+" -f "+filepath.Join(projectDir, "compose.yaml")+" --env-file "+filepath.Join(projectDir, ".env.prod")+" up -d db",
-		"compose --project-directory "+projectDir+" -f "+filepath.Join(projectDir, "compose.yaml")+" --env-file "+filepath.Join(projectDir, ".env.prod")+" stop espocrm espocrm-daemon espocrm-websocket",
+		"compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" up -d db",
+		"compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" stop espocrm espocrm-daemon espocrm-websocket",
 		"exec mock-db mariadb --version",
 		"exec -i -e MYSQL_PWD mock-db mariadb -u root",
-		"compose --project-directory "+projectDir+" -f "+filepath.Join(projectDir, "compose.yaml")+" --env-file "+filepath.Join(projectDir, ".env.prod")+" up -d",
+		"compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" up -d",
 	) {
 		t.Fatalf("unexpected docker log:\n%s", log)
 	}
@@ -155,49 +93,19 @@ func TestSchema_Migrate_JSON_Success(t *testing.T) {
 func TestSchema_Migrate_JSON_Success_SkipDBNoStart(t *testing.T) {
 	lockOpt := isolateRecoveryLocks(t)
 
-	tmp := t.TempDir()
-	projectDir := filepath.Join(tmp, "project")
-	journalDir := filepath.Join(tmp, "journal")
-	stateDir := filepath.Join(tmp, "docker-state")
-	logPath := filepath.Join(tmp, "docker.log")
-	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
-
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(storageDir, "before.txt"), []byte("before\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
-
-	writeDoctorEnvFile(t, projectDir, "dev", nil)
-	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
-	t.Setenv("DOCKER_MOCK_RECOVERY_LOG", logPath)
+	fixture := prepareMigrateCommandFixture(t)
+	fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
+	fixture.docker.EnableLog(t)
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{lockOpt},
-		"--journal-dir", journalDir,
+		"--journal-dir", fixture.journalDir,
 		"--json",
 		"migrate",
 		"--from", "dev",
 		"--to", "prod",
-		"--project-dir", projectDir,
+		"--project-dir", fixture.projectDir,
 		"--force",
 		"--confirm-prod", "prod",
 		"--skip-db",
@@ -207,27 +115,19 @@ func TestSchema_Migrate_JSON_Success_SkipDBNoStart(t *testing.T) {
 		t.Fatalf("command failed\nstdout=%s\nstderr=%s", outcome.Stdout, outcome.Stderr)
 	}
 
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
-		t.Fatal(err)
-	}
-
-	if selectionMode := requireJSONPath(t, obj, "details", "selection_mode"); selectionMode != "auto_latest_files" {
+	obj := decodeCLIJSON(t, outcome.Stdout)
+	if selectionMode := requireJSONString(t, obj, "details", "selection_mode"); selectionMode != "auto_latest_files" {
 		t.Fatalf("expected auto_latest_files selection, got %v", selectionMode)
 	}
-	if skipped, _ := requireJSONPath(t, obj, "details", "skipped").(float64); int(skipped) != 2 {
+	if skipped := requireJSONInt(t, obj, "details", "skipped"); skipped != 2 {
 		t.Fatalf("expected two skipped steps, got %v", skipped)
 	}
 
-	rawLog, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	log := string(rawLog)
+	log := fixture.docker.ReadLog(t)
 	if strings.Contains(log, "exec -i -e MYSQL_PWD mock-db mariadb -u root") {
 		t.Fatalf("did not expect database restore commands in docker log:\n%s", log)
 	}
-	if strings.Contains(log, "compose --project-directory "+projectDir+" -f "+filepath.Join(projectDir, "compose.yaml")+" --env-file "+filepath.Join(projectDir, ".env.prod")+" up -d\n") {
+	if strings.Contains(log, "compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" up -d\n") {
 		t.Fatalf("did not expect final contour start in docker log:\n%s", log)
 	}
 }
@@ -235,49 +135,30 @@ func TestSchema_Migrate_JSON_Success_SkipDBNoStart(t *testing.T) {
 func TestSchema_Migrate_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T) {
 	lockOpt := isolateRecoveryLocks(t)
 
-	tmp := t.TempDir()
-	projectDir := filepath.Join(tmp, "project")
-	journalDir := filepath.Join(tmp, "journal")
-
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	writeDoctorEnvFile(t, projectDir, "dev", nil)
-	writeDoctorEnvFile(t, projectDir, "prod", nil)
-
-	backupRoot := filepath.Join(projectDir, "backups", "dev")
-	writeBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_08-00-00", "dev")
-	writeBackupSet(t, backupRoot, "espocrm-dev", "2026-04-19_07-00-00", "dev")
-
-	currentDB := filepath.Join(backupRoot, "db", "espocrm-dev_2026-04-19_08-00-00.sql.gz")
-	otherFiles := filepath.Join(backupRoot, "files", "espocrm-dev_files_2026-04-19_07-00-00.tar.gz")
-	manifestPath := filepath.Join(backupRoot, "manifests", "espocrm-dev_2026-04-19_08-00-00.manifest.json")
-	writeJSON(t, manifestPath, map[string]any{
+	fixture := prepareMigrateCommandFixture(t)
+	otherSet := writeBackupSet(t, fixture.sourceRoot, "espocrm-dev", "2026-04-19_07-00-00", "dev", nil)
+	writeJSON(t, fixture.sourceBackup.ManifestJSON, map[string]any{
 		"version":    1,
 		"scope":      "dev",
 		"created_at": "2026-04-19T08:00:00Z",
 		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(currentDB),
-			"files_backup": filepath.Base(otherFiles),
+			"db_backup":    filepath.Base(fixture.sourceBackup.DBBackup),
+			"files_backup": filepath.Base(otherSet.FilesBackup),
 		},
 		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, currentDB),
-			"files_backup": sha256OfFile(t, otherFiles),
+			"db_backup":    sha256OfFile(t, fixture.sourceBackup.DBBackup),
+			"files_backup": sha256OfFile(t, otherSet.FilesBackup),
 		},
 	})
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{lockOpt},
-		"--journal-dir", journalDir,
+		"--journal-dir", fixture.journalDir,
 		"--json",
 		"migrate",
 		"--from", "dev",
 		"--to", "prod",
-		"--project-dir", projectDir,
+		"--project-dir", fixture.projectDir,
 		"--force",
 		"--confirm-prod", "prod",
 	)
@@ -288,50 +169,23 @@ func TestSchema_Migrate_JSON_Failure_InvalidMatchingManifestBlocked(t *testing.T
 func TestSchema_Migrate_JSON_Failure_TargetHealthValidation(t *testing.T) {
 	lockOpt := isolateRecoveryLocks(t)
 
-	tmp := t.TempDir()
-	projectDir := filepath.Join(tmp, "project")
-	journalDir := filepath.Join(tmp, "journal")
-	stateDir := filepath.Join(tmp, "docker-state")
-	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
-	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
-
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
-	writeRuntimeStatusFile(t, stateDir, "espocrm", "unhealthy")
-
-	writeDoctorEnvFile(t, projectDir, "dev", nil)
-	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
-	t.Setenv("DOCKER_MOCK_RECOVERY_HEALTH_MESSAGE", "target health failed")
+	fixture := prepareMigrateCommandFixture(t)
+	fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
+	fixture.docker.SetServiceHealth(t, "espocrm", "unhealthy")
+	fixture.docker.SetHealthFailureMessage(t, "target health failed")
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{
 			lockOpt,
-			withFixedTestRuntime(fixedNow, "op-migrate-health-fail"),
+			withFixedTestRuntime(fixture.fixedNow, "op-migrate-health-fail"),
 		},
-		"--journal-dir", journalDir,
+		"--journal-dir", fixture.journalDir,
 		"--json",
 		"migrate",
 		"--from", "dev",
 		"--to", "prod",
-		"--project-dir", projectDir,
+		"--project-dir", fixture.projectDir,
 		"--force",
 		"--confirm-prod", "prod",
 	)
@@ -342,48 +196,21 @@ func TestSchema_Migrate_JSON_Failure_TargetHealthValidation(t *testing.T) {
 func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 	lockOpt := isolateRecoveryLocks(t)
 
-	tmp := t.TempDir()
-	projectDir := filepath.Join(tmp, "project")
-	journalDir := filepath.Join(tmp, "journal")
-	stateDir := filepath.Join(tmp, "docker-state")
-	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
-	fixedNow := time.Date(2026, 4, 19, 9, 0, 0, 0, time.UTC)
-
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(stateDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(stateDir, "running-services"), []byte("espocrm\nespocrm-daemon\nespocrm-websocket\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeRuntimeStatusFile(t, stateDir, "db", "healthy")
-
-	writeDoctorEnvFile(t, projectDir, "dev", nil)
-	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
-
-	prependFakeDockerForRecoveryCLITest(t)
-	t.Setenv("DOCKER_MOCK_RECOVERY_STATE_DIR", stateDir)
+	fixture := prepareMigrateCommandFixture(t)
+	fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetServiceHealth(t, "db", "healthy")
 
 	first := executeCLIWithOptions(
 		[]testAppOption{
 			lockOpt,
-			withFixedTestRuntime(fixedNow, "op-migrate-repeat-1"),
+			withFixedTestRuntime(fixture.fixedNow, "op-migrate-repeat-1"),
 		},
-		"--journal-dir", journalDir,
+		"--journal-dir", fixture.journalDir,
 		"--json",
 		"migrate",
 		"--from", "dev",
 		"--to", "prod",
-		"--project-dir", projectDir,
+		"--project-dir", fixture.projectDir,
 		"--force",
 		"--confirm-prod", "prod",
 	)
@@ -391,24 +218,20 @@ func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 		t.Fatalf("first migrate failed\nstdout=%s\nstderr=%s", first.Stdout, first.Stderr)
 	}
 
-	if err := os.WriteFile(filepath.Join(storageDir, "test.txt"), []byte("drift\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(storageDir, "stale.txt"), []byte("stale\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
+	mustWriteFile(t, filepath.Join(fixture.storageDir, "test.txt"), "drift\n")
+	mustWriteFile(t, filepath.Join(fixture.storageDir, "stale.txt"), "stale\n")
 
 	second := executeCLIWithOptions(
 		[]testAppOption{
 			lockOpt,
-			withFixedTestRuntime(fixedNow.Add(time.Minute), "op-migrate-repeat-2"),
+			withFixedTestRuntime(fixture.fixedNow.Add(time.Minute), "op-migrate-repeat-2"),
 		},
-		"--journal-dir", journalDir,
+		"--journal-dir", fixture.journalDir,
 		"--json",
 		"migrate",
 		"--from", "dev",
 		"--to", "prod",
-		"--project-dir", projectDir,
+		"--project-dir", fixture.projectDir,
 		"--force",
 		"--confirm-prod", "prod",
 	)
@@ -416,28 +239,17 @@ func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 		t.Fatalf("second migrate failed\nstdout=%s\nstderr=%s", second.Stdout, second.Stderr)
 	}
 
-	var firstObj map[string]any
-	if err := json.Unmarshal([]byte(first.Stdout), &firstObj); err != nil {
-		t.Fatal(err)
-	}
-	var secondObj map[string]any
-	if err := json.Unmarshal([]byte(second.Stdout), &secondObj); err != nil {
-		t.Fatal(err)
-	}
+	firstObj := decodeCLIJSON(t, first.Stdout)
+	secondObj := decodeCLIJSON(t, second.Stdout)
+	requireSameJSONValue(t, firstObj, secondObj, "details", "selection_mode")
+	requireSameJSONValue(t, firstObj, secondObj, "details", "completed")
 
-	if got := requireJSONPath(t, firstObj, "details", "selection_mode"); got != requireJSONPath(t, secondObj, "details", "selection_mode") {
-		t.Fatalf("selection_mode drifted across migrations: first=%v second=%v", requireJSONPath(t, firstObj, "details", "selection_mode"), got)
-	}
-	if got := requireJSONPath(t, firstObj, "details", "completed"); got != requireJSONPath(t, secondObj, "details", "completed") {
-		t.Fatalf("completed count drifted across migrations: first=%v second=%v", requireJSONPath(t, firstObj, "details", "completed"), got)
-	}
-
-	if restoredContent, err := os.ReadFile(filepath.Join(storageDir, "test.txt")); err != nil {
+	if restoredContent, err := os.ReadFile(filepath.Join(fixture.storageDir, "test.txt")); err != nil {
 		t.Fatal(err)
 	} else if string(restoredContent) != "hello" {
 		t.Fatalf("unexpected restored file content after repeat migrate: %q", string(restoredContent))
 	}
-	if _, err := os.Stat(filepath.Join(storageDir, "stale.txt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(fixture.storageDir, "stale.txt")); !os.IsNotExist(err) {
 		t.Fatalf("expected stale file removed after repeated migrate, stat err=%v", err)
 	}
 }
@@ -445,44 +257,30 @@ func TestSchema_Migrate_JSON_RepeatedDeterministicState(t *testing.T) {
 func TestSchema_Migrate_JSON_Failure_CompatibilityDrift(t *testing.T) {
 	lockOpt := isolateRecoveryLocks(t)
 
-	tmp := t.TempDir()
-	projectDir := filepath.Join(tmp, "project")
-	journalDir := filepath.Join(tmp, "journal")
-
-	if err := os.MkdirAll(projectDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	writeDoctorEnvFile(t, projectDir, "dev", map[string]string{
+	fixture := prepareMigrateCommandFixture(t)
+	writeDoctorEnvFile(t, fixture.projectDir, "dev", map[string]string{
 		"ESPOCRM_IMAGE": "espocrm/espocrm:9.3.4-apache",
 	})
-	writeDoctorEnvFile(t, projectDir, "prod", map[string]string{
+	writeDoctorEnvFile(t, fixture.projectDir, "prod", map[string]string{
 		"ESPOCRM_IMAGE": "espocrm/espocrm:9.4.0-apache",
 	})
-	writeBackupSet(t, filepath.Join(projectDir, "backups", "dev"), "espocrm-dev", "2026-04-19_08-00-00", "dev")
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{lockOpt},
-		"--journal-dir", journalDir,
+		"--journal-dir", fixture.journalDir,
 		"--json",
 		"migrate",
 		"--from", "dev",
 		"--to", "prod",
-		"--project-dir", projectDir,
+		"--project-dir", fixture.projectDir,
 		"--force",
 		"--confirm-prod", "prod",
 	)
 
 	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "migrate_failed", "conflict with the migration compatibility contract")
 
-	var obj map[string]any
-	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
-		t.Fatal(err)
-	}
-	if message := obj["message"]; message != "backup migration failed" {
+	obj := decodeCLIJSON(t, outcome.Stdout)
+	if message := requireJSONString(t, obj, "message"); message != "backup migration failed" {
 		t.Fatalf("unexpected message: %v", message)
 	}
 }

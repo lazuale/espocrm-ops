@@ -18,7 +18,7 @@ func TestGolden_Doctor_JSON(t *testing.T) {
 		t.Fatal(err)
 	}
 	writeDoctorEnvFile(t, projectDir, "prod", nil)
-	prependDoctorFakeDocker(t)
+	newDockerHarness(t)
 
 	out, err := runRootCommand(
 		t,

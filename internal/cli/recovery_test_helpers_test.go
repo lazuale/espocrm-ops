@@ -3,23 +3,208 @@ package cli
 import (
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 )
 
-func prependFakeDockerForRecoveryCLITest(t *testing.T) {
+const (
+	cliTestDockerStateDirEnv      = "DOCKER_TEST_STATE_DIR"
+	cliTestDockerLogEnv           = "DOCKER_TEST_LOG"
+	cliTestDockerConfigErrorEnv   = "DOCKER_TEST_CONFIG_ERROR"
+	cliTestDockerHealthMessageEnv = "DOCKER_TEST_HEALTH_MESSAGE"
+	cliTestDockerDumpStdoutEnv    = "DOCKER_TEST_DUMP_STDOUT"
+	cliTestDockerRuntimeUIDEnv    = "DOCKER_TEST_RUNTIME_UID"
+	cliTestDockerRuntimeGIDEnv    = "DOCKER_TEST_RUNTIME_GID"
+	cliTestDockerFailOnCallEnv    = "DOCKER_TEST_FAIL_ON_CALL"
+)
+
+type dockerHarness struct {
+	stateDir string
+	logPath  string
+}
+
+type backupSetFixture struct {
+	DBBackup     string
+	FilesBackup  string
+	ManifestTXT  string
+	ManifestJSON string
+}
+
+func newDockerHarness(t *testing.T) *dockerHarness {
 	t.Helper()
 
-	binDir := t.TempDir()
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	stateDir := filepath.Join(rootDir, "state")
+	if err := os.MkdirAll(stateDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
 	dockerPath := filepath.Join(binDir, "docker")
-	script := `#!/usr/bin/env bash
+	if err := os.WriteFile(dockerPath, []byte(cliTestDockerScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv(cliTestDockerStateDirEnv, stateDir)
+	t.Setenv(cliTestDockerRuntimeUIDEnv, strconv.Itoa(os.Getuid()))
+	t.Setenv(cliTestDockerRuntimeGIDEnv, strconv.Itoa(os.Getgid()))
+
+	return &dockerHarness{
+		stateDir: stateDir,
+		logPath:  filepath.Join(rootDir, "docker.log"),
+	}
+}
+
+func (h *dockerHarness) SetFailOnAnyCall(t *testing.T) {
+	t.Helper()
+	t.Setenv(cliTestDockerFailOnCallEnv, "unexpected docker invocation")
+}
+
+func (h *dockerHarness) EnableLog(t *testing.T) string {
+	t.Helper()
+	t.Setenv(cliTestDockerLogEnv, h.logPath)
+	return h.logPath
+}
+
+func (h *dockerHarness) ReadLog(t *testing.T) string {
+	t.Helper()
+
+	raw, err := os.ReadFile(h.logPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return string(raw)
+}
+
+func (h *dockerHarness) SetComposeConfigError(t *testing.T, message string) {
+	t.Helper()
+	t.Setenv(cliTestDockerConfigErrorEnv, message)
+}
+
+func (h *dockerHarness) SetHealthFailureMessage(t *testing.T, message string) {
+	t.Helper()
+	t.Setenv(cliTestDockerHealthMessageEnv, message)
+}
+
+func (h *dockerHarness) SetDumpStdout(t *testing.T, dump string) {
+	t.Helper()
+	t.Setenv(cliTestDockerDumpStdoutEnv, dump)
+}
+
+func (h *dockerHarness) SetRuntimeIdentity(t *testing.T, uid, gid int) {
+	t.Helper()
+	t.Setenv(cliTestDockerRuntimeUIDEnv, strconv.Itoa(uid))
+	t.Setenv(cliTestDockerRuntimeGIDEnv, strconv.Itoa(gid))
+}
+
+func (h *dockerHarness) SetRunningServices(t *testing.T, services ...string) {
+	t.Helper()
+
+	var body string
+	if len(services) != 0 {
+		body = strings.Join(services, "\n") + "\n"
+	}
+	if err := os.WriteFile(filepath.Join(h.stateDir, "running-services"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func (h *dockerHarness) SetServiceHealth(t *testing.T, service string, statuses ...string) {
+	t.Helper()
+
+	body := strings.Join(statuses, "\n")
+	if body != "" {
+		body += "\n"
+	}
+	if err := os.WriteFile(filepath.Join(h.stateDir, service+".statuses"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func isolateRecoveryLocks(t *testing.T) testAppOption {
+	t.Helper()
+
+	return withRestoreLockDir(t.TempDir())
+}
+
+func writeBackupSet(t *testing.T, backupRoot, prefix, stamp, scope string, files map[string]string) backupSetFixture {
+	t.Helper()
+
+	if len(files) == 0 {
+		files = map[string]string{
+			"espo/test.txt": "hello",
+		}
+	}
+
+	set := backupSetFixture{
+		DBBackup:     filepath.Join(backupRoot, "db", prefix+"_"+stamp+".sql.gz"),
+		FilesBackup:  filepath.Join(backupRoot, "files", prefix+"_files_"+stamp+".tar.gz"),
+		ManifestTXT:  filepath.Join(backupRoot, "manifests", prefix+"_"+stamp+".manifest.txt"),
+		ManifestJSON: filepath.Join(backupRoot, "manifests", prefix+"_"+stamp+".manifest.json"),
+	}
+
+	if err := os.MkdirAll(filepath.Dir(set.DBBackup), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(set.FilesBackup), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Dir(set.ManifestJSON), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	writeGzipFile(t, set.DBBackup, []byte("select 1;"))
+	writeTarGzFile(t, set.FilesBackup, files)
+	if err := os.WriteFile(set.DBBackup+".sha256", []byte(sha256OfFile(t, set.DBBackup)+"  "+filepath.Base(set.DBBackup)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(set.FilesBackup+".sha256", []byte(sha256OfFile(t, set.FilesBackup)+"  "+filepath.Base(set.FilesBackup)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(set.ManifestTXT, []byte("created_at=2026-04-18T10:00:00Z\ncontour="+scope+"\ncompose_project="+prefix+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeJSON(t, set.ManifestJSON, map[string]any{
+		"version":    1,
+		"scope":      scope,
+		"created_at": "2026-04-18T10:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(set.DBBackup),
+			"files_backup": filepath.Base(set.FilesBackup),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, set.DBBackup),
+			"files_backup": sha256OfFile(t, set.FilesBackup),
+		},
+	})
+
+	return set
+}
+
+func containsAll(text string, parts ...string) bool {
+	for _, part := range parts {
+		if !strings.Contains(text, part) {
+			return false
+		}
+	}
+	return true
+}
+
+const cliTestDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
 
-state_dir="${DOCKER_MOCK_RECOVERY_STATE_DIR:-}"
+state_dir="${DOCKER_TEST_STATE_DIR:-}"
+fail_on_call="${DOCKER_TEST_FAIL_ON_CALL:-}"
 
 log_call() {
-  if [[ -n "${DOCKER_MOCK_RECOVERY_LOG:-}" ]]; then
-    printf '%s\n' "$*" >> "${DOCKER_MOCK_RECOVERY_LOG}"
+  if [[ -n "${DOCKER_TEST_LOG:-}" ]]; then
+    printf '%s\n' "$*" >> "${DOCKER_TEST_LOG}"
   fi
 }
 
@@ -84,6 +269,11 @@ set_running_services() {
   write_running_services "${result[@]}"
 }
 
+if [[ -n "$fail_on_call" ]]; then
+  echo "$fail_on_call: $*" >&2
+  exit 97
+fi
+
 log_call "$*"
 
 if [[ "${1:-}" == "version" && "${2:-}" == "--format" && "${3:-}" == "{{.Client.Version}}" ]]; then
@@ -103,18 +293,18 @@ fi
 
 if [[ "${1:-}" == "compose" ]]; then
   shift
-	while [[ $# -gt 0 ]]; do
-		case "$1" in
-		--project-directory|-f|--env-file)
-			shift 2
-			continue
-			;;
-		config)
-			if [[ -n "${DOCKER_MOCK_RECOVERY_CONFIG_ERROR:-}" ]]; then
-				echo "${DOCKER_MOCK_RECOVERY_CONFIG_ERROR}" >&2
-				exit 23
-			fi
-			exit 0
+  while [[ $# -gt 0 ]]; do
+    case "$1" in
+      --project-directory|-f|--env-file)
+        shift 2
+        continue
+        ;;
+      config)
+        if [[ -n "${DOCKER_TEST_CONFIG_ERROR:-}" ]]; then
+          echo "${DOCKER_TEST_CONFIG_ERROR}" >&2
+          exit 23
+        fi
+        exit 0
         ;;
       down)
         shift
@@ -138,11 +328,11 @@ if [[ "${1:-}" == "compose" ]]; then
         set_running_services remove "$@"
         exit 0
         ;;
-		ps)
-			shift
-			if [[ "${1:-}" == "--status" && "${2:-}" == "running" && "${3:-}" == "--services" ]]; then
-				read_running_services
-				exit 0
+      ps)
+        shift
+        if [[ "${1:-}" == "--status" && "${2:-}" == "running" && "${3:-}" == "--services" ]]; then
+          read_running_services
+          exit 0
         fi
         if [[ "${1:-}" == "-q" ]]; then
           service="${2:-}"
@@ -150,11 +340,11 @@ if [[ "${1:-}" == "compose" ]]; then
             echo "mock-${service}"
           fi
           exit 0
-			fi
-			;;
-		esac
-		shift
-	done
+        fi
+        ;;
+    esac
+    shift
+  done
 fi
 
 if [[ "${1:-}" == "image" && "${2:-}" == "inspect" ]]; then
@@ -174,7 +364,7 @@ fi
 
 if [[ "${1:-}" == "inspect" ]]; then
   if [[ "$*" == *".State.Health.Log"* ]]; then
-    printf '%s\n' "${DOCKER_MOCK_RECOVERY_HEALTH_MESSAGE:-mock health failure}"
+    printf '%s\n' "${DOCKER_TEST_HEALTH_MESSAGE:-mock health failure}"
     exit 0
   fi
 
@@ -224,7 +414,7 @@ if [[ "${1:-}" == "exec" ]]; then
   fi
 
   if [[ "$args" == *" mariadb-dump "* || "$args" == *" mysqldump "* ]]; then
-    printf '%s' "${DOCKER_MOCK_RECOVERY_DUMP_STDOUT:-select 1;}"
+    printf '%s' "${DOCKER_TEST_DUMP_STDOUT:-select 1;}"
     exit 0
   fi
 
@@ -257,86 +447,10 @@ if [[ "${1:-}" == "run" ]]; then
     exit 0
   fi
 
-  printf '%s:%s\n' "${DOCKER_MOCK_RESTORE_RUNTIME_UID:-$(id -u)}" "${DOCKER_MOCK_RESTORE_RUNTIME_GID:-$(id -g)}"
+  printf '%s:%s\n' "${DOCKER_TEST_RUNTIME_UID:-$(id -u)}" "${DOCKER_TEST_RUNTIME_GID:-$(id -g)}"
   exit 0
 fi
 
 echo "unexpected docker invocation: $*" >&2
 exit 98
 `
-	if err := os.WriteFile(dockerPath, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
-func isolateRecoveryLocks(t *testing.T) testAppOption {
-	t.Helper()
-
-	return withRestoreLockDir(t.TempDir())
-}
-
-func writeBackupSet(t *testing.T, backupRoot, prefix, stamp, scope string) {
-	t.Helper()
-
-	dbPath := filepath.Join(backupRoot, "db", prefix+"_"+stamp+".sql.gz")
-	filesPath := filepath.Join(backupRoot, "files", prefix+"_files_"+stamp+".tar.gz")
-	manifestTXT := filepath.Join(backupRoot, "manifests", prefix+"_"+stamp+".manifest.txt")
-	manifestJSON := filepath.Join(backupRoot, "manifests", prefix+"_"+stamp+".manifest.json")
-
-	if err := os.MkdirAll(filepath.Dir(dbPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(filesPath), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.MkdirAll(filepath.Dir(manifestJSON), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	writeGzipFile(t, dbPath, []byte("select 1;"))
-	writeTarGzFile(t, filesPath, map[string]string{
-		"espo/test.txt": "hello",
-	})
-	if err := os.WriteFile(dbPath+".sha256", []byte(sha256OfFile(t, dbPath)+"  "+filepath.Base(dbPath)+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filesPath+".sha256", []byte(sha256OfFile(t, filesPath)+"  "+filepath.Base(filesPath)+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(manifestTXT, []byte("created_at=2026-04-18T10:00:00Z\ncontour="+scope+"\ncompose_project="+prefix+"\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	writeJSON(t, manifestJSON, map[string]any{
-		"version":    1,
-		"scope":      scope,
-		"created_at": "2026-04-18T10:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(dbPath),
-			"files_backup": filepath.Base(filesPath),
-		},
-		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, dbPath),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
-}
-
-func writeRuntimeStatusFile(t *testing.T, stateDir, service string, statuses ...string) {
-	t.Helper()
-
-	body := strings.Join(statuses, "\n") + "\n"
-	if err := os.WriteFile(filepath.Join(stateDir, service+".statuses"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func containsAll(text string, parts ...string) bool {
-	for _, part := range parts {
-		if !strings.Contains(text, part) {
-			return false
-		}
-	}
-	return true
-}

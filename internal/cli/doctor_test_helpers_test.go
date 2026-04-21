@@ -1,7 +1,6 @@
 package cli
 
 import (
-	"encoding/json"
 	"maps"
 	"os"
 	"path/filepath"
@@ -37,88 +36,10 @@ func writeDoctorEnvFile(t *testing.T, projectDir, scope string, overrides map[st
 	return path
 }
 
-func prependDoctorFakeDocker(t *testing.T) {
-	t.Helper()
-
-	binDir := filepath.Join(t.TempDir(), "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	script := `#!/usr/bin/env bash
-set -Eeuo pipefail
-
-if [[ "${1:-}" == "version" && "${2:-}" == "--format" && "${3:-}" == "{{.Client.Version}}" ]]; then
-  echo "25.0.2"
-  exit 0
-fi
-
-if [[ "${1:-}" == "version" && "${2:-}" == "--format" && "${3:-}" == "{{.Server.Version}}" ]]; then
-  echo "25.0.2"
-  exit 0
-fi
-
-if [[ "${1:-}" == "compose" && "${2:-}" == "version" && "${3:-}" == "--short" ]]; then
-  echo "2.24.1"
-  exit 0
-fi
-
-if [[ "${1:-}" == "compose" ]]; then
-  shift
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --project-directory|-f|--env-file)
-        shift 2
-        ;;
-      config)
-        exit 0
-        ;;
-      -q)
-        shift
-        ;;
-      ps)
-        shift
-        while [[ $# -gt 0 ]]; do
-          case "$1" in
-            --status)
-              shift 2
-              ;;
-            --services|-q)
-              exit 0
-              ;;
-            *)
-              shift
-              ;;
-          esac
-        done
-        exit 0
-        ;;
-      *)
-        shift
-        ;;
-    esac
-  done
-fi
-
-echo "unexpected docker args: $*" >&2
-exit 97
-`
-
-	path := filepath.Join(binDir, "docker")
-	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
 func normalizeDoctorJSON(t *testing.T, raw []byte) []byte {
 	t.Helper()
 
-	var obj map[string]any
-	if err := json.Unmarshal(raw, &obj); err != nil {
-		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
-	}
+	obj := parseCLIJSONBytes(t, raw)
 
 	if artifacts, ok := obj["artifacts"].(map[string]any); ok {
 		if _, ok := artifacts["project_dir"]; ok {
@@ -171,10 +92,5 @@ func normalizeDoctorJSON(t *testing.T, raw []byte) []byte {
 		}
 	}
 
-	out, err := json.Marshal(obj)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	return out
+	return marshalCLIJSON(t, obj)
 }

@@ -273,3 +273,80 @@ func replaceKnownPaths(text string, replacements map[string]string) string {
 
 	return out
 }
+
+func parseCLIJSONBytes(t *testing.T, raw []byte) map[string]any {
+	t.Helper()
+
+	var obj map[string]any
+	if err := json.Unmarshal(raw, &obj); err != nil {
+		t.Fatalf("invalid json output: %v\n%s", err, string(raw))
+	}
+
+	return obj
+}
+
+func normalizeArtifactPlaceholders(obj map[string]any, placeholders map[string]string) map[string]string {
+	replacements := map[string]string{}
+	artifacts, ok := obj["artifacts"].(map[string]any)
+	if !ok {
+		return replacements
+	}
+
+	for key, placeholder := range placeholders {
+		value, ok := artifacts[key].(string)
+		if !ok || value == "" {
+			continue
+		}
+		replacements[value] = placeholder
+		artifacts[key] = placeholder
+	}
+
+	return replacements
+}
+
+func normalizeWarningsPaths(obj map[string]any, replacements map[string]string) {
+	warnings, ok := obj["warnings"].([]any)
+	if !ok {
+		return
+	}
+
+	for idx, rawWarning := range warnings {
+		warning, ok := rawWarning.(string)
+		if !ok {
+			continue
+		}
+		warnings[idx] = replaceKnownPaths(warning, replacements)
+	}
+}
+
+func normalizeItemStringFields(obj map[string]any, replacements map[string]string, fields ...string) {
+	items, ok := obj["items"].([]any)
+	if !ok {
+		return
+	}
+
+	for _, rawItem := range items {
+		item, ok := rawItem.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, field := range fields {
+			value, ok := item[field].(string)
+			if !ok {
+				continue
+			}
+			item[field] = replaceKnownPaths(value, replacements)
+		}
+	}
+}
+
+func marshalCLIJSON(t *testing.T, obj map[string]any) []byte {
+	t.Helper()
+
+	out, err := json.Marshal(obj)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	return out
+}
