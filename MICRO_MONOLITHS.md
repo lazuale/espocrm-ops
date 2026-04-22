@@ -1013,6 +1013,7 @@ Forbidden callers:
 #### I. Invariants
 
 - Low-level command execution remains in the Docker adapter.
+- `mysql.go`, `archive.go`, and `storage_permissions.go` remain explicit local seams inside `internal/platform/docker/` while they still share the same runtime-adapter caller and policy surface.
 - Helper shell seams stay in the storage-permissions helper owner.
 - The adapter does not define `ErrorCode()` carriers.
 

@@ -13,6 +13,48 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/testutil"
 )
 
+func TestDockerAdapterProductionFileSetStaysBounded(t *testing.T) {
+	root := testutil.RepoRoot(t)
+	dockerDir := filepath.Join(root, "internal", "platform", "docker")
+	got := map[string]struct{}{}
+	want := map[string]struct{}{
+		"archive.go":             {},
+		"compose.go":             {},
+		"docker.go":              {},
+		"errors.go":              {},
+		"mysql.go":               {},
+		"storage_permissions.go": {},
+	}
+
+	err := filepath.WalkDir(dockerDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+		got[filepath.Base(path)] = struct{}{}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected docker adapter production file set: got %v want %v", dockerSortedKeys(got), dockerSortedKeys(want))
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("missing docker adapter production file %q in %v", name, dockerSortedKeys(got))
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("unexpected docker adapter production file %q in %v", name, dockerSortedKeys(got))
+		}
+	}
+}
+
 func TestDockerAdapterLowLevelExecStaysInDockerGo(t *testing.T) {
 	assertDockerPackageTextOwnership(t, "exec.Command(", map[string]struct{}{
 		"docker.go": {},
@@ -40,6 +82,63 @@ func TestDockerAdapterShellSeamsStayInStoragePermissions(t *testing.T) {
 	})
 	assertDockerPackageTextOwnership(t, `"-euc"`, map[string]struct{}{
 		"storage_permissions.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func ResolveEspoRuntimeOwner(", map[string]struct{}{
+		"storage_permissions.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func ReconcileEspoStoragePermissions(", map[string]struct{}{
+		"storage_permissions.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "const resolveEspoRuntimeOwnerScript =", map[string]struct{}{
+		"storage_permissions.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "const reconcileEspoStoragePermissionsScript =", map[string]struct{}{
+		"storage_permissions.go": {},
+	})
+}
+
+func TestDockerAdapterMySQLSeamsStayInMySQLGo(t *testing.T) {
+	assertDockerPackageTextOwnership(t, "func DumpMySQLDumpGz(", map[string]struct{}{
+		"mysql.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func RestoreMySQLDumpGz(", map[string]struct{}{
+		"mysql.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func ResetAndRestoreMySQLDumpGz(", map[string]struct{}{
+		"mysql.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func DetectDBClient(", map[string]struct{}{
+		"mysql.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func detectDBDumpClient(", map[string]struct{}{
+		"mysql.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func closeMySQLResource(", map[string]struct{}{
+		"mysql.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func runMySQLSQL(", map[string]struct{}{
+		"mysql.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func pipeMySQL(", map[string]struct{}{
+		"mysql.go": {},
+	})
+}
+
+func TestDockerAdapterHelperArchiveSeamsStayInArchiveGo(t *testing.T) {
+	assertDockerPackageTextOwnership(t, "func CreateTarArchiveViaHelper(", map[string]struct{}{
+		"archive.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func selectLocalHelperImage(", map[string]struct{}{
+		"archive.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func helperImageCandidates(", map[string]struct{}{
+		"archive.go": {},
+	})
+	assertDockerPackageTextOwnership(t, "func appendUniqueHelperImageCandidate(", map[string]struct{}{
+		"archive.go": {},
+	})
+	assertDockerPackageTextOwnership(t, `"--entrypoint", "tar"`, map[string]struct{}{
+		"archive.go": {},
 	})
 }
 

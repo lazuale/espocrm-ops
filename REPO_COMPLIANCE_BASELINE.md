@@ -146,7 +146,7 @@ Owner-local machine-enforced surfaces:
 - `internal/platform/envadapter` dedicated env/config adapter bridge contour
 - `internal/platform/backupstoreadapter` dedicated backup-store adapter bridge contour
 - `internal/platform/appadapter` residual files/locks bridge contour stays explicit and finite
-- `internal/platform/docker` low-level exec and helper-shell ownership
+- `internal/platform/docker` bounded runtime adapter contour, low-level exec ownership, MySQL/helper/archive seam locality, and helper-shell ownership
 - `internal/platform/config` env-loading discipline
 - `internal/platform/backupstore` exported surface and error-code discipline
 - `internal/platform/fs` exported surface, error-code discipline, and local shell-seam locality including `archive_create.go`
