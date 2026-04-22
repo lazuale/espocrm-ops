@@ -11,6 +11,31 @@ import (
 	"testing"
 )
 
+func TestOpsConfigProductionFileSetStaysBounded(t *testing.T) {
+	got := map[string]struct{}{}
+	want := map[string]struct{}{
+		"path.go": {},
+	}
+
+	for _, path := range opsConfigFiles(t) {
+		got[filepath.Base(path)] = struct{}{}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected opsconfig production file set: got %v want %v", sortedOpsConfigKeys(got), sortedOpsConfigKeys(want))
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("missing opsconfig production file %q in %v", name, sortedOpsConfigKeys(got))
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("unexpected opsconfig production file %q in %v", name, sortedOpsConfigKeys(got))
+		}
+	}
+}
+
 func TestOpsConfigExportedSurfaceIsIntentional(t *testing.T) {
 	files := opsConfigFiles(t)
 	exported := map[string]struct{}{}
@@ -101,6 +126,12 @@ func TestOpsConfigDoesNotReadProcessEnvOrShellOut(t *testing.T) {
 	}
 }
 
+func TestOpsConfigDefinitionsStayExplicit(t *testing.T) {
+	assertOpsConfigTextOwnership(t, "func ResolveProjectPath(", map[string]struct{}{
+		"path.go": {},
+	})
+}
+
 func opsConfigFiles(t *testing.T) []string {
 	t.Helper()
 
@@ -131,6 +162,23 @@ func assertOpsConfigTextAbsent(t *testing.T, needle string) {
 		}
 		if strings.Contains(string(raw), needle) {
 			t.Fatalf("opsconfig must not contain %s; found in %s", needle, path)
+		}
+	}
+}
+
+func assertOpsConfigTextOwnership(t *testing.T, needle string, owners map[string]struct{}) {
+	t.Helper()
+
+	for _, path := range opsConfigFiles(t) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if !strings.Contains(string(raw), needle) {
+			continue
+		}
+		if _, ok := owners[filepath.Base(path)]; !ok {
+			t.Fatalf("%s must stay owner-local to %v; found in %s", needle, sortedOpsConfigKeys(owners), path)
 		}
 	}
 }

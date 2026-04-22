@@ -147,12 +147,12 @@ Owner-local machine-enforced surfaces:
 - `internal/platform/backupstoreadapter` dedicated backup-store adapter bridge contour
 - `internal/platform/appadapter` residual files/locks bridge contour stays explicit and finite
 - `internal/platform/docker` bounded runtime adapter contour, low-level exec ownership, MySQL/helper/archive seam locality, and helper-shell ownership
-- `internal/platform/config` env-loading discipline
-- `internal/platform/backupstore` exported surface and error-code discipline
-- `internal/platform/fs` exported surface, error-code discipline, and local shell-seam locality including `archive_create.go`
+- `internal/platform/config` bounded env-loading contour, intentional exported surface, and explicit local seam locality
+- `internal/platform/backupstore` bounded integrity contour, intentional exported surface, and explicit local seam locality
+- `internal/platform/fs` bounded filesystem contour, intentional exported surface, error-code discipline, and local shell-seam locality including `archive_create.go`
 - `internal/platform/locks` bounded acquisition/readiness contour, exported surface, and no hidden env/shell control path
-- `internal/platform/journalstore` exported surface and narrow journal-writer surface
-- `internal/opsconfig` exported surface and no IO/env/shell drift
+- `internal/platform/journalstore` single-file journal-writer contour, intentional exported surface, and narrow journal-writer surface
+- `internal/opsconfig` single-file path-resolution contour, intentional exported surface, and no IO/env/shell drift
 
 Review-enforced but binding surfaces:
 

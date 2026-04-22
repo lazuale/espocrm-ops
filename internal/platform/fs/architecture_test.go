@@ -12,6 +12,40 @@ import (
 	"testing"
 )
 
+func TestFSProductionFileSetStaysBounded(t *testing.T) {
+	t.Parallel()
+
+	got := map[string]struct{}{}
+	want := map[string]struct{}{
+		"archive.go":        {},
+		"archive_create.go": {},
+		"checksum.go":       {},
+		"errors.go":         {},
+		"preflight.go":      {},
+		"readiness.go":      {},
+		"replace_tree.go":   {},
+		"staging.go":        {},
+	}
+
+	for _, path := range packageSourceFiles(t) {
+		got[filepath.Base(path)] = struct{}{}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected fs production file set: got %v want %v", sortedKeys(got), sortedKeys(want))
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("missing fs production file %q in %v", name, sortedKeys(got))
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("unexpected fs production file %q in %v", name, sortedKeys(got))
+		}
+	}
+}
+
 func TestFSExportedSurfaceIsIntentional(t *testing.T) {
 	t.Parallel()
 
@@ -138,6 +172,78 @@ func TestFSArchiveCreateDoesNotImportInternalPackages(t *testing.T) {
 			t.Fatalf("archive_create.go must not import internal packages; found %s at %s", resolved, fset.Position(imp.Pos()))
 		}
 	}
+}
+
+func TestFSPackageDoesNotImportInternalPackages(t *testing.T) {
+	t.Parallel()
+
+	for _, path := range packageSourceFiles(t) {
+		fset := token.NewFileSet()
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+
+		for _, imp := range file.Imports {
+			resolved, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				t.Fatalf("unquote import: %v", err)
+			}
+			if strings.HasPrefix(resolved, "github.com/lazuale/espocrm-ops/internal/") {
+				t.Fatalf("fs package must not import internal packages; found %s in %s at %s", resolved, path, fset.Position(imp.Pos()))
+			}
+		}
+	}
+}
+
+func TestFSDefinitionsStayExplicit(t *testing.T) {
+	t.Parallel()
+
+	assertFSTextOwnership(t, "func VerifyGzipReadable(", map[string]struct{}{
+		"archive.go": {},
+	})
+	assertFSTextOwnership(t, "func VerifyTarGzReadable(", map[string]struct{}{
+		"archive.go": {},
+	})
+	assertFSTextOwnership(t, "func UnpackTarGz(", map[string]struct{}{
+		"archive.go": {},
+	})
+	assertFSTextOwnership(t, "func SHA256File(", map[string]struct{}{
+		"checksum.go": {},
+	})
+	assertFSTextOwnership(t, "type pathStatError struct", map[string]struct{}{
+		"errors.go": {},
+	})
+	assertFSTextOwnership(t, "func EnsureNonEmptyFile(", map[string]struct{}{
+		"preflight.go": {},
+	})
+	assertFSTextOwnership(t, "func EnsureWritableDir(", map[string]struct{}{
+		"preflight.go": {},
+	})
+	assertFSTextOwnership(t, "func EnsureFreeSpace(", map[string]struct{}{
+		"preflight.go": {},
+	})
+	assertFSTextOwnership(t, "type DirReadiness struct", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertFSTextOwnership(t, "func InspectDirReadiness(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertFSTextOwnership(t, "func ReplaceTree(", map[string]struct{}{
+		"replace_tree.go": {},
+	})
+	assertFSTextOwnership(t, "type Stage struct", map[string]struct{}{
+		"staging.go": {},
+	})
+	assertFSTextOwnership(t, "func NewSiblingStage(", map[string]struct{}{
+		"staging.go": {},
+	})
+	assertFSTextOwnership(t, "func PreparedTreeRoot(", map[string]struct{}{
+		"staging.go": {},
+	})
+	assertFSTextOwnership(t, "func PreparedTreeRootExact(", map[string]struct{}{
+		"staging.go": {},
+	})
 }
 
 func packageSourceFiles(t *testing.T) []string {

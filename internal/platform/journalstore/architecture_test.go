@@ -13,6 +13,31 @@ import (
 
 const modulePath = "github.com/lazuale/espocrm-ops"
 
+func TestJournalStoreProductionFileSetStaysBounded(t *testing.T) {
+	got := map[string]struct{}{}
+	want := map[string]struct{}{
+		"fs.go": {},
+	}
+
+	for _, path := range journalStoreFiles(t) {
+		got[filepath.Base(path)] = struct{}{}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected journalstore production file set: got %v want %v", sortedJournalStoreKeys(got), sortedJournalStoreKeys(want))
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("missing journalstore production file %q in %v", name, sortedJournalStoreKeys(got))
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("unexpected journalstore production file %q in %v", name, sortedJournalStoreKeys(got))
+		}
+	}
+}
+
 func TestJournalStoreExportedSurfaceIsIntentional(t *testing.T) {
 	files := journalStoreFiles(t)
 	exported := map[string]struct{}{}
@@ -100,6 +125,15 @@ func TestJournalStoreDoesNotReadProcessEnvOrShellOut(t *testing.T) {
 	}
 }
 
+func TestJournalStoreDefinitionsStayExplicit(t *testing.T) {
+	assertJournalStoreTextOwnership(t, "type FSWriter struct", map[string]struct{}{
+		"fs.go": {},
+	})
+	assertJournalStoreTextOwnership(t, "func (w FSWriter) Write(", map[string]struct{}{
+		"fs.go": {},
+	})
+}
+
 func journalStoreFiles(t *testing.T) []string {
 	t.Helper()
 
@@ -130,6 +164,23 @@ func assertJournalStoreTextAbsent(t *testing.T, needle string) {
 		}
 		if strings.Contains(string(raw), needle) {
 			t.Fatalf("journalstore must not contain %s; found in %s", needle, path)
+		}
+	}
+}
+
+func assertJournalStoreTextOwnership(t *testing.T, needle string, owners map[string]struct{}) {
+	t.Helper()
+
+	for _, path := range journalStoreFiles(t) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if !strings.Contains(string(raw), needle) {
+			continue
+		}
+		if _, ok := owners[filepath.Base(path)]; !ok {
+			t.Fatalf("%s must stay owner-local to %v; found in %s", needle, sortedJournalStoreKeys(owners), path)
 		}
 	}
 }
