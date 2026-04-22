@@ -11,6 +11,33 @@ import (
 	"testing"
 )
 
+func TestLocksProductionFileSetStaysBounded(t *testing.T) {
+	got := map[string]struct{}{}
+	want := map[string]struct{}{
+		"file_lock.go":      {},
+		"operation_lock.go": {},
+		"readiness.go":      {},
+	}
+
+	for _, path := range locksPackageFiles(t) {
+		got[filepath.Base(path)] = struct{}{}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected locks production file set: got %v want %v", sortedLockKeys(got), sortedLockKeys(want))
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("missing locks production file %q in %v", name, sortedLockKeys(got))
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("unexpected locks production file %q in %v", name, sortedLockKeys(got))
+		}
+	}
+}
+
 func TestLocksExportedSurfaceIsIntentional(t *testing.T) {
 	files := locksPackageFiles(t)
 	exported := map[string]struct{}{}
@@ -129,6 +156,108 @@ func TestLocksPackageDoesNotReadProcessEnvOrShellOut(t *testing.T) {
 	}
 }
 
+func TestLocksDefinitionsStayExplicit(t *testing.T) {
+	assertLocksTextOwnership(t, "type FileLock struct", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireJournalPruneLock(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireRestoreDBLock(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireRestoreFilesLock(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireRestoreDBLockInDir(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireRestoreFilesLockInDir(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireFileLock(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func pruneLockPath(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func restoreLockPathInDir(", map[string]struct{}{
+		"file_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "type OperationLock struct", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "type MaintenanceLock struct", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "type MaintenanceConflictError struct", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireSharedOperationLock(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func AcquireMaintenanceLock(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func sharedOperationLockPaths(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func predictedSharedOperationLockPaths(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func metadataLockHandlePath(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func metadataLockState(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func writeLockMetadataFile(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func releaseMetadataLock(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func lockFileOwnerPID(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func splitLines(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func lockInfo(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "func lockWarn(", map[string]struct{}{
+		"operation_lock.go": {},
+	})
+	assertLocksTextOwnership(t, "type LockReadiness struct", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func CheckSharedOperationReadiness(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func CheckMaintenanceReadiness(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func CheckRestoreDBReadiness(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func CheckRestoreFilesReadiness(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func CheckRestoreDBReadinessInDir(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func CheckRestoreFilesReadinessInDir(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func checkFileLockReadiness(", map[string]struct{}{
+		"readiness.go": {},
+	})
+	assertLocksTextOwnership(t, "func closeLockHandle(", map[string]struct{}{
+		"readiness.go": {},
+	})
+}
+
 func locksPackageFiles(t *testing.T) []string {
 	t.Helper()
 
@@ -147,6 +276,23 @@ func locksPackageFiles(t *testing.T) []string {
 	}
 	sort.Strings(files)
 	return files
+}
+
+func assertLocksTextOwnership(t *testing.T, needle string, owners map[string]struct{}) {
+	t.Helper()
+
+	for _, path := range locksPackageFiles(t) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if !strings.Contains(string(raw), needle) {
+			continue
+		}
+		if _, ok := owners[filepath.Base(path)]; !ok {
+			t.Fatalf("%s must stay owner-local to %v; found in %s", needle, sortedLockKeys(owners), path)
+		}
+	}
 }
 
 func assertLocksTextAbsent(t *testing.T, needle string) {
