@@ -31,6 +31,7 @@
 - No ambiguous success.
 - No shell-owned product, contract, validation, or recovery semantics.
 - No guard theatre.
+- No fake machine-enforcement.
 - No new product surface.
 
 ## Core Flow

@@ -44,9 +44,9 @@ It must ship with synchronized updates to:
 
 This constitution uses exactly three proof classes:
 
-- `repo-wide machine-enforced`: a rule that can live honestly in `repository_test.go`
-- `owner-local machine-enforced`: a rule that belongs in the owning package's `architecture_test.go`
-- `review-enforced but binding`: a rule that remains constitutional and audit-required even when the repository does not have an honest syntactic guard for it
+- `repo-wide machine-enforced`: a binding constitutional rule backed by `repository_test.go` with a stable repo-wide syntactic anchor
+- `owner-local machine-enforced`: a binding constitutional rule backed by the owning package's `architecture_test.go` with a stable owner-local syntactic anchor inside one declared physical contour
+- `review-enforced but binding`: a binding constitutional rule that remains mandatory in review and audit even when the repository does not yet have an honest cheap machine guard for it
 
 No constitutional rule may remain unclassified, vague, or open-ended.
 
@@ -56,6 +56,119 @@ Interpretation rules:
 - Passive use of shared failure, result, or domain vocabulary inside a unit contour is audited through contours and ownership rules, not through the caller matrix.
 - A contour entry must name a concrete package, file, or explicit file family.
 - Shared package colocation does not create a second owner, but any bridge file inside a mixed package must be named explicitly.
+- No rule may be called `machine-enforced` unless the guard has a concrete syntactic anchor whose failure directly proves the claimed constitutional violation.
+
+## 1B. Proof Split Policy
+
+A rule is `repo-wide machine-enforced` only when all of the following are true:
+
+- the invariant is genuinely repository-wide rather than package-local
+- the root guard can point to a stable repo-wide syntactic anchor such as a package boundary, import edge, exported surface, named file family, or literal vocabulary surface
+- the check is cheap, deterministic, and honest about what it proves
+- guard failure corresponds directly to a real constitutional violation
+- the rule does not require semantic guessing, inferred callgraph reconstruction, or reviewer interpretation of operational meaning
+
+A rule is `owner-local machine-enforced` only when all of the following are true:
+
+- exactly one approved owner can enforce it
+- the rule is local to one declared physical contour
+- the local guard can point to a stable owner-local syntactic anchor
+- the check proves local seam discipline, exported surface, env/shell seam locality, or explicitly named bridge discipline without claiming repo-wide meaning
+- the guard does not simulate the full caller matrix, access-class table, or semantic ownership map
+
+A rule remains `review-enforced but binding` when any of the following is true:
+
+- no honest cheap machine guard exists yet
+- the best available check would require semantic guessing
+- the rule spans mixed packages, bridge files, multiple owners, or global pipeline traversal that syntax alone does not prove
+- the rule is constitutionally mandatory even though proof currently lives in review and audit rather than tests
+
+Forbidden proof claims:
+
+- machine-enforcement without a real syntactic anchor
+- a guard whose doctrinal claim is stronger than its proof surface
+- semantic guessing encoded as guard logic
+- brittle AST theatre used to declare ownership or caller legality
+- pseudo-callgraph tests that do not prove real owner or allowed-caller facts
+
+## 1C. Bridge Discipline Policy
+
+Definitions:
+
+- `semantic slice`: a bounded operational meaning owned by exactly one approved micro-monolith, even when its files currently live inside a shared Go package
+- `physical contour`: a package, file, or explicit file family that can be named in this constitution and guarded honestly without semantic guessing
+- `mixed package`: a Go package that contains files from more than one semantic slice under this constitution
+- `bridge file`: an explicitly named file inside a mixed package that connects two declared slices without creating shared ownership
+
+Rules:
+
+- Semantic split may become binding before package split.
+- Mixed package colocation does not create a second owner.
+- Every non-bridge file inside a mixed package remains owned by exactly one semantic slice.
+- Every bridge file must be named explicitly in the owning contour; anonymous shared helpers, catch-all file families, or package-wide bridge claims are forbidden.
+- Every bridge file must remain owner-bounded: one canonical owner is responsible for its rule surface, callers, and drift budget even when the file touches another slice.
+- Bridge files may carry translation, routing, or narrow shared-kernel seams only; they must not become a second policy owner or a miscellaneous staging area.
+- A mixed package must keep bridge files few enough to name exhaustively and review as a finite list. If the seam needs wildcard ownership, anonymous helper families, or package-wide exceptions, the bridge layer is already overgrown.
+- Mixed package colocation does not relax caller discipline, access discipline, or semantic ownership discipline.
+
+## 1D. Promotion Criteria Policy
+
+A `review-enforced but binding` rule must be promoted to machine enforcement when all of the following become true:
+
+- a stable syntactic anchor exists
+- an honest cheap guard exists
+- the guard can prove the rule without semantic guessing
+- the owner-local or repo-wide scope is explicit enough to choose the correct enforcement home
+
+Promotion is mandatory in the same change, or at the latest the next intentional touch of that seam, if the criteria above are met and any of the following is true:
+
+- the same seam has drifted more than once
+- reviewers have had to restate the same rule in two or more distinct reviews
+- a bridge file or finite explicit bridge-file set has become stable and uniquely nameable
+- an owner-local physical contour now exists
+- the rule has become routine mechanical review work rather than semantic judgment
+
+Destination rules:
+
+- promote to `owner-local machine-enforced` when the anchor lives inside one owner-local physical contour
+- promote to `repo-wide machine-enforced` when the invariant is cross-repository and the root guard can prove it honestly
+- do not promote when the candidate guard would overclaim, simulate semantics, or merely restate reviewer judgment in code
+
+## 1E. Physical Split Trigger Policy
+
+A semantic slice does not need a dedicated package by default.
+Semantic split may remain inside a mixed package while Section `1C` remains honest.
+
+A semantic slice must move to a dedicated physical contour once any of the following becomes true:
+
+- the mixed package can no longer guard caller/callee locality or owner-local seam discipline without semantic guessing
+- bridge files can no longer be listed exhaustively by explicit name
+- local guards start simulating callgraph or cross-owner semantics instead of guarding local rules
+- one slice acquires its own proof harness, lifecycle, or independently reviewed rule set
+- one slice repeatedly drifts independently of its package neighbors
+- one slice becomes independently privileged, independently reusable, or gains a distinct allowed-caller set
+- package colocation now hides a real contour change that would otherwise require a constitutional update
+
+When the existing package can no longer carry that contour honestly, the dedicated physical contour must be a separate package.
+Physical split is trigger-based proof work, not symmetry cleanup and not a default requirement.
+
+## 1F. Guard Theatre Prohibition Policy
+
+`Guard theatre` is any claimed enforcement whose apparent rigor is stronger than its real proof.
+
+Guard theatre includes:
+
+- a guard that imitates proof but cannot point to a real violating surface
+- a syntactic check that claims to prove semantic ownership or caller legality that the syntax does not actually prove
+- an AST or regex test with a weak proxy signal and a strong doctrinal conclusion
+- a pseudo-callgraph or pseudo-dataflow test that cannot establish the real owner, callee legality, or access class it claims to enforce
+- duplicated repo-wide and owner-local guards that add no new proof value
+- machine-enforced language in docs or review notes when the live proof is only local, partial, or review-only
+
+Guard theatre is forbidden.
+
+When the only honest proof is review, the rule must stay `review-enforced but binding` until Section `1D` promotion criteria are satisfied.
+Better `review-enforced but binding` than fake `machine-enforced`.
 
 ## 2. Approved Micro-Monolith Map
 
@@ -1867,6 +1980,10 @@ A change must be rejected if it does any of the following without an explicit co
 - introduces a new direct caller edge not listed in this document
 - moves privileged access to a weaker access class
 - introduces a second semantic owner
+- labels a rule `machine-enforced` without an honest syntactic anchor
+- introduces an unnamed bridge file or package-wide shared-ownership claim inside a mixed package
+- leaves a promotion-eligible `review-enforced but binding` seam unpromoted after Section `1D` is satisfied
+- leaves a split-triggered semantic slice inside a mixed package after Section `1E` requires a dedicated physical contour
 - creates a new non-canonical ops pipeline branch
 - moves explicit user confirmation away from `CLI Edge Monolith`
 

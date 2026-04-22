@@ -19,7 +19,7 @@ If a future change intentionally moves the repository away from this baseline, t
 - Date: `2026-04-22`
 - Commit / branch: working tree on `ab8f833edff69a48a84eb32e8112d0b4337a8a6d` on `main`
 - Reviewer: `Codex`
-- Scope: full repository audit against `REPO_COMPLIANCE_CHECKLIST.md` after documentation sharpen and enforcement wave under the frozen internal micro-monolith constitution
+- Scope: full repository audit against `REPO_COMPLIANCE_CHECKLIST.md` after proof-split and bridge-discipline policy formalization under the frozen internal micro-monolith constitution
 - Final verdict: `PASS`
 
 ---
@@ -116,6 +116,10 @@ A change must be rejected if it does any of the following:
 - moves privileged access to a weaker access class or introduces a hidden side channel
 - reintroduces direct `internal/app -> internal/platform/*` imports
 - introduces a second owner for an existing operational semantic
+- claims machine-enforcement without an honest syntactic anchor or uses guard theatre
+- introduces unnamed bridge files or package-wide shared-ownership claims inside mixed packages
+- leaves a promotion-eligible `review-enforced but binding` seam unpromoted after the criteria in `MICRO_MONOLITHS.md` are met
+- leaves a split-triggered semantic slice inside a mixed package without a dedicated physical contour
 
 ---
 
@@ -147,6 +151,15 @@ Review-enforced but binding surfaces:
 - the full global ops pipeline traversal
 - the access-class table beyond syntactic seam ownership
 - the semantic ownership map where ownership spans shared packages and bridge files
+
+Interpretation baseline:
+
+- `repo-wide machine-enforced` claims remain limited to rules with stable repo-wide syntactic anchors in `repository_test.go`.
+- `owner-local machine-enforced` claims remain limited to one owner-local physical contour and must not simulate the caller matrix, access-class table, or semantic ownership map.
+- Mixed-package colocation does not create a second owner; bridge files must stay explicitly nameable and owner-bounded.
+- `review-enforced but binding` seams remain binding until the promotion criteria in `MICRO_MONOLITHS.md` are met.
+- Physical split remains trigger-based rather than default; once the split triggers in `MICRO_MONOLITHS.md` fire, the slice must move to a dedicated physical contour.
+- Fake machine-enforcement and guard theatre remain non-compliant.
 
 ---
 

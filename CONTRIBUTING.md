@@ -63,6 +63,10 @@ make ci
 - Do not add process-env-only switches. Operator-facing behavior must come from flags or the contour env file.
 - Preflight should inspect. Execution should mutate.
 - Keep repo-wide architectural guards in `repository_test.go` and owner-local rules in package-local `architecture_test.go`; do not add guard theatre.
+- Use the proof classes in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md) honestly; better `review-enforced but binding` than fake `machine-enforced`.
+- Mixed packages are acceptable only when the involved semantic slices and bridge files stay explicit, owner-bounded, and exhaustively nameable.
+- Promote a `review-enforced but binding` seam once a stable syntactic anchor and honest cheap guard exist and the constitutional promotion criteria are met.
+- Split packages only when the physical split triggers in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md) fire; do not split for symmetry alone.
 - Do not claim reliability improvements without end-to-end evidence.
 
 ## Operational Style
@@ -82,6 +86,10 @@ make ci
 - Reject any PR that moves privileged access to a weaker access class or introduces a hidden side channel.
 - Reject any PR that reintroduces direct `internal/app -> internal/platform/*` imports.
 - Reject any PR that introduces a second owner for an existing operational semantic.
+- Reject any PR that claims machine-enforcement without an honest syntactic anchor or that adds guard theatre.
+- Reject any PR that introduces unnamed bridge files or package-wide shared-ownership claims inside mixed packages.
+- Reject any PR that leaves a promotion-eligible `review-enforced but binding` seam unpromoted after the criteria in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md) are met.
+- Reject any PR that leaves a split-triggered semantic slice inside a mixed package instead of moving it to a dedicated physical contour.
 - If a change intentionally moves the architecture baseline, require an updated formal audit and an updated [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md).
 
 ## Typical Change Flow

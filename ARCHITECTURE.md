@@ -452,10 +452,17 @@ The correct fix is to remove the old path and keep one canonical path.
 
 ## 12. Review Gate
 
+Proof strength, mixed-package discipline, promotion criteria, and physical split triggers follow Sections `1A` through `1F` of [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
+Review must not claim stronger proof than the repository honestly carries.
+
 A change must be rejected if it introduces any of the following:
 
 - a new architectural exception
 - a new micro-monolith, a silent micro-monolith split/merge, or a new direct caller edge outside `MICRO_MONOLITHS.md`
+- a machine-enforced claim without an honest syntactic anchor
+- an unnamed bridge file or package-wide shared-ownership claim inside a mixed package
+- a promotion-eligible `review-enforced but binding` seam left unpromoted after the criteria in `MICRO_MONOLITHS.md` are met
+- a split-triggered semantic slice left in a mixed package after `MICRO_MONOLITHS.md` requires a dedicated physical contour
 - a new legacy shim
 - a second owner for an existing policy
 - a second way to assemble the same workflow semantics
@@ -480,6 +487,9 @@ The architecture should change only for one of these reasons:
 Architecture must not churn for aesthetics.
 Architecture must not churn for symmetry alone.
 Architecture must not churn for “cleaner patterns” without a concrete ownership problem.
+Mixed-package colocation is acceptable only while it still carries honest contours, explicit bridge files, and truthful proof classification.
+Physical split is trigger-driven proof work, not default cleanup.
+If a rule is still only honestly `review-enforced but binding`, it remains binding; fabricating machine enforcement is architectural drift, not progress.
 
 The goal is not novelty.
 The goal is one explicit, enforceable, maintainable architecture.

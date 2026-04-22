@@ -54,6 +54,11 @@ Confirm that the following files agree on:
 - canonical workflow status vocabulary
 - prohibition on legacy compatibility shims
 - prohibition on hidden architectural exceptions
+- proof split policy and proof-class definitions
+- mixed-package and bridge-file discipline
+- promotion criteria from `review-enforced but binding` to machine enforcement
+- physical split trigger policy
+- prohibition on guard theatre and false machine-enforcement
 
 ### Files
 - `AGENTS.md`
@@ -61,6 +66,8 @@ Confirm that the following files agree on:
 - `MICRO_MONOLITHS.md`
 - `README.md`
 - `CONTRIBUTING.md`
+- `REPO_COMPLIANCE_CHECKLIST.md`
+- `REPO_COMPLIANCE_BASELINE.md`
 
 ### Pass Criteria
 - No contradictions between documents
@@ -69,6 +76,9 @@ Confirm that the following files agree on:
 - No contradiction between the layer constitution and the micro-monolith constitution
 - Every constitutional rule can be identified as `repo-wide machine-enforced`, `owner-local machine-enforced`, or `review-enforced but binding`
 - No document implies stronger proof than the repository actually carries
+- No document treats mixed-package colocation as implicit shared ownership
+- No document treats `review-enforced but binding` rules as optional or merely aspirational
+- No document describes machine-enforcement without a named honest syntactic anchor
 
 ### Findings
 - Status:
@@ -94,10 +104,14 @@ It must not contain:
 - adapter-specific hygiene rules
 - one-off local ownership rules
 - broad stylistic doctrine unrelated to repo-wide architecture
+- pseudo-callgraph or weak-proxy AST tests that pretend to prove semantic ownership or caller legality
+- review-only rules disguised as repo-wide proof
 
 ### Pass Criteria
 - Every rule in `repository_test.go` is cross-repository in scope
+- Every repo-wide guard has a stable repo-wide syntactic anchor
 - No local/package-specific rule remains there
+- No repo-wide guard claims stronger proof than it actually carries
 
 ### Findings
 - Status:
@@ -118,10 +132,14 @@ Examples of correct locality:
 - docker adapter rules in `internal/platform/docker/...`
 - `app/operation` ownership rules in `internal/app/operation/...`
 
+When a local guard touches bridge discipline, it may guard only explicitly named owner-local bridge files or local seam facts.
+
 ### Pass Criteria
 - Local rules live in their owner packages
+- Every local guard has a stable owner-local syntactic anchor
 - Local guards do not restate repo-wide rules unnecessarily
-- There is no drift between local rules and `ARCHITECTURE.md`
+- No local guard simulates the full caller matrix, access-class table, or semantic ownership map
+- There is no drift between local rules and `ARCHITECTURE.md` or `MICRO_MONOLITHS.md`
 
 ### Findings
 - Status:
@@ -230,12 +248,17 @@ Confirm that:
 - the declared contours still match the actual package/file ownership in the repo
 - shared bridge files inside mixed packages are named explicitly
 - shared inner kernels are modeled as part of exactly one bounded micro-monolith rather than duplicated across commands
+- the proof split policy uses only the three constitutional proof classes
+- mixed packages, bridge files, semantic slices, and physical contours are defined without ambiguity
+- promotion criteria and physical split triggers are explicit rather than implied
 
 ### Pass Criteria
 - No missing retained-core micro-monolith
 - No semantic overlap between micro-monolith owners
 - No passport section left vague or open-ended
 - No declared unit that does not map to current repository reality
+- No mixed package implies shared ownership by colocation alone
+- No bridge layer is anonymous, package-wide, or open-ended
 
 ### Findings
 - Status:
@@ -467,11 +490,14 @@ Audit the declared canonical owners for:
 - result contract meaning
 - final public error meaning
 - diagnostic readiness meaning
+- bridge files and mixed packages where ownership spans shared colocation
 
 ### Pass Criteria
 - Every semantic area still has one canonical owner
 - No forbidden secondary owner appears in production code or docs
 - The ownership map agrees with the layer model and ports/adapters boundaries
+- No mixed package masquerades as dual ownership
+- No bridge file has ambiguous owner or implicit privilege escalation
 
 ### Findings
 - Status:
