@@ -6,9 +6,26 @@ import (
 	"path/filepath"
 	"strings"
 
+	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
 	"github.com/lazuale/espocrm-ops/internal/opsconfig"
 	"github.com/spf13/cobra"
 )
+
+func usageError(err error) error {
+	return errortransport.UsageError(err)
+}
+
+func requiredFlagError(flag string) error {
+	return usageError(fmt.Errorf("%s is required", flag))
+}
+
+func requireNonBlankFlag(flag, value string) error {
+	if strings.TrimSpace(value) == "" {
+		return requiredFlagError(flag)
+	}
+
+	return nil
+}
 
 func normalizeContourFlag(flag string, value *string) error {
 	return normalizeChoiceFlag(flag, value, "--scope must be dev or prod", "dev", "prod")
@@ -27,6 +44,16 @@ func normalizeChoiceFlag(flag string, value *string, message string, allowed ...
 	}
 
 	return usageError(errors.New(message))
+}
+
+func normalizeOptionalStringFlag(cmd *cobra.Command, flag string, value *string) error {
+	trimmed := strings.TrimSpace(*value)
+	if cmd.Flags().Changed(flag) && trimmed == "" {
+		return usageError(fmt.Errorf("--%s must not be blank", flag))
+	}
+
+	*value = trimmed
+	return nil
 }
 
 func normalizeProjectContext(cmd *cobra.Command, projectDir, composeFile, envFile *string) error {
@@ -87,6 +114,14 @@ func normalizeConfirmProdFlag(cmd *cobra.Command, value *string) error {
 	}
 	if *value != "" && *value != "prod" {
 		return usageError(fmt.Errorf("--confirm-prod accepts only the value prod"))
+	}
+
+	return nil
+}
+
+func noArgs(cmd *cobra.Command, args []string) error {
+	if err := cobra.NoArgs(cmd, args); err != nil {
+		return usageError(err)
 	}
 
 	return nil

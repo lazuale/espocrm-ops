@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/spf13/cobra"
 )
@@ -75,7 +76,7 @@ func TestValidateBackupVerifyInput_BlankAfterTrimIsUsageError(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !IsUsageError(err) {
+	if !errortransport.IsUsageError(err) {
 		t.Fatalf("expected usage error, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "--manifest must not be blank") {
@@ -100,7 +101,7 @@ func TestValidateBackupVerifyInput_ManifestAndBackupRootConflictIsUsageError(t *
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !IsUsageError(err) {
+	if !errortransport.IsUsageError(err) {
 		t.Fatalf("expected usage error, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "use either --manifest or --backup-root") {
@@ -115,7 +116,7 @@ func TestValidateBackupVerifyInput_RequiresManifestOrBackupRoot(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !IsUsageError(err) {
+	if !errortransport.IsUsageError(err) {
 		t.Fatalf("expected usage error, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "--manifest or --backup-root is required") {

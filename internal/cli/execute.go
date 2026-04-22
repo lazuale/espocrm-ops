@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
@@ -24,7 +25,7 @@ func ExecuteRoot(root *cobra.Command) int {
 func renderExecutionError(root *cobra.Command, err error) int {
 	fallbackExitCode := exitcode.InternalError
 	fallbackErrorCode := "internal_error"
-	if IsUsageError(err) {
+	if errortransport.IsUsageError(err) {
 		fallbackExitCode = exitcode.UsageError
 		fallbackErrorCode = "usage_error"
 	}
@@ -32,15 +33,15 @@ func renderExecutionError(root *cobra.Command, err error) int {
 	if appForCommand(root).JSONEnabled() {
 		var carrier resultCarrier
 		if errors.As(err, &carrier) {
-			exitCode := codeForError(err, fallbackExitCode)
+			exitCode := errortransport.CodeForError(err, fallbackExitCode)
 			res := carrier.CommandResult()
 			if res.Command == "" {
 				res.Command = root.Name()
 			}
 			if res.Error == nil {
 				res.Error = &result.ErrorInfo{
-					Code:     errorCodeForError(err, fallbackErrorCode),
-					Kind:     errorKindForError(err),
+					Code:     errortransport.ErrorCodeForError(err, fallbackErrorCode),
+					Kind:     errortransport.ErrorKindForError(err),
 					ExitCode: exitCode,
 					Message:  err.Error(),
 				}
@@ -50,7 +51,7 @@ func renderExecutionError(root *cobra.Command, err error) int {
 		}
 	}
 
-	errorResult, exitCode := ErrorResult(root.Name(), err, fallbackExitCode, fallbackErrorCode)
+	errorResult, exitCode := errortransport.ErrorResult(root.Name(), err, fallbackExitCode, fallbackErrorCode)
 	if appForCommand(root).JSONEnabled() {
 		_ = result.Render(root.OutOrStdout(), errorResult, true)
 		return exitCode
@@ -65,6 +66,10 @@ func renderExecutionError(root *cobra.Command, err error) int {
 		return exitcode.InternalError
 	}
 	return exitCode
+}
+
+type resultCarrier interface {
+	CommandResult() result.Result
 }
 
 type textErrorSuppressor interface {

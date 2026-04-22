@@ -245,8 +245,8 @@ func TestProductionErrorCodeOwnershipIsCanonical(t *testing.T) {
 	fset := token.NewFileSet()
 	got := map[string]struct{}{}
 	want := map[string]struct{}{
-		"internal/contract/apperr.Error": {},
-		"internal/cli.CodeError":         {},
+		"internal/contract/apperr.Error":        {},
+		"internal/cli/errortransport.CodeError": {},
 	}
 
 	for _, dir := range []string{

@@ -1,4 +1,4 @@
-package cli
+package errortransport
 
 import (
 	"errors"
@@ -28,7 +28,7 @@ func TestCodeForError_MapsAppErrorKindsToExitCodes(t *testing.T) {
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			err := apperr.Wrap(tc.kind, tc.name+"_failed", errors.New("boom"))
-			got := codeForError(err, 99)
+			got := CodeForError(err, 99)
 			if got != tc.want {
 				t.Fatalf("expected exit code %d, got %d", tc.want, got)
 			}
@@ -43,7 +43,7 @@ func TestCodeForError_UnknownAppErrorKindUsesFallback(t *testing.T) {
 		Message: "future failure",
 	}
 
-	got := codeForError(err, 99)
+	got := CodeForError(err, 99)
 	if got != 99 {
 		t.Fatalf("expected fallback exit code, got %d", got)
 	}
@@ -52,7 +52,7 @@ func TestCodeForError_UnknownAppErrorKindUsesFallback(t *testing.T) {
 func TestErrorCodeForError_UsesAppErrorMachineCode(t *testing.T) {
 	err := apperr.Wrap(apperr.KindValidation, "input_invalid", errors.New("bad input"))
 
-	got := errorCodeForError(err, "fallback_error")
+	got := ErrorCodeForError(err, "fallback_error")
 	if got != "input_invalid" {
 		t.Fatalf("expected app error code, got %q", got)
 	}
@@ -65,7 +65,7 @@ func TestErrorCodeForError_UsesTransportCodeCarrier(t *testing.T) {
 		ErrCode: "doctor_failed",
 	}
 
-	got := errorCodeForError(err, "fallback_error")
+	got := ErrorCodeForError(err, "fallback_error")
 	if got != "doctor_failed" {
 		t.Fatalf("expected transport error code, got %q", got)
 	}
@@ -118,7 +118,7 @@ func TestErrorResult_PropagatesWarningsFromCodeError(t *testing.T) {
 }
 
 func TestIsUsageError_UsesTypedErrorInsteadOfMessageGuessing(t *testing.T) {
-	if !IsUsageError(usageError(errors.New("boom"))) {
+	if !IsUsageError(UsageError(errors.New("boom"))) {
 		t.Fatal("expected typed usage error to be recognized")
 	}
 

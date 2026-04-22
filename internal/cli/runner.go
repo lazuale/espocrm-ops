@@ -4,8 +4,9 @@ import (
 	"fmt"
 	"io"
 
-	journalbridge "github.com/lazuale/espocrm-ops/internal/cli/journalbridge"
 	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
+	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
+	journalbridge "github.com/lazuale/espocrm-ops/internal/cli/journalbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
 )
@@ -20,11 +21,6 @@ type CommandSpec struct {
 type commandRunOptions struct {
 	journal     bool
 	resultError bool
-}
-
-type exitCodedError interface {
-	error
-	ExitCode() int
 }
 
 func RunCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error)) error {
@@ -68,7 +64,7 @@ func runCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, 
 
 func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, opts commandRunOptions, exec operationtrace.Execution, res result.Result, err error) error {
 	res.Command = spec.Name
-	errCode := errorCodeForError(err, spec.ErrorCode)
+	errCode := errortransport.ErrorCodeForError(err, spec.ErrorCode)
 
 	warnings := []string{}
 	if opts.journal {
@@ -79,8 +75,8 @@ func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, opts command
 		return renderCommandFailureResult(cmd, spec, res, err, errCode)
 	}
 
-	return CodeError{
-		Code:     codeForError(err, spec.ExitCode),
+	return errortransport.CodeError{
+		Code:     errortransport.CodeForError(err, spec.ExitCode),
 		Err:      err,
 		ErrCode:  errCode,
 		Warnings: warnings,
@@ -115,15 +111,15 @@ func finishJournalFailure(cmd *cobra.Command, app *App, exec operationtrace.Exec
 }
 
 func renderCommandFailureResult(cmd *cobra.Command, spec CommandSpec, res result.Result, err error, errCode string) error {
-	codeErr := CodeError{
-		Code:     codeForError(err, spec.ExitCode),
+	codeErr := errortransport.CodeError{
+		Code:     errortransport.CodeForError(err, spec.ExitCode),
 		Err:      err,
 		ErrCode:  errCode,
-		Warnings: warningMessages(err),
+		Warnings: errortransport.WarningMessages(err),
 	}
 
 	if appForCommand(cmd).JSONEnabled() {
-		return ResultCodeError{
+		return errortransport.ResultCodeError{
 			CodeError: codeErr,
 			Result:    res,
 		}
@@ -133,7 +129,7 @@ func renderCommandFailureResult(cmd *cobra.Command, spec CommandSpec, res result
 		return err
 	}
 
-	return silentCodeError{CodeError: codeErr}
+	return errortransport.Silent(codeErr)
 }
 
 func appendCommandWarning(cmd *cobra.Command, app *App, warnings *[]string, message string) {

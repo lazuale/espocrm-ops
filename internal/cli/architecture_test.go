@@ -166,21 +166,29 @@ func TestProductionCLIAppOperationBridgeFilesStayExplicit(t *testing.T) {
 		"deps.go": {},
 	})
 	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/app/operationtrace", map[string]struct{}{
-		"deps.go":         {},
+		"deps.go":           {},
 		"journal_record.go": {},
-		"runner.go":       {},
+		"runner.go":         {},
+	})
+}
+
+func TestProductionCLIErrorTransportBridgeFilesStayExplicit(t *testing.T) {
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/cli/errortransport", map[string]struct{}{
+		"doctor.go":  {},
+		"execute.go": {},
+		"input.go":   {},
+		"runner.go":  {},
 	})
 }
 
 func TestProductionCLIErrorTransportRouteStaysCanonical(t *testing.T) {
-	assertCLITextOwnership(t, "ErrorResult(", map[string]struct{}{
-		"errors.go":  {},
+	assertCLITextOwnership(t, "errortransport.ErrorResult(", map[string]struct{}{
 		"execute.go": {},
 	})
 	assertCLITextOwnership(t, ".CommandResult()", map[string]struct{}{
 		"execute.go": {},
 	})
-	assertCLITextOwnership(t, "ResultCodeError{", map[string]struct{}{
+	assertCLITextOwnership(t, "errortransport.ResultCodeError{", map[string]struct{}{
 		"runner.go": {},
 	})
 }
@@ -193,22 +201,22 @@ func TestProductionCLITransportBridgeDefinitionsStayExplicit(t *testing.T) {
 		"execute.go": {},
 	})
 	assertCLITextOwnership(t, "type resultCarrier interface", map[string]struct{}{
-		"result_error.go": {},
-	})
-	assertCLITextOwnership(t, "type ResultCodeError struct", map[string]struct{}{
-		"result_error.go": {},
-	})
-	assertCLITextOwnership(t, "type silentCodeError struct", map[string]struct{}{
-		"errors.go": {},
+		"execute.go": {},
 	})
 	assertCLITextOwnership(t, "func usageError(", map[string]struct{}{
-		"errors.go": {},
+		"input.go": {},
 	})
-	assertCLITextOwnership(t, "func ErrorResult(", map[string]struct{}{
-		"errors.go": {},
+	assertCLITextOwnership(t, "func requiredFlagError(", map[string]struct{}{
+		"input.go": {},
 	})
-	assertCLITextOwnership(t, "func IsUsageError(", map[string]struct{}{
-		"errors.go": {},
+	assertCLITextOwnership(t, "func requireNonBlankFlag(", map[string]struct{}{
+		"input.go": {},
+	})
+	assertCLITextOwnership(t, "func normalizeOptionalStringFlag(", map[string]struct{}{
+		"input.go": {},
+	})
+	assertCLITextOwnership(t, "func noArgs(", map[string]struct{}{
+		"input.go": {},
 	})
 	assertCLITextOwnership(t, "func appendCommandWarning(", map[string]struct{}{
 		"runner.go": {},

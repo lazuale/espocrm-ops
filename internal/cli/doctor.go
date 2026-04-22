@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/app/doctor"
+	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
 	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
@@ -90,7 +91,7 @@ func runDoctor(cmd *cobra.Command, in doctorInput) error {
 			return res, nil
 		}
 
-		return res, CodeError{
+		return res, errortransport.CodeError{
 			Code:    exitcode.ValidationError,
 			Err:     apperr.Wrap(apperr.KindValidation, "doctor_failed", errors.New("doctor found readiness failures")),
 			ErrCode: "doctor_failed",

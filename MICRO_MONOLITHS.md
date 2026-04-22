@@ -1608,8 +1608,7 @@ Inside this unit:
   - `internal/app/restore/errors.go`
   - `internal/app/migrate/compatibility.go`
 - CLI error transport files:
-  - `internal/cli/errors.go`
-  - `internal/cli/result_error.go`
+  - `internal/cli/errortransport/`
   - the root transport mapping in `internal/cli/execute.go`
 
 Allowed internal mechanisms:

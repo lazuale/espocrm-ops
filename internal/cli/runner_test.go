@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	domainjournal "github.com/lazuale/espocrm-ops/internal/domain/journal"
 	"github.com/spf13/cobra"
@@ -311,7 +312,7 @@ func TestRunDiagnosticCommand_JSONErrorReturnsResultCarrierWithoutJournal(t *tes
 					TargetScope: "prod",
 					Ready:       false,
 				},
-			}, CodeError{
+			}, errortransport.CodeError{
 				Code:    2,
 				Err:     errors.New("doctor found readiness failures"),
 				ErrCode: "doctor_failed",
