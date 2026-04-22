@@ -79,12 +79,12 @@ func (Runtime) ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbNam
 	return classifyRuntimeError(platformdocker.ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser))
 }
 
-func (Runtime) CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage string) error {
-	return classifyRuntimeError(platformdocker.CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage))
+func (Runtime) CreateTarArchiveViaHelper(sourceDir, archivePath, helperImage string) error {
+	return classifyRuntimeError(platformdocker.CreateTarArchiveViaHelper(sourceDir, archivePath, helperImage))
 }
 
-func (Runtime) ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string) error {
-	return classifyRuntimeError(platformdocker.ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage))
+func (Runtime) ReconcileEspoStoragePermissions(targetDir, helperImage string, runtimeUID, runtimeGID int) error {
+	return classifyRuntimeError(platformdocker.ReconcileEspoStoragePermissions(targetDir, helperImage, runtimeUID, runtimeGID))
 }
 
 func composeTarget(target runtimeport.Target) platformdocker.ComposeConfig {

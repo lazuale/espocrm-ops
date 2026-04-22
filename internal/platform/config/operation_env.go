@@ -11,6 +11,9 @@ var requiredOperationEnvKeys = []string{
 	"DB_STORAGE_DIR",
 	"ESPO_STORAGE_DIR",
 	"BACKUP_ROOT",
+	"ESPO_HELPER_IMAGE",
+	"ESPO_RUNTIME_UID",
+	"ESPO_RUNTIME_GID",
 }
 
 func LoadOperationEnv(projectDir, scope, overridePath string) (domainenv.OperationEnv, error) {

@@ -17,6 +17,7 @@ func TestCreateTarArchiveViaHelperUsesTarEntrypointAndFilteredEnv(t *testing.T) 
 	archivePath := filepath.Join(tmp, "files.tar.gz")
 	logPath := filepath.Join(tmp, "docker.log")
 	envLogPath := filepath.Join(tmp, "docker.env")
+	helperImage := "registry.example.com/espops-helper:1.0"
 
 	if err := os.MkdirAll(childDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -29,10 +30,10 @@ func TestCreateTarArchiveViaHelperUsesTarEntrypointAndFilteredEnv(t *testing.T) 
 	prependFakeDocker(t, fakeDockerOptions{
 		logPath:         logPath,
 		envLogPath:      envLogPath,
-		availableImages: []string{"espocrm/espocrm:9.3.4-apache"},
+		availableImages: []string{helperImage},
 	})
 
-	if err := CreateTarArchiveViaHelper(sourceDir, archivePath, "10.11", "espocrm/espocrm:9.3.4-apache"); err != nil {
+	if err := CreateTarArchiveViaHelper(sourceDir, archivePath, helperImage); err != nil {
 		t.Fatalf("CreateTarArchiveViaHelper failed: %v", err)
 	}
 
@@ -46,6 +47,12 @@ func TestCreateTarArchiveViaHelperUsesTarEntrypointAndFilteredEnv(t *testing.T) 
 	}
 	if strings.Contains(log, " --entrypoint sh ") || strings.Contains(log, " -euc ") {
 		t.Fatalf("archive helper should not go through shell: %s", log)
+	}
+	if !strings.Contains(log, "image inspect "+helperImage) {
+		t.Fatalf("expected explicit helper image probe, got %s", log)
+	}
+	if strings.Contains(log, "image inspect mariadb:") || strings.Contains(log, "image inspect alpine:") || strings.Contains(log, "image inspect busybox:") {
+		t.Fatalf("archive helper must not probe fallback images, got %s", log)
 	}
 
 	rawEnv, err := os.ReadFile(envLogPath)
@@ -62,46 +69,23 @@ func TestCreateTarArchiveViaHelperUsesTarEntrypointAndFilteredEnv(t *testing.T) 
 	}
 }
 
-func TestSelectLocalHelperImagePrefersRuntimeImagesBeforeBuiltinFallback(t *testing.T) {
-	tmp := t.TempDir()
-	logPath := filepath.Join(tmp, "docker.log")
-
-	prependFakeDocker(t, fakeDockerOptions{
-		logPath:         logPath,
-		availableImages: []string{"mariadb:10.11", "alpine:3.20"},
-	})
-
-	image, err := selectLocalHelperImage("10.11", "espocrm/custom:1.0")
-	if err != nil {
-		t.Fatalf("selectLocalHelperImage failed: %v", err)
+func TestCreateTarArchiveViaHelperFailsClosedWhenHelperImageIsMissing(t *testing.T) {
+	err := CreateTarArchiveViaHelper(t.TempDir(), filepath.Join(t.TempDir(), "files.tar.gz"), "registry.example.com/espops-helper:1.0")
+	if err == nil {
+		t.Fatal("expected missing helper image error")
 	}
-	if image != "mariadb:10.11" {
-		t.Fatalf("expected mariadb runtime image, got %s", image)
-	}
-
-	rawLog, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	lines := strings.Split(strings.TrimSpace(string(rawLog)), "\n")
-	if len(lines) < 2 {
-		t.Fatalf("expected at least two image inspect probes, got %q", string(rawLog))
-	}
-	if !strings.Contains(lines[0], "image inspect espocrm/custom:1.0") {
-		t.Fatalf("expected espocrm image to be probed first, got %q", lines[0])
-	}
-	if !strings.Contains(lines[1], "image inspect mariadb:10.11") {
-		t.Fatalf("expected mariadb image to be probed second, got %q", lines[1])
+	if !strings.Contains(err.Error(), "is not available locally") {
+		t.Fatalf("unexpected missing helper image error: %v", err)
 	}
 }
 
-func TestSelectLocalHelperImageDoesNotHideUnexpectedInspectFailure(t *testing.T) {
+func TestCreateTarArchiveViaHelperDoesNotHideUnexpectedInspectFailure(t *testing.T) {
 	prependFakeDocker(t, fakeDockerOptions{
 		imageInspectStderr:   "permission denied",
 		imageInspectExitCode: 23,
 	})
 
-	_, err := selectLocalHelperImage("10.11", "espocrm/espocrm:9.3.4-apache")
+	err := CreateTarArchiveViaHelper(t.TempDir(), filepath.Join(t.TempDir(), "files.tar.gz"), "registry.example.com/espops-helper:1.0")
 	if err == nil {
 		t.Fatal("expected helper image inspect error")
 	}

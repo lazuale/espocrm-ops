@@ -29,3 +29,7 @@ func (e OperationEnv) ESPOStorageDir() string {
 func (e OperationEnv) BackupRoot() string {
 	return e.Value("BACKUP_ROOT")
 }
+
+func (e OperationEnv) RuntimeContract() (RuntimeContract, error) {
+	return ResolveRuntimeContract(e)
+}

@@ -8,66 +8,14 @@ import (
 	"testing"
 )
 
-func TestResolveEspoRuntimeOwnerUsesFilteredEnvAndExplicitShellSeam(t *testing.T) {
-	tmp := t.TempDir()
-	logPath := filepath.Join(tmp, "docker.log")
-	envLogPath := filepath.Join(tmp, "docker.env")
-
-	t.Setenv("UNRELATED_SECRET", "host-only-secret")
-	prependFakeDocker(t, fakeDockerOptions{
-		logPath:         logPath,
-		envLogPath:      envLogPath,
-		availableImages: []string{"espocrm/espocrm:9.3.4-apache"},
-		runtimeOwner:    "1000:1001",
-	})
-
-	uid, gid, err := ResolveEspoRuntimeOwner("espocrm/espocrm:9.3.4-apache")
-	if err != nil {
-		t.Fatalf("ResolveEspoRuntimeOwner failed: %v", err)
-	}
-	if uid != 1000 || gid != 1001 {
-		t.Fatalf("unexpected runtime owner: %d:%d", uid, gid)
-	}
-
-	rawLog, err := os.ReadFile(logPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !strings.Contains(string(rawLog), "run --pull=never --rm --user 0:0 --entrypoint sh espocrm/espocrm:9.3.4-apache -euc") {
-		t.Fatalf("expected explicit shell runtime owner probe, got %s", string(rawLog))
-	}
-
-	rawEnv, err := os.ReadFile(envLogPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if strings.Contains(string(rawEnv), "UNRELATED_SECRET=host-only-secret") {
-		t.Fatalf("unexpected host env leak into runtime owner probe: %s", string(rawEnv))
-	}
-}
-
-func TestResolveEspoRuntimeOwnerRejectsMalformedOwner(t *testing.T) {
-	prependFakeDocker(t, fakeDockerOptions{
-		availableImages: []string{"espocrm/espocrm:9.3.4-apache"},
-		runtimeOwner:    "oops",
-	})
-
-	_, _, err := ResolveEspoRuntimeOwner("espocrm/espocrm:9.3.4-apache")
-	if err == nil {
-		t.Fatal("expected malformed runtime owner error")
-	}
-	if !strings.Contains(err.Error(), "uid:gid format") {
-		t.Fatalf("unexpected runtime owner error: %v", err)
-	}
-}
-
-func TestReconcileEspoStoragePermissionsUsesLocalHelperImageAndFilteredEnv(t *testing.T) {
+func TestReconcileEspoStoragePermissionsUsesExplicitHelperContractAndFilteredEnv(t *testing.T) {
 	tmp := t.TempDir()
 	targetDir := filepath.Join(tmp, "storage")
 	dataDir := filepath.Join(targetDir, "data")
 	dataFile := filepath.Join(dataDir, "test.txt")
 	logPath := filepath.Join(tmp, "docker.log")
 	envLogPath := filepath.Join(tmp, "docker.env")
+	helperImage := "registry.example.com/espops-helper:1.0"
 
 	if err := os.MkdirAll(dataDir, 0o755); err != nil {
 		t.Fatal(err)
@@ -80,11 +28,10 @@ func TestReconcileEspoStoragePermissionsUsesLocalHelperImageAndFilteredEnv(t *te
 	prependFakeDocker(t, fakeDockerOptions{
 		logPath:         logPath,
 		envLogPath:      envLogPath,
-		availableImages: []string{"espocrm/espocrm:9.3.4-apache"},
-		runtimeOwner:    "33:33",
+		availableImages: []string{helperImage},
 	})
 
-	if err := ReconcileEspoStoragePermissions(targetDir, "10.11", "espocrm/espocrm:9.3.4-apache"); err != nil {
+	if err := ReconcileEspoStoragePermissions(targetDir, helperImage, 33, 33); err != nil {
 		t.Fatalf("ReconcileEspoStoragePermissions failed: %v", err)
 	}
 
@@ -93,11 +40,14 @@ func TestReconcileEspoStoragePermissionsUsesLocalHelperImageAndFilteredEnv(t *te
 		t.Fatal(err)
 	}
 	log := string(rawLog)
-	if !strings.Contains(log, "image inspect espocrm/espocrm:9.3.4-apache") {
-		t.Fatalf("expected runtime/helper image probe, got %s", log)
+	if !strings.Contains(log, "image inspect "+helperImage) {
+		t.Fatalf("expected explicit helper image probe, got %s", log)
 	}
-	if !strings.Contains(log, "-e ESPO_RUNTIME_UID -e ESPO_RUNTIME_GID espocrm/espocrm:9.3.4-apache -euc") {
+	if !strings.Contains(log, "-e ESPO_RUNTIME_UID -e ESPO_RUNTIME_GID "+helperImage+" -euc") {
 		t.Fatalf("expected explicit env handoff into helper shell, got %s", log)
+	}
+	if strings.Contains(log, "/var/www/html/") || strings.Contains(log, "ls -nd") {
+		t.Fatalf("permission reconcile must not probe runtime image layout, got %s", log)
 	}
 
 	rawEnv, err := os.ReadFile(envLogPath)
@@ -117,6 +67,28 @@ func TestReconcileEspoStoragePermissionsUsesLocalHelperImageAndFilteredEnv(t *te
 	}
 	if mode := mustPermString(t, dataFile); mode != "664" {
 		t.Fatalf("unexpected data file mode: %s", mode)
+	}
+}
+
+func TestReconcileEspoStoragePermissionsFailsClosedWhenHelperImageIsMissing(t *testing.T) {
+	targetDir := t.TempDir()
+
+	err := ReconcileEspoStoragePermissions(targetDir, "registry.example.com/espops-helper:1.0", 33, 33)
+	if err == nil {
+		t.Fatal("expected missing helper image error")
+	}
+	if !strings.Contains(err.Error(), "is not available locally") {
+		t.Fatalf("unexpected missing helper image error: %v", err)
+	}
+}
+
+func TestReconcileEspoStoragePermissionsRejectsNegativeRuntimeOwner(t *testing.T) {
+	err := ReconcileEspoStoragePermissions(t.TempDir(), "registry.example.com/espops-helper:1.0", -1, 33)
+	if err == nil {
+		t.Fatal("expected negative runtime uid error")
+	}
+	if !strings.Contains(err.Error(), "ESPO_RUNTIME_UID must be non-negative") {
+		t.Fatalf("unexpected runtime uid error: %v", err)
 	}
 }
 

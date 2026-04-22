@@ -463,7 +463,7 @@ Allowed:
 - stop and start application services through the runtime capability
 - dump the database through the runtime capability
 - create local tar archives through the filesystem capability
-- escalate to the Docker helper archive path when local archive creation fails, but only as an explicit in-pipeline branch that surfaces a warning
+- escalate to the Docker helper archive path when local archive creation fails, but only through the explicit helper-image contract and only as an in-pipeline branch that surfaces a warning
 - write manifests and sidecars through the backup-store capability
 - remove retention-expired backup sets
 
@@ -959,7 +959,7 @@ This unit may accept:
 - service names
 - container names and IDs
 - DB credentials and archive paths
-- helper image parameters
+- explicit helper image and runtime ownership parameters
 
 #### E. External Outputs
 This unit may emit:
@@ -976,7 +976,7 @@ Allowed:
 - shell out to `docker`
 - filter environment for Docker subprocesses
 - call Docker Compose
-- use helper-container execution for archive and permission tasks
+- use helper-container execution for archive and permission tasks through the explicit helper contract
 
 Forbidden:
 
@@ -1049,7 +1049,7 @@ Allowed internal mechanisms:
 - required key validation for operation loading
 - project-relative path resolution
 - password and password-file resolution
-- shared env-derived policy such as backup retention, backup name prefix, and migration compatibility keys
+- shared env-derived policy such as backup retention, backup name prefix, runtime helper contract, and migration compatibility keys
 
 #### D. External Inputs
 This unit may accept:

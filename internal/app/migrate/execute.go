@@ -131,6 +131,26 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		return info, wrapExecuteError(err)
 	}
 
+	if _, err := sourceEnv.RuntimeContract(); err != nil {
+		info.Steps = append(info.Steps,
+			ExecuteStep{
+				Code:    "source_preflight",
+				Status:  domainworkflow.StatusFailed,
+				Summary: "Source contour preflight failed",
+				Details: err.Error(),
+				Action:  "Fix the explicit helper image and runtime ownership settings in the source env file before rerunning migrate.",
+			},
+			blockedMigrateStep("target_preflight", "Target contour preflight did not run because source contour preflight failed"),
+			blockedMigrateStep("source_selection", "Source backup selection did not run because source contour preflight failed"),
+			blockedMigrateStep("compatibility", "Migration compatibility checks did not run because source contour preflight failed"),
+			blockedMigrateStep("runtime_prepare", "Target runtime preparation did not run because source contour preflight failed"),
+			blockedMigrateStep("db_restore", "Database restore did not run because source contour preflight failed"),
+			blockedMigrateStep("files_restore", "Files restore did not run because source contour preflight failed"),
+			blockedMigrateStep("target_start", "Target contour start did not run because source contour preflight failed"),
+		)
+		return info, wrapExecuteError(executeFailure{Kind: domainfailure.KindValidation, Err: err})
+	}
+
 	info.SourceEnvFile = sourceEnv.FilePath
 	info.SourceBackupRoot = s.env.ResolveProjectPath(info.ProjectDir, sourceEnv.BackupRoot())
 	info.Steps = append(info.Steps, ExecuteStep{
@@ -167,6 +187,26 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 	defer func() {
 		_ = targetCtx.Release()
 	}()
+
+	targetRuntimeContract, err := targetCtx.Env.RuntimeContract()
+	if err != nil {
+		info.Steps = append(info.Steps,
+			ExecuteStep{
+				Code:    "target_preflight",
+				Status:  domainworkflow.StatusFailed,
+				Summary: "Target contour preflight failed",
+				Details: err.Error(),
+				Action:  "Fix the explicit helper image and runtime ownership settings in the target env file before rerunning migrate.",
+			},
+			blockedMigrateStep("source_selection", "Source backup selection did not run because target contour preflight failed"),
+			blockedMigrateStep("compatibility", "Migration compatibility checks did not run because target contour preflight failed"),
+			blockedMigrateStep("runtime_prepare", "Target runtime preparation did not run because target contour preflight failed"),
+			blockedMigrateStep("db_restore", "Database restore did not run because target contour preflight failed"),
+			blockedMigrateStep("files_restore", "Files restore did not run because target contour preflight failed"),
+			blockedMigrateStep("target_start", "Target contour start did not run because target contour preflight failed"),
+		)
+		return info, wrapExecuteError(executeFailure{Kind: domainfailure.KindValidation, Err: err})
+	}
 
 	info.TargetEnvFile = targetCtx.Env.FilePath
 	info.TargetBackupRoot = targetCtx.BackupRoot
@@ -330,8 +370,9 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		}
 		if err := s.runtime.ReconcileEspoStoragePermissions(
 			filesReq.TargetDir,
-			strings.TrimSpace(targetCtx.Env.Value("MARIADB_TAG")),
-			strings.TrimSpace(targetCtx.Env.Value("ESPOCRM_IMAGE")),
+			targetRuntimeContract.HelperImage,
+			targetRuntimeContract.UID,
+			targetRuntimeContract.GID,
 		); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{

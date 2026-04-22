@@ -85,7 +85,7 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 		"compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" stop espocrm espocrm-daemon espocrm-websocket",
 		"exec -i -e MYSQL_PWD mock-db mariadb-dump -u espocrm espocrm --single-transaction --quick --routines --triggers --events",
 		"exec -i -e MYSQL_PWD mock-db mariadb -u root",
-		"image inspect espocrm/espocrm:9.3.4-apache",
+		"image inspect alpine:3.20",
 		"-v "+fixture.storageDir+":/espo-storage",
 		"compose --project-directory "+fixture.projectDir+" -f "+filepath.Join(fixture.projectDir, "compose.yaml")+" --env-file "+filepath.Join(fixture.projectDir, ".env.prod")+" up -d espocrm espocrm-daemon espocrm-websocket",
 	) {
@@ -279,7 +279,7 @@ func TestSchema_Restore_JSON_Success_FilesOnly_Direct(t *testing.T) {
 	if stringsContainsAny(log, "mariadb-dump", "exec -i -e MYSQL_PWD mock-db mariadb -u root") {
 		t.Fatalf("did not expect database snapshot or restore commands in docker log:\n%s", log)
 	}
-	if !containsAll(log, "image inspect espocrm/espocrm:9.3.4-apache", "-v "+fixture.storageDir+":/espo-storage") {
+	if !containsAll(log, "image inspect alpine:3.20", "-v "+fixture.storageDir+":/espo-storage") {
 		t.Fatalf("expected permission reconcile docker calls in log:\n%s", log)
 	}
 }

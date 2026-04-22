@@ -25,7 +25,7 @@ Operational control is explicit:
 
 - use CLI flags
 - use the contour env file
-- do not expect hidden process-env toggles for contour hinting, inherited locks, helper image selection, or journal location
+- do not expect hidden process-env toggles for contour hinting, inherited locks, helper image selection or pulling, or journal location
 
 ## Prerequisites
 
@@ -38,6 +38,13 @@ Example env files live under `env/`:
 
 - `env/.env.dev.example`
 - `env/.env.prod.example`
+
+The runtime helper contract is explicit:
+
+- `ESPO_HELPER_IMAGE` names the one helper image used for archive fallback and storage-permission reconciliation
+- `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID` declare the EspoCRM runtime file ownership directly
+- `espops` does not auto-select a helper image, pull one implicitly, or probe the runtime image layout to guess ownership
+- `doctor` validates these settings before stateful work
 
 ## Build
 

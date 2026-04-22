@@ -26,6 +26,6 @@ type Runtime interface {
 	CheckContainerRunning(container string) error
 	DumpMySQLDumpGz(target Target, service, user, password, dbName, destPath string) error
 	ResetAndRestoreMySQLDumpGz(dbPath, container, rootPassword, dbName, appUser string) error
-	CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage string) error
-	ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string) error
+	CreateTarArchiveViaHelper(sourceDir, archivePath, helperImage string) error
+	ReconcileEspoStoragePermissions(targetDir, helperImage string, runtimeUID, runtimeGID int) error
 }

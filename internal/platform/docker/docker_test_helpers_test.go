@@ -24,7 +24,6 @@ type fakeDockerOptions struct {
 	availableImages      []string
 	imageInspectStderr   string
 	imageInspectExitCode int
-	runtimeOwner         string
 	runningServices      []string
 	composeRunningOutput string
 	composeConfigError   string
@@ -95,9 +94,6 @@ func prependFakeDocker(t *testing.T, opts fakeDockerOptions) {
 	}
 	if opts.imageInspectExitCode != 0 {
 		t.Setenv("DOCKER_TEST_IMAGE_INSPECT_EXIT_CODE", strconv.Itoa(opts.imageInspectExitCode))
-	}
-	if opts.runtimeOwner != "" {
-		t.Setenv("DOCKER_TEST_RUNTIME_OWNER", opts.runtimeOwner)
 	}
 	if opts.composeRunningOutput != "" {
 		t.Setenv("DOCKER_TEST_COMPOSE_RUNNING_OUTPUT", opts.composeRunningOutput)
@@ -499,8 +495,8 @@ if [[ "${1:-}" == "run" ]]; then
     exit 0
   fi
 
-  printf '%s\n' "${DOCKER_TEST_RUNTIME_OWNER:-33:33}"
-  exit 0
+  echo "unexpected docker run invocation: $image ${args[*]:-}" >&2
+  exit 99
 fi
 
 echo "unexpected docker invocation: $*" >&2

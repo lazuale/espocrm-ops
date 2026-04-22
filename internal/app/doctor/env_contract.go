@@ -16,6 +16,7 @@ func checkEnvContract(report *Report, scope string, env domainenv.OperationEnv) 
 	for _, key := range []string{
 		"ESPOCRM_IMAGE",
 		"MARIADB_TAG",
+		"ESPO_HELPER_IMAGE",
 		"BACKUP_NAME_PREFIX",
 		"BACKUP_RETENTION_DAYS",
 		"MIN_FREE_DISK_MB",
@@ -70,6 +71,8 @@ func checkEnvContract(report *Report, scope string, env domainenv.OperationEnv) 
 		"BACKUP_RETENTION_DAYS",
 		"MIN_FREE_DISK_MB",
 		"DOCKER_LOG_MAX_FILE",
+		"ESPO_RUNTIME_UID",
+		"ESPO_RUNTIME_GID",
 		"DB_PIDS_LIMIT",
 		"ESPO_PIDS_LIMIT",
 		"DAEMON_PIDS_LIMIT",

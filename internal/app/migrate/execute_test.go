@@ -59,7 +59,7 @@ func TestExecute_SkipDBNoStart_ReconcilesFilesPermissions(t *testing.T) {
 
 	log := readFile(t, fixture.logPath)
 	if !containsAll(log,
-		"image inspect espocrm/espocrm:9.3.4-apache",
+		"image inspect alpine:3.20",
 		"-v "+fixture.storageDir+":/espo-storage",
 	) {
 		t.Fatalf("expected permission reconcile docker calls in log:\n%s", log)

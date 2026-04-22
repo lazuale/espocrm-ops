@@ -104,7 +104,7 @@ func (s Service) createFilesBackupArchive(req Request, archivePath string) (file
 	}
 
 	info.UsedDockerHelper = true
-	if err := s.runtime.CreateTarArchiveViaHelper(req.StorageDir, archivePath, req.MariaDBTag, req.EspoCRMImage); err != nil {
+	if err := s.runtime.CreateTarArchiveViaHelper(req.StorageDir, archivePath, req.HelperImage); err != nil {
 		return filesArchiveInfo{}, domainfailure.Failure{
 			Kind:    domainfailure.KindExternal,
 			Code:    "backup_failed",

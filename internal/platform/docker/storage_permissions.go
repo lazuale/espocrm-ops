@@ -4,52 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 )
 
-func ResolveEspoRuntimeOwner(espocrmImage string) (int, int, error) {
-	image := strings.TrimSpace(espocrmImage)
-	if image == "" {
-		return 0, 0, fmt.Errorf("ESPOCRM_IMAGE is required to resolve runtime storage ownership")
-	}
-	if _, err := runDockerCommand("image", "inspect", image); err != nil {
-		return 0, 0, fmt.Errorf("inspect image %s: %w", image, err)
-	}
-
-	res, err := runDockerCommand(
-		"run",
-		"--pull=never",
-		"--rm",
-		"--user", "0:0",
-		"--entrypoint", "sh",
-		image,
-		"-euc",
-		resolveEspoRuntimeOwnerScript,
-	)
-	if err != nil {
-		return 0, 0, fmt.Errorf("inspect runtime owner from image %s: %w", image, err)
-	}
-
-	owner := strings.TrimSpace(res.Stdout)
-	uidRaw, gidRaw, ok := strings.Cut(owner, ":")
-	if !ok {
-		return 0, 0, fmt.Errorf("runtime owner %q did not match uid:gid format", owner)
-	}
-
-	uid, err := strconv.Atoi(strings.TrimSpace(uidRaw))
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse runtime uid %q: %w", uidRaw, err)
-	}
-	gid, err := strconv.Atoi(strings.TrimSpace(gidRaw))
-	if err != nil {
-		return 0, 0, fmt.Errorf("parse runtime gid %q: %w", gidRaw, err)
-	}
-
-	return uid, gid, nil
-}
-
-func ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string) error {
+func ReconcileEspoStoragePermissions(targetDir, helperImage string, runtimeUID, runtimeGID int) error {
 	targetDir = filepath.Clean(strings.TrimSpace(targetDir))
 	if targetDir == "" {
 		return fmt.Errorf("storage target dir is required")
@@ -59,13 +17,14 @@ func ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string)
 	} else if !fi.IsDir() {
 		return fmt.Errorf("storage target dir %s must be a directory", targetDir)
 	}
-
-	runtimeUID, runtimeGID, err := ResolveEspoRuntimeOwner(espocrmImage)
-	if err != nil {
-		return err
+	if runtimeUID < 0 {
+		return fmt.Errorf("ESPO_RUNTIME_UID must be non-negative")
+	}
+	if runtimeGID < 0 {
+		return fmt.Errorf("ESPO_RUNTIME_GID must be non-negative")
 	}
 
-	helperImage, err := selectLocalHelperImage(mariaDBTag, espocrmImage)
+	helperImage, err := ensureHelperImageAvailable(helperImage)
 	if err != nil {
 		return err
 	}
@@ -93,25 +52,6 @@ func ReconcileEspoStoragePermissions(targetDir, mariaDBTag, espocrmImage string)
 
 	return nil
 }
-
-const resolveEspoRuntimeOwnerScript = `
-for path in \
-  /var/www/html/data \
-  /var/www/html/custom \
-  /var/www/html/client/custom \
-  /var/www/html/upload \
-  /var/www/html
-do
-  if [ -e "$path" ]; then
-    set -- $(ls -nd "$path")
-    [ "$#" -ge 4 ] || exit 1
-    printf "%s:%s\n" "$3" "$4"
-    exit 0
-  fi
-done
-
-exit 1
-`
 
 const reconcileEspoStoragePermissionsScript = `
 storage="/espo-storage"

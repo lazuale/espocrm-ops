@@ -150,6 +150,26 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		_ = ctx.Release()
 	}()
 
+	runtimeContract, err := ctx.Env.RuntimeContract()
+	if err != nil {
+		info.Steps = append(info.Steps,
+			ExecuteStep{
+				Code:    "operation_preflight",
+				Status:  domainworkflow.StatusFailed,
+				Summary: "Restore preflight failed",
+				Details: err.Error(),
+				Action:  "Fix the explicit helper image and runtime ownership settings before rerunning restore.",
+			},
+			blockedRestoreStep("source_resolution", "Source resolution did not run because restore preflight failed"),
+			blockedRestoreStep("runtime_prepare", "Runtime preparation did not run because restore preflight failed"),
+			blockedRestoreStep("snapshot_recovery_point", "Emergency recovery point did not run because restore preflight failed"),
+			blockedRestoreStep("db_restore", "Database restore did not run because restore preflight failed"),
+			blockedRestoreStep("files_restore", "Files restore did not run because restore preflight failed"),
+			blockedRestoreStep("runtime_return", "Runtime return did not run because restore preflight failed"),
+		)
+		return info, wrapRestoreExecuteError(executeFailure{Kind: domainfailure.KindValidation, Err: err})
+	}
+
 	info.EnvFile = ctx.Env.FilePath
 	info.BackupRoot = ctx.BackupRoot
 	info.Steps = append(info.Steps, ExecuteStep{
@@ -350,8 +370,9 @@ func (s Service) Execute(req ExecuteRequest) (ExecuteInfo, error) {
 		}
 		if err := s.runtime.ReconcileEspoStoragePermissions(
 			filesReq.TargetDir,
-			strings.TrimSpace(ctx.Env.Value("MARIADB_TAG")),
-			strings.TrimSpace(ctx.Env.Value("ESPOCRM_IMAGE")),
+			runtimeContract.HelperImage,
+			runtimeContract.UID,
+			runtimeContract.GID,
 		); err != nil {
 			info.Steps = append(info.Steps,
 				ExecuteStep{

@@ -34,3 +34,8 @@ func (s Service) verifyRuntimePaths(projectDir, operation string, values env.Ope
 
 	return nil
 }
+
+func (s Service) verifyRuntimeContract(values env.OperationEnv) error {
+	_, err := values.RuntimeContract()
+	return err
+}

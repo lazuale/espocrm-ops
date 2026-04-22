@@ -2,6 +2,7 @@ package env
 
 import (
 	"fmt"
+	"strconv"
 	"strings"
 )
 
@@ -14,6 +15,12 @@ type ValueMismatch struct {
 	Name       string
 	LeftValue  string
 	RightValue string
+}
+
+type RuntimeContract struct {
+	HelperImage string
+	UID         int
+	GID         int
 }
 
 var migrationCompatibilityKeys = []string{
@@ -65,4 +72,44 @@ func BackupRetentionDays(values Values) (int, error) {
 	}
 
 	return days, nil
+}
+
+func ResolveRuntimeContract(values Values) (RuntimeContract, error) {
+	helperImage := strings.TrimSpace(values.Value("ESPO_HELPER_IMAGE"))
+	if helperImage == "" {
+		return RuntimeContract{}, fmt.Errorf("ESPO_HELPER_IMAGE is required")
+	}
+
+	uid, err := parseNonNegativeInt("ESPO_RUNTIME_UID", values.Value("ESPO_RUNTIME_UID"))
+	if err != nil {
+		return RuntimeContract{}, err
+	}
+
+	gid, err := parseNonNegativeInt("ESPO_RUNTIME_GID", values.Value("ESPO_RUNTIME_GID"))
+	if err != nil {
+		return RuntimeContract{}, err
+	}
+
+	return RuntimeContract{
+		HelperImage: helperImage,
+		UID:         uid,
+		GID:         gid,
+	}, nil
+}
+
+func parseNonNegativeInt(name, raw string) (int, error) {
+	value := strings.TrimSpace(raw)
+	if value == "" {
+		return 0, fmt.Errorf("%s is required", name)
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return 0, fmt.Errorf("%s must be an integer", name)
+	}
+	if parsed < 0 {
+		return 0, fmt.Errorf("%s must be non-negative", name)
+	}
+
+	return parsed, nil
 }

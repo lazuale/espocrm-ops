@@ -20,6 +20,15 @@ func (s Service) BuildRequest(ctx operationapp.OperationContext, opts Options) (
 		}
 	}
 
+	runtimeContract, err := ctx.Env.RuntimeContract()
+	if err != nil {
+		return Request{}, domainfailure.Failure{
+			Kind: domainfailure.KindValidation,
+			Code: "backup_failed",
+			Err:  err,
+		}
+	}
+
 	prepared := Request{
 		Scope:          ctx.Scope,
 		ProjectDir:     ctx.ProjectDir,
@@ -34,6 +43,7 @@ func (s Service) BuildRequest(ctx operationapp.OperationContext, opts Options) (
 		DBPassword:     ctx.Env.Value("DB_PASSWORD"),
 		DBName:         strings.TrimSpace(ctx.Env.Value("DB_NAME")),
 		EspoCRMImage:   strings.TrimSpace(ctx.Env.Value("ESPOCRM_IMAGE")),
+		HelperImage:    runtimeContract.HelperImage,
 		MariaDBTag:     strings.TrimSpace(ctx.Env.Value("MARIADB_TAG")),
 		SkipDB:         opts.SkipDB,
 		SkipFiles:      opts.SkipFiles,

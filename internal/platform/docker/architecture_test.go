@@ -83,13 +83,7 @@ func TestDockerAdapterShellSeamsStayInStoragePermissions(t *testing.T) {
 	assertDockerPackageTextOwnership(t, `"-euc"`, map[string]struct{}{
 		"storage_permissions.go": {},
 	})
-	assertDockerPackageTextOwnership(t, "func ResolveEspoRuntimeOwner(", map[string]struct{}{
-		"storage_permissions.go": {},
-	})
 	assertDockerPackageTextOwnership(t, "func ReconcileEspoStoragePermissions(", map[string]struct{}{
-		"storage_permissions.go": {},
-	})
-	assertDockerPackageTextOwnership(t, "const resolveEspoRuntimeOwnerScript =", map[string]struct{}{
 		"storage_permissions.go": {},
 	})
 	assertDockerPackageTextOwnership(t, "const reconcileEspoStoragePermissionsScript =", map[string]struct{}{
@@ -128,13 +122,7 @@ func TestDockerAdapterHelperArchiveSeamsStayInArchiveGo(t *testing.T) {
 	assertDockerPackageTextOwnership(t, "func CreateTarArchiveViaHelper(", map[string]struct{}{
 		"archive.go": {},
 	})
-	assertDockerPackageTextOwnership(t, "func selectLocalHelperImage(", map[string]struct{}{
-		"archive.go": {},
-	})
-	assertDockerPackageTextOwnership(t, "func helperImageCandidates(", map[string]struct{}{
-		"archive.go": {},
-	})
-	assertDockerPackageTextOwnership(t, "func appendUniqueHelperImageCandidate(", map[string]struct{}{
+	assertDockerPackageTextOwnership(t, "func ensureHelperImageAvailable(", map[string]struct{}{
 		"archive.go": {},
 	})
 	assertDockerPackageTextOwnership(t, `"--entrypoint", "tar"`, map[string]struct{}{

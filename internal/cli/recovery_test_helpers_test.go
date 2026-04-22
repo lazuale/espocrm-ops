@@ -434,7 +434,6 @@ if [[ "${1:-}" == "run" ]]; then
   done
 
   if [[ -n "$storage_host" ]]; then
-    chown -R "${ESPO_RUNTIME_UID}:${ESPO_RUNTIME_GID}" "$storage_host"
     find "$storage_host" -type d -exec chmod 0755 {} +
 
     for relative in data custom client/custom upload; do

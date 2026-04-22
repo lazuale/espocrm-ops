@@ -96,6 +96,36 @@ func TestDiagnoseReportsCrossScopeCompatibilityDrift(t *testing.T) {
 	}
 }
 
+func TestDiagnoseReportsInvalidRuntimeContract(t *testing.T) {
+	projectDir := newDoctorProject(t)
+	writeDoctorEnv(t, projectDir, "prod", map[string]string{
+		"ESPO_RUNTIME_UID": "oops",
+	})
+	prependFakeDocker(t)
+
+	report, err := testDoctorService().Diagnose(Request{
+		Scope:       "prod",
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Ready() {
+		t.Fatalf("expected env contract failure, got %#v", report.Checks)
+	}
+	check, ok := findCheck(report, "env_contract", "prod")
+	if !ok {
+		t.Fatalf("missing env_contract check in %#v", report.Checks)
+	}
+	if check.Status != statusFail {
+		t.Fatalf("expected failing env_contract check, got %#v", check)
+	}
+	if !strings.Contains(check.Details, "ESPO_RUNTIME_UID must be an integer") {
+		t.Fatalf("expected runtime contract validation detail, got %#v", check)
+	}
+}
+
 func newDoctorProject(t *testing.T) string {
 	t.Helper()
 

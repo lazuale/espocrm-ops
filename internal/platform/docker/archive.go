@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-func CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage string) error {
+func CreateTarArchiveViaHelper(sourceDir, archivePath, helperImage string) error {
 	if strings.TrimSpace(sourceDir) == "" {
 		return fmt.Errorf("source dir is required")
 	}
@@ -24,7 +24,7 @@ func CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage 
 		return fmt.Errorf("ensure archive dir: %w", err)
 	}
 
-	image, err := selectLocalHelperImage(mariaDBTag, espocrmImage)
+	helperImage, err := ensureHelperImageAvailable(helperImage)
 	if err != nil {
 		return err
 	}
@@ -36,7 +36,7 @@ func CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage 
 		"--entrypoint", "tar",
 		"-v", sourceParent+":/archive-source:ro",
 		"-v", archiveDir+":/archive-target",
-		image,
+		helperImage,
 		"-C", "/archive-source",
 		"-czf", filepath.Join("/archive-target", archiveBase),
 		sourceBase,
@@ -47,45 +47,18 @@ func CreateTarArchiveViaHelper(sourceDir, archivePath, mariaDBTag, espocrmImage 
 	return nil
 }
 
-func selectLocalHelperImage(mariaDBTag, espocrmImage string) (string, error) {
-	candidates := helperImageCandidates(mariaDBTag, espocrmImage)
-	if len(candidates) == 0 {
-		return "", fmt.Errorf("no helper image candidates configured")
+func ensureHelperImageAvailable(helperImage string) (string, error) {
+	image := strings.TrimSpace(helperImage)
+	if image == "" {
+		return "", fmt.Errorf("ESPO_HELPER_IMAGE is required")
 	}
 
-	for _, candidate := range candidates {
-		if _, err := runDockerCommand("image", "inspect", candidate); err == nil {
-			return candidate, nil
-		} else if !isDockerImageMissing(err) {
-			return "", fmt.Errorf("inspect helper image %s: %w", candidate, err)
+	if _, err := runDockerCommand("image", "inspect", image); err != nil {
+		if isDockerImageMissing(err) {
+			return "", fmt.Errorf("helper image %s is not available locally", image)
 		}
+		return "", fmt.Errorf("inspect helper image %s: %w", image, err)
 	}
 
-	return "", fmt.Errorf("no local helper image is available (checked: %s)", strings.Join(candidates, ", "))
-}
-
-func helperImageCandidates(mariaDBTag, espocrmImage string) []string {
-	candidates := make([]string, 0, 4)
-	appendUniqueHelperImageCandidate(&candidates, strings.TrimSpace(espocrmImage))
-	if tag := strings.TrimSpace(mariaDBTag); tag != "" {
-		appendUniqueHelperImageCandidate(&candidates, "mariadb:"+tag)
-	}
-	appendUniqueHelperImageCandidate(&candidates, "alpine:3.20")
-	appendUniqueHelperImageCandidate(&candidates, "busybox:1.36")
-	return candidates
-}
-
-func appendUniqueHelperImageCandidate(candidates *[]string, candidate string) {
-	candidate = strings.TrimSpace(candidate)
-	if candidate == "" {
-		return
-	}
-
-	for _, existing := range *candidates {
-		if existing == candidate {
-			return
-		}
-	}
-
-	*candidates = append(*candidates, candidate)
+	return image, nil
 }

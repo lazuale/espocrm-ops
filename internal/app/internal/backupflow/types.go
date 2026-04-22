@@ -28,6 +28,7 @@ type Request struct {
 	DBPassword     string
 	DBName         string
 	EspoCRMImage   string
+	HelperImage    string
 	MariaDBTag     string
 	SkipDB         bool
 	SkipFiles      bool

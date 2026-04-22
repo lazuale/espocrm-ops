@@ -73,6 +73,30 @@ func TestPrepareOperation_RestoreStillRequiresWritableRuntimeStorage(t *testing.
 	}
 }
 
+func TestPrepareOperationRejectsInvalidRuntimeContract(t *testing.T) {
+	projectDir := newOperationProject(t, "prod")
+	envPath := filepath.Join(projectDir, ".env.prod")
+
+	raw, err := os.ReadFile(envPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	updated := strings.Replace(string(raw), "ESPO_RUNTIME_UID=33\n", "ESPO_RUNTIME_UID=oops\n", 1)
+	if err := os.WriteFile(envPath, []byte(updated), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := testService().PrepareOperation(OperationContextRequest{
+		Scope:      "prod",
+		Operation:  "backup",
+		ProjectDir: projectDir,
+	}); err == nil {
+		t.Fatal("expected runtime contract validation failure")
+	} else if !strings.Contains(err.Error(), "ESPO_RUNTIME_UID must be an integer") {
+		t.Fatalf("unexpected runtime contract error: %v", err)
+	}
+}
+
 func newOperationProject(t *testing.T, scope string) string {
 	t.Helper()
 
