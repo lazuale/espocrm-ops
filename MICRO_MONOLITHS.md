@@ -324,6 +324,7 @@ resolve the contour env, derive project-local runtime paths, verify filesystem c
 Inside this unit:
 
 - `internal/app/operation/`
+- `internal/app/operation/` remains an approved residual contour only for the lifecycle files in this package; extracted trace/runtime semantics must not drift back into it
 
 Allowed internal mechanisms:
 

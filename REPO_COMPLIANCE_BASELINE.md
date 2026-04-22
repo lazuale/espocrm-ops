@@ -140,7 +140,7 @@ Owner-local machine-enforced surfaces:
 - `internal/cli/errortransport` dedicated error-transport contour
 - `internal/cli/journalbridge` dedicated journal-projection bridge contour
 - `internal/cli/resultbridge` dedicated result/output contour
-- `internal/app/operation` dedicated lifecycle contour
+- `internal/app/operation` residual lifecycle contour and explicit preflight bridge definitions
 - `internal/app/operationtrace` dedicated journal/runtime trace contour
 - `internal/platform/runtimeadapter` dedicated runtime adapter bridge contour
 - `internal/platform/envadapter` dedicated env/config adapter bridge contour
