@@ -48,3 +48,152 @@ func TestOperationAppDoesNotOwnPlatformJournalStoreWiring(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestOperationLifecycleImportSurfaceStaysExplicit(t *testing.T) {
+	assertOperationImportOwnership(t, modulePath+"/internal/app/ports/envport", map[string]struct{}{
+		"operation_context.go": {},
+	})
+	assertOperationImportOwnership(t, modulePath+"/internal/app/ports/filesport", map[string]struct{}{
+		"operation_context.go": {},
+	})
+	assertOperationImportOwnership(t, modulePath+"/internal/app/ports/lockport", map[string]struct{}{
+		"operation_context.go": {},
+	})
+	assertOperationImportOwnership(t, modulePath+"/internal/domain/env", map[string]struct{}{
+		"context_runtime_dirs.go": {},
+		"operation_context.go":    {},
+	})
+	assertOperationImportOwnership(t, modulePath+"/internal/domain/failure", map[string]struct{}{
+		"operation_context.go": {},
+	})
+}
+
+func TestOperationJournalAndRuntimeBridgeFilesStayExplicit(t *testing.T) {
+	assertOperationImportOwnership(t, modulePath+"/internal/domain/journal", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "func (s Service) PrepareOperation(", map[string]struct{}{
+		"operation_context.go": {},
+	})
+	assertOperationTextOwnership(t, "func (s Service) verifyRuntimePaths(", map[string]struct{}{
+		"context_runtime_dirs.go": {},
+	})
+	assertOperationTextOwnership(t, "func classifyOperationEnvError(", map[string]struct{}{
+		"operation_context.go": {},
+	})
+	assertOperationTextOwnership(t, "func classifyOperationLockError(", map[string]struct{}{
+		"operation_context.go": {},
+	})
+	assertOperationTextOwnership(t, "var ErrJournalWriterDisabled", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "type Runtime interface", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "type Writer interface", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "type JournalPayload struct", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "type JournalRecord struct", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "type Completion struct", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "func Begin(", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "func (e Execution) FinishSuccess(", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "func (e Execution) FinishFailure(", map[string]struct{}{
+		"run.go": {},
+	})
+	assertOperationTextOwnership(t, "type DefaultRuntime struct", map[string]struct{}{
+		"runtime.go": {},
+	})
+	assertOperationTextOwnership(t, "func NewOperationID()", map[string]struct{}{
+		"runtime.go": {},
+	})
+}
+
+func assertOperationImportOwnership(t *testing.T, importPath string, owners map[string]struct{}) {
+	t.Helper()
+
+	root := testutil.RepoRoot(t)
+	dir := filepath.Join(root, "internal", "app", "operation")
+	fset := token.NewFileSet()
+
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range file.Imports {
+			resolved, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return err
+			}
+			if resolved != importPath {
+				continue
+			}
+			if _, ok := owners[filepath.Base(path)]; !ok {
+				t.Fatalf("%s import must stay owner-local to %v; found in %s", importPath, operationOwnerNames(owners), path)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertOperationTextOwnership(t *testing.T, needle string, owners map[string]struct{}) {
+	t.Helper()
+
+	root := testutil.RepoRoot(t)
+	dir := filepath.Join(root, "internal", "app", "operation")
+
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(raw), needle) {
+			return nil
+		}
+		if _, ok := owners[filepath.Base(path)]; !ok {
+			t.Fatalf("%s must stay owner-local to %v; found in %s", needle, operationOwnerNames(owners), path)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func operationOwnerNames(owners map[string]struct{}) []string {
+	names := make([]string, 0, len(owners))
+	for name := range owners {
+		names = append(names, name)
+	}
+	return names
+}

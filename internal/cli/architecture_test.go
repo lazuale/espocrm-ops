@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -158,6 +159,14 @@ func TestProductionCLIJournalProjectionStaysBehindRunner(t *testing.T) {
 	})
 }
 
+func TestProductionCLIAppOperationBridgeFilesStayExplicit(t *testing.T) {
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/app/operation", map[string]struct{}{
+		"deps.go":           {},
+		"journal_record.go": {},
+		"runner.go":         {},
+	})
+}
+
 func TestProductionCLIErrorTransportRouteStaysCanonical(t *testing.T) {
 	assertCLITextOwnership(t, "ErrorResult(", map[string]struct{}{
 		"errors.go":  {},
@@ -168,6 +177,45 @@ func TestProductionCLIErrorTransportRouteStaysCanonical(t *testing.T) {
 	})
 	assertCLITextOwnership(t, "ResultCodeError{", map[string]struct{}{
 		"runner.go": {},
+	})
+}
+
+func TestProductionCLITransportBridgeDefinitionsStayExplicit(t *testing.T) {
+	assertCLITextOwnership(t, "func renderExecutionError(", map[string]struct{}{
+		"execute.go": {},
+	})
+	assertCLITextOwnership(t, "type textErrorSuppressor interface", map[string]struct{}{
+		"execute.go": {},
+	})
+	assertCLITextOwnership(t, "type resultCarrier interface", map[string]struct{}{
+		"result_error.go": {},
+	})
+	assertCLITextOwnership(t, "type ResultCodeError struct", map[string]struct{}{
+		"result_error.go": {},
+	})
+	assertCLITextOwnership(t, "type silentCodeError struct", map[string]struct{}{
+		"errors.go": {},
+	})
+	assertCLITextOwnership(t, "func usageError(", map[string]struct{}{
+		"errors.go": {},
+	})
+	assertCLITextOwnership(t, "func ErrorResult(", map[string]struct{}{
+		"errors.go": {},
+	})
+	assertCLITextOwnership(t, "func IsUsageError(", map[string]struct{}{
+		"errors.go": {},
+	})
+	assertCLITextOwnership(t, "func appendCommandWarning(", map[string]struct{}{
+		"runner.go": {},
+	})
+	assertCLITextOwnership(t, "func renderWarnings(", map[string]struct{}{
+		"runner.go": {},
+	})
+	assertCLITextOwnership(t, "func journalRecordFromResult(", map[string]struct{}{
+		"journal_record.go": {},
+	})
+	assertCLITextOwnership(t, "func applyExecutionCompletion(", map[string]struct{}{
+		"journal_record.go": {},
 	})
 }
 
@@ -260,6 +308,45 @@ func assertCLITextOwnership(t *testing.T, needle string, owners map[string]struc
 		}
 		if _, ok := owners[filepath.Base(path)]; !ok {
 			t.Fatalf("%s must stay owner-local to %v; found in %s", needle, ownerNames(owners), path)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertCLIImportOwnership(t *testing.T, importPath string, owners map[string]struct{}) {
+	t.Helper()
+
+	root := testutil.RepoRoot(t)
+	cliDir := filepath.Join(root, "internal", "cli")
+	fset := token.NewFileSet()
+
+	err := filepath.WalkDir(cliDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range file.Imports {
+			resolved, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return err
+			}
+			if resolved != importPath {
+				continue
+			}
+			if _, ok := owners[filepath.Base(path)]; !ok {
+				t.Fatalf("%s import must stay owner-local to %v; found in %s", importPath, ownerNames(owners), path)
+			}
 		}
 
 		return nil

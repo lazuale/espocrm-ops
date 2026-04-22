@@ -17,9 +17,9 @@ If a future change intentionally moves the repository away from this baseline, t
 ## Audit Metadata
 
 - Date: `2026-04-22`
-- Commit / branch: working tree on `ab8f833edff69a48a84eb32e8112d0b4337a8a6d` on `main`
+- Commit / branch: working tree on `0b62c39d328ba1f50fc58015d99bde50ab35528b` on `main`
 - Reviewer: `Codex`
-- Scope: full repository audit against `REPO_COMPLIANCE_CHECKLIST.md` after proof-split and bridge-discipline policy formalization under the frozen internal micro-monolith constitution
+- Scope: full repository audit against `REPO_COMPLIANCE_CHECKLIST.md` followed by a targeted owner-local proof-promotion pass for explicit mixed-package bridge seams under the frozen internal micro-monolith constitution
 - Final verdict: `PASS`
 
 ---
@@ -136,7 +136,8 @@ Repo-wide machine-enforced surfaces:
 
 Owner-local machine-enforced surfaces:
 
-- `internal/cli` command-runner and transport-bridge locality
+- `internal/cli` command-runner locality, explicit `internal/app/operation` bridge-file locality, and named journal/error transport bridge definitions
+- `internal/app/operation` lifecycle-vs-journal mixed-package import locality and named runtime/journal bridge definitions
 - `internal/platform/docker` low-level exec and helper-shell ownership
 - `internal/platform/config` env-loading discipline
 - `internal/platform/backupstore` exported surface and error-code discipline
