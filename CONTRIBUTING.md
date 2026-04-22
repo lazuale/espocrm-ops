@@ -62,13 +62,14 @@ make ci
 - Keep the approved micro-monolith list, caller matrix, access classes, and ownership map aligned with [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
 - Do not add process-env-only switches. Operator-facing behavior must come from flags or the contour env file.
 - Preflight should inspect. Execution should mutate.
+- Keep repo-wide architectural guards in `repository_test.go` and owner-local rules in package-local `architecture_test.go`; do not add guard theatre.
 - Do not claim reliability improvements without end-to-end evidence.
 
 ## Operational Style
 
-- CLI is edge-only: validate flags, normalize input, call one usecase boundary, render one structured result.
+- CLI is edge-only: validate flags, normalize input, call one usecase boundary, route the boundary result or failure through the canonical journal/result/error path, and render one structured result or structured error output.
 - Mutating app modules expose `Execute(req)`, run a linear workflow, and return structured `Info`, `Warnings`, `Steps`, `Counts()`, and `Ready()`.
-- Final public error meaning belongs to the application boundary. Helpers return raw errors or lightweight local typed failures; diagnostic non-ready reports stay report-owned until the CLI maps them to transport semantics.
+- Final public error meaning belongs to the canonical error path: the boundary owns final app-level wrapping, and the CLI edge owns final transport mapping. Helpers return raw errors or lightweight local typed failures; diagnostic non-ready reports stay report-owned until the CLI maps them to transport semantics.
 - Public `ErrorCode()` ownership belongs to final app/transport carriers only. Adapter/local typed causes may be typed, but must not masquerade as final public error codes.
 - Keep helpers package-local. Do not add framework packages, generic engines, or unnecessary shared helper packages.
 - Prefer explicit request-level injection or small local interfaces in tests. Do not add mutable package-global hooks.

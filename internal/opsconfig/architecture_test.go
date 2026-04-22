@@ -1,4 +1,4 @@
-package fs
+package opsconfig
 
 import (
 	"go/ast"
@@ -11,10 +11,8 @@ import (
 	"testing"
 )
 
-func TestFSExportedSurfaceIsIntentional(t *testing.T) {
-	t.Parallel()
-
-	files := packageSourceFiles(t)
+func TestOpsConfigExportedSurfaceIsIntentional(t *testing.T) {
+	files := opsConfigFiles(t)
 	exported := map[string]struct{}{}
 	fset := token.NewFileSet()
 
@@ -23,7 +21,6 @@ func TestFSExportedSurfaceIsIntentional(t *testing.T) {
 		if err != nil {
 			t.Fatalf("parse %s: %v", path, err)
 		}
-
 		for _, decl := range file.Decls {
 			switch d := decl.(type) {
 			case *ast.FuncDecl:
@@ -49,63 +46,62 @@ func TestFSExportedSurfaceIsIntentional(t *testing.T) {
 		}
 	}
 
-	expected := []string{
-		"CreateTarGz",
-		"DirReadiness",
-		"EnsureFreeSpace",
-		"EnsureNonEmptyFile",
-		"EnsureWritableDir",
-		"InspectDirReadiness",
-		"NewSiblingStage",
-		"PreparedTreeRoot",
-		"PreparedTreeRootExact",
-		"ReplaceTree",
-		"SHA256File",
-		"Stage",
-		"UnpackTarGz",
-		"VerifyGzipReadable",
-		"VerifyTarGzReadable",
-	}
-
-	assertExactNames(t, "exported surface", exported, expected)
+	want := []string{"ResolveProjectPath"}
+	assertExactOpsConfigNames(t, "exported surface", exported, want)
 }
 
-func TestFSPackageDoesNotOwnErrorCodes(t *testing.T) {
-	t.Parallel()
-
-	files := packageSourceFiles(t)
-	methods := map[string]struct{}{}
+func TestOpsConfigPackageIsStdlibOnly(t *testing.T) {
+	files := opsConfigFiles(t)
 	fset := token.NewFileSet()
+
+	for _, path := range files {
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+		for _, imp := range file.Imports {
+			importPath := strings.Trim(imp.Path.Value, `"`)
+			if strings.Contains(importPath, ".") {
+				t.Fatalf("opsconfig must stay stdlib-only; found %s in %s", importPath, path)
+			}
+		}
+	}
+}
+
+func TestOpsConfigDoesNotOwnErrorCodes(t *testing.T) {
+	files := opsConfigFiles(t)
+	fset := token.NewFileSet()
+	methods := map[string]struct{}{}
 
 	for _, path := range files {
 		file, err := parser.ParseFile(fset, path, nil, 0)
 		if err != nil {
 			t.Fatalf("parse %s: %v", path, err)
 		}
-
 		for _, decl := range file.Decls {
 			fn, ok := decl.(*ast.FuncDecl)
 			if !ok || fn.Recv == nil || fn.Name.Name != "ErrorCode" {
 				continue
 			}
-			methods[receiverName(fn)] = struct{}{}
+			methods[opsConfigReceiverName(fn)] = struct{}{}
 		}
 	}
 
 	if len(methods) != 0 {
-		t.Fatalf("fs package must not define ErrorCode methods, found: %v", sortedKeys(methods))
+		t.Fatalf("opsconfig must not define ErrorCode methods, found: %v", sortedOpsConfigKeys(methods))
 	}
 }
 
-func TestFSShellExecutionStaysInArchiveCreateGo(t *testing.T) {
-	t.Parallel()
-
-	assertFSTextOwnership(t, "exec.Command(", map[string]struct{}{
-		"archive_create.go": {},
-	})
+func TestOpsConfigDoesNotReadProcessEnvOrShellOut(t *testing.T) {
+	for _, needle := range []string{
+		"os.",
+		"exec.Command(",
+	} {
+		assertOpsConfigTextAbsent(t, needle)
+	}
 }
 
-func packageSourceFiles(t *testing.T) []string {
+func opsConfigFiles(t *testing.T) []string {
 	t.Helper()
 
 	entries, err := os.ReadDir(".")
@@ -125,7 +121,21 @@ func packageSourceFiles(t *testing.T) []string {
 	return files
 }
 
-func receiverName(fn *ast.FuncDecl) string {
+func assertOpsConfigTextAbsent(t *testing.T, needle string) {
+	t.Helper()
+
+	for _, path := range opsConfigFiles(t) {
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			t.Fatalf("read %s: %v", path, err)
+		}
+		if strings.Contains(string(raw), needle) {
+			t.Fatalf("opsconfig must not contain %s; found in %s", needle, path)
+		}
+	}
+}
+
+func opsConfigReceiverName(fn *ast.FuncDecl) string {
 	if fn.Recv == nil || len(fn.Recv.List) == 0 {
 		return ""
 	}
@@ -142,7 +152,7 @@ func receiverName(fn *ast.FuncDecl) string {
 	return ""
 }
 
-func assertExactNames(t *testing.T, label string, got map[string]struct{}, want []string) {
+func assertExactOpsConfigNames(t *testing.T, label string, got map[string]struct{}, want []string) {
 	t.Helper()
 
 	wantSet := map[string]struct{}{}
@@ -151,45 +161,27 @@ func assertExactNames(t *testing.T, label string, got map[string]struct{}, want 
 	}
 
 	if len(got) != len(wantSet) {
-		t.Fatalf("unexpected %s count: got %v want %v", label, sortedKeys(got), want)
+		t.Fatalf("unexpected %s count: got %v want %v", label, sortedOpsConfigKeys(got), want)
 	}
 
 	for name := range wantSet {
 		if _, ok := got[name]; !ok {
-			t.Fatalf("missing %s entry %q in %v", label, name, sortedKeys(got))
+			t.Fatalf("missing %s entry %q in %v", label, name, sortedOpsConfigKeys(got))
 		}
 	}
 
 	for name := range got {
 		if _, ok := wantSet[name]; !ok {
-			t.Fatalf("unexpected %s entry %q in %v", label, name, sortedKeys(got))
+			t.Fatalf("unexpected %s entry %q in %v", label, name, sortedOpsConfigKeys(got))
 		}
 	}
 }
 
-func sortedKeys(set map[string]struct{}) []string {
+func sortedOpsConfigKeys(set map[string]struct{}) []string {
 	keys := make([]string, 0, len(set))
 	for key := range set {
 		keys = append(keys, key)
 	}
 	sort.Strings(keys)
 	return keys
-}
-
-func assertFSTextOwnership(t *testing.T, needle string, owners map[string]struct{}) {
-	t.Helper()
-
-	files := packageSourceFiles(t)
-	for _, path := range files {
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-		if !strings.Contains(string(raw), needle) {
-			continue
-		}
-		if _, ok := owners[filepath.Base(path)]; !ok {
-			t.Fatalf("%s must stay owner-local to %v; found in %s", needle, sortedKeys(owners), path)
-		}
-	}
 }

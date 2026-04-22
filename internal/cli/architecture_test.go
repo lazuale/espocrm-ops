@@ -142,6 +142,35 @@ func TestProductionCLIExecutionBeginsOnlyInRunner(t *testing.T) {
 	}
 }
 
+func TestProductionCLIExecutionFinishesOnlyInRunner(t *testing.T) {
+	assertCLITextOwnership(t, ".FinishSuccess(", map[string]struct{}{
+		"runner.go": {},
+	})
+	assertCLITextOwnership(t, ".FinishFailure(", map[string]struct{}{
+		"runner.go": {},
+	})
+}
+
+func TestProductionCLIJournalProjectionStaysBehindRunner(t *testing.T) {
+	assertCLITextOwnership(t, "journalRecordFromResult(", map[string]struct{}{
+		"journal_record.go": {},
+		"runner.go":         {},
+	})
+}
+
+func TestProductionCLIErrorTransportRouteStaysCanonical(t *testing.T) {
+	assertCLITextOwnership(t, "ErrorResult(", map[string]struct{}{
+		"errors.go":  {},
+		"execute.go": {},
+	})
+	assertCLITextOwnership(t, ".CommandResult()", map[string]struct{}{
+		"execute.go": {},
+	})
+	assertCLITextOwnership(t, "ResultCodeError{", map[string]struct{}{
+		"runner.go": {},
+	})
+}
+
 func TestCLITestDockerHarnessStaysSingleOwner(t *testing.T) {
 	root := testutil.RepoRoot(t)
 	cliDir := filepath.Join(root, "internal", "cli")
@@ -206,4 +235,44 @@ func TestCLISchemaTestsDoNotAssertGoldenSnapshots(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func assertCLITextOwnership(t *testing.T, needle string, owners map[string]struct{}) {
+	t.Helper()
+
+	root := testutil.RepoRoot(t)
+	cliDir := filepath.Join(root, "internal", "cli")
+
+	err := filepath.WalkDir(cliDir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		if !strings.Contains(string(raw), needle) {
+			return nil
+		}
+		if _, ok := owners[filepath.Base(path)]; !ok {
+			t.Fatalf("%s must stay owner-local to %v; found in %s", needle, ownerNames(owners), path)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func ownerNames(owners map[string]struct{}) []string {
+	names := make([]string, 0, len(owners))
+	for name := range owners {
+		names = append(names, name)
+	}
+	return names
 }

@@ -56,6 +56,7 @@ Confirm that the following files agree on:
 - prohibition on hidden architectural exceptions
 
 ### Files
+- `AGENTS.md`
 - `ARCHITECTURE.md`
 - `MICRO_MONOLITHS.md`
 - `README.md`
@@ -66,6 +67,8 @@ Confirm that the following files agree on:
 - No stale references to removed layers or legacy architecture
 - No document preserves old behavior "for compatibility"
 - No contradiction between the layer constitution and the micro-monolith constitution
+- Every constitutional rule can be identified as `repo-wide machine-enforced`, `owner-local machine-enforced`, or `review-enforced but binding`
+- No document implies stronger proof than the repository actually carries
 
 ### Findings
 - Status:
@@ -137,8 +140,8 @@ Check that `internal/cli/` only:
 - validates input
 - normalizes input
 - calls one application boundary
-- renders one structured result
-- adapts result payloads for presentation/journal output
+- routes one boundary result or failure through the canonical journal/result/error path
+- renders one structured result or structured error output
 
 CLI must not:
 - own product policy
@@ -155,8 +158,8 @@ Check that `internal/app/` owns:
 - workflow orchestration
 - sequencing
 - preflight coordination
-- result shaping
-- final error mapping
+- boundary info/report shaping
+- final app-level error wrapping
 
 Application must not:
 - import concrete infrastructure when a port should be used
@@ -225,6 +228,7 @@ Confirm that:
   - invariants
   - anti-invariants
 - the declared contours still match the actual package/file ownership in the repo
+- shared bridge files inside mixed packages are named explicitly
 - shared inner kernels are modeled as part of exactly one bounded micro-monolith rather than duplicated across commands
 
 ### Pass Criteria
@@ -332,7 +336,11 @@ Helpers must not:
 
 Application boundaries must own:
 - final error classification
-- final external/app wrapping
+- final app-level wrapping
+
+The CLI edge must own:
+- final transport exit-code mapping
+- final public error-result transport mapping
 
 Public `ErrorCode()` carriers must remain limited to final app/transport wrappers.
 
@@ -341,6 +349,7 @@ Diagnostic/report boundaries may return a structured report that the CLI maps to
 ### Pass Criteria
 - No helper-level final error wrapping remains
 - Boundary-owned wrapping is consistent across mutating workflows
+- CLI-owned transport mapping is consistent across command families
 - Diagnostic query readiness-to-exit mapping does not create a second helper/adapter policy owner
 
 ### Findings
@@ -382,6 +391,9 @@ Verify that cross-unit dependencies follow the approved micro-monolith interacti
 
 ### Check
 Inspect `MICRO_MONOLITHS.md` and the production import/call structure.
+
+Interpret the interaction model as the matrix of direct operational invocation edges and named shared-kernel entry edges.
+Do not treat passive use of shared failure/result vocabulary as a caller-matrix violation unless the contour or ownership map is wrong.
 
 Confirm that:
 - caller -> callee edges stay inside the approved interaction model
@@ -584,6 +596,7 @@ Confirm that:
 - read-only diagnostic or verification units do not mutate state
 - privileged adapters do not become workflow owners
 - journal and output units stay side-effect constrained to their declared surfaces
+- each access-class claim is recorded as machine-enforced or review-enforced rather than assumed
 
 ### Pass Criteria
 - Every micro-monolith still matches its declared access class

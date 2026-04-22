@@ -19,7 +19,7 @@ If a future change intentionally moves the repository away from this baseline, t
 - Date: `2026-04-22`
 - Commit / branch: working tree on `ab8f833edff69a48a84eb32e8112d0b4337a8a6d` on `main`
 - Reviewer: `Codex`
-- Scope: full repository audit against `REPO_COMPLIANCE_CHECKLIST.md` after freezing the internal micro-monolith constitution
+- Scope: full repository audit against `REPO_COMPLIANCE_CHECKLIST.md` after documentation sharpen and enforcement wave under the frozen internal micro-monolith constitution
 - Final verdict: `PASS`
 
 ---
@@ -116,6 +116,37 @@ A change must be rejected if it does any of the following:
 - moves privileged access to a weaker access class or introduces a hidden side channel
 - reintroduces direct `internal/app -> internal/platform/*` imports
 - introduces a second owner for an existing operational semantic
+
+---
+
+## Current Proof Split
+
+Repo-wide machine-enforced surfaces:
+
+- layer and command dependency boundaries
+- canonical top-level app boundary surface
+- canonical public `ErrorCode()` ownership
+- explicit production process-env access surface
+- explicit production shell/`exec.Command` surface
+- approved top-level app and shared-kernel import edges
+
+Owner-local machine-enforced surfaces:
+
+- `internal/cli` command-runner and transport-bridge locality
+- `internal/platform/docker` low-level exec and helper-shell ownership
+- `internal/platform/config` env-loading discipline
+- `internal/platform/backupstore` exported surface and error-code discipline
+- `internal/platform/fs` exported surface, error-code discipline, and local shell-seam locality
+- `internal/platform/locks` exported surface and no hidden env/shell control path
+- `internal/platform/journalstore` exported surface and narrow journal-writer surface
+- `internal/opsconfig` exported surface and no IO/env/shell drift
+
+Review-enforced but binding surfaces:
+
+- the full caller matrix beyond import-level and named shared-kernel edges
+- the full global ops pipeline traversal
+- the access-class table beyond syntactic seam ownership
+- the semantic ownership map where ownership spans shared packages and bridge files
 
 ---
 

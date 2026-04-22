@@ -30,6 +30,7 @@
 - No implicit path switching.
 - No ambiguous success.
 - No shell-owned product, contract, validation, or recovery semantics.
+- No guard theatre.
 - No new product surface.
 
 ## Core Flow

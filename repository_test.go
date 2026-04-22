@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -120,6 +121,81 @@ func TestAppAndDomainDoNotReadProcessEnv(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+	}
+}
+
+func TestProductionProcessEnvAccessSurfaceIsExplicit(t *testing.T) {
+	root := repoRoot(t)
+	fset := token.NewFileSet()
+	allowedEnvironOwners := map[string]struct{}{
+		filepath.Join(root, "internal", "platform", "docker", "docker.go"): {},
+	}
+
+	for _, path := range productionGoFiles(t, filepath.Join(root, "cmd"), filepath.Join(root, "internal")) {
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+
+			ident, ok := selector.X.(*ast.Ident)
+			if !ok || ident.Name != "os" {
+				return true
+			}
+
+			switch selector.Sel.Name {
+			case "Getenv", "LookupEnv", "Getwd":
+				t.Fatalf("production process env/path access %s must not appear at %s", selector.Sel.Name, fset.Position(selector.Pos()))
+			case "Environ":
+				if _, ok := allowedEnvironOwners[path]; !ok {
+					t.Fatalf("os.Environ must stay in %v; found at %s", sortedStringSet(allowedEnvironOwners), fset.Position(selector.Pos()))
+				}
+			}
+
+			return true
+		})
+	}
+}
+
+func TestProductionShellExecutionSurfaceIsExplicit(t *testing.T) {
+	root := repoRoot(t)
+	fset := token.NewFileSet()
+	allowedExecOwners := map[string]struct{}{
+		filepath.Join(root, "internal", "platform", "docker", "docker.go"):     {},
+		filepath.Join(root, "internal", "platform", "fs", "archive_create.go"): {},
+	}
+
+	for _, path := range productionGoFiles(t, filepath.Join(root, "cmd"), filepath.Join(root, "internal")) {
+		file, err := parser.ParseFile(fset, path, nil, 0)
+		if err != nil {
+			t.Fatalf("parse %s: %v", path, err)
+		}
+
+		ast.Inspect(file, func(node ast.Node) bool {
+			selector, ok := node.(*ast.SelectorExpr)
+			if !ok {
+				return true
+			}
+
+			ident, ok := selector.X.(*ast.Ident)
+			if !ok || ident.Name != "exec" {
+				return true
+			}
+
+			switch selector.Sel.Name {
+			case "Command", "CommandContext":
+				if _, ok := allowedExecOwners[path]; !ok {
+					t.Fatalf("shell execution seam %s must stay in %v; found at %s", selector.Sel.Name, sortedStringSet(allowedExecOwners), fset.Position(selector.Pos()))
+				}
+			}
+
+			return true
+		})
 	}
 }
 
@@ -316,10 +392,93 @@ func TestAppBoundaryPackagesExposeOnlyCanonicalSurface(t *testing.T) {
 	}
 }
 
+func TestTopLevelAppBoundaryImportEdgesAreCanonical(t *testing.T) {
+	root := repoRoot(t)
+	allowed := map[string]map[string]struct{}{
+		"backup": {
+			modulePath + "/internal/app/operation":           {},
+			modulePath + "/internal/app/internal/backupflow": {},
+		},
+		"backupverify": {},
+		"restore": {
+			modulePath + "/internal/app/operation":            {},
+			modulePath + "/internal/app/internal/backupflow":  {},
+			modulePath + "/internal/app/internal/restoreflow": {},
+		},
+		"migrate": {
+			modulePath + "/internal/app/operation":            {},
+			modulePath + "/internal/app/internal/restoreflow": {},
+		},
+		"doctor": {},
+	}
+
+	for pkgName, allowedImports := range allowed {
+		assertAppImportEdges(t, filepath.Join(root, "internal", "app", pkgName), allowedImports)
+	}
+}
+
+func TestSharedWorkflowKernelImportEdgesAreCanonical(t *testing.T) {
+	root := repoRoot(t)
+	allowed := map[string]map[string]struct{}{
+		filepath.Join(root, "internal", "app", "internal", "backupflow"): {
+			modulePath + "/internal/app/operation": {},
+		},
+		filepath.Join(root, "internal", "app", "internal", "restoreflow"): {
+			modulePath + "/internal/app/operation": {},
+		},
+	}
+
+	for dir, allowedImports := range allowed {
+		assertAppImportEdges(t, dir, allowedImports)
+	}
+}
+
 func listInternalPackages(t *testing.T) []listedPackage {
 	t.Helper()
 
 	return listPackages(t, "./internal/...")
+}
+
+func assertAppImportEdges(t *testing.T, dir string, allowedImports map[string]struct{}) {
+	t.Helper()
+
+	fset := token.NewFileSet()
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+
+		for _, imp := range file.Imports {
+			importPath, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return err
+			}
+			if !strings.HasPrefix(importPath, modulePath+"/internal/app/") {
+				continue
+			}
+			if strings.HasPrefix(importPath, modulePath+"/internal/app/ports/") {
+				continue
+			}
+			if _, ok := allowedImports[importPath]; ok {
+				continue
+			}
+
+			t.Fatalf("%s imports non-canonical app package %s", path, importPath)
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 }
 
 func listPackages(t *testing.T, pattern string) []listedPackage {
@@ -355,6 +514,36 @@ func listPackages(t *testing.T, pattern string) []listedPackage {
 	}
 
 	return packages
+}
+
+func productionGoFiles(t *testing.T, dirs ...string) []string {
+	t.Helper()
+
+	var files []string
+	for _, dir := range dirs {
+		err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+			if err != nil {
+				return err
+			}
+			if entry.IsDir() {
+				if filepath.Base(path) == "testutil" {
+					return filepath.SkipDir
+				}
+				return nil
+			}
+			if !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+				return nil
+			}
+			files = append(files, path)
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	sort.Strings(files)
+	return files
 }
 
 func repoRoot(t *testing.T) string {

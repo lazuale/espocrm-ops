@@ -40,6 +40,23 @@ It must ship with synchronized updates to:
 - [REPO_COMPLIANCE_CHECKLIST.md](REPO_COMPLIANCE_CHECKLIST.md)
 - [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md)
 
+## 1A. Proof Classes And Interpretation
+
+This constitution uses exactly three proof classes:
+
+- `repo-wide machine-enforced`: a rule that can live honestly in `repository_test.go`
+- `owner-local machine-enforced`: a rule that belongs in the owning package's `architecture_test.go`
+- `review-enforced but binding`: a rule that remains constitutional and audit-required even when the repository does not have an honest syntactic guard for it
+
+No constitutional rule may remain unclassified, vague, or open-ended.
+
+Interpretation rules:
+
+- The interaction model records direct operational invocation edges and named shared-kernel entry edges only.
+- Passive use of shared failure, result, or domain vocabulary inside a unit contour is audited through contours and ownership rules, not through the caller matrix.
+- A contour entry must name a concrete package, file, or explicit file family.
+- Shared package colocation does not create a second owner, but any bridge file inside a mixed package must be named explicitly.
+
 ## 2. Approved Micro-Monolith Map
 
 The only approved internal micro-monoliths are:
@@ -87,7 +104,8 @@ Inside this unit:
   - `restore.go`
   - `migrate.go`
   - `doctor.go`
-- `internal/cli/execute.go` as root execution edge
+- `internal/cli/execute.go` as root transport edge
+- `internal/cli/runner.go` as the shared command-runner bridge into the journal, result, and error transport units
 
 Allowed internal mechanisms:
 
@@ -96,6 +114,7 @@ Allowed internal mechanisms:
 - project-relative path canonicalization
 - explicit destructive confirmation gating
 - dependency injection into application services
+- command-runner routing into the journal, result, and error transport units
 
 #### D. External Inputs
 This unit may accept:
@@ -104,13 +123,13 @@ This unit may accept:
 - stdout/stderr handles
 - CLI global options such as `--json` and `--journal-dir`
 - explicit operator confirmations such as `--force` and `--confirm-prod`
-- app/runtime/journal dependencies injected at process start
+- app/runtime/lock/journal dependencies injected at process start
 
 #### E. External Outputs
 This unit may emit:
 
 - one normalized request into exactly one top-level app boundary
-- one call into the journal pipeline when that command family uses journaling
+- one call into the journal pipeline for `backup`, `backup verify`, `restore`, or `migrate`
 - one handoff into the result contract pipeline
 - one handoff into the error transport pipeline
 - usage failures for invalid edge input
@@ -246,7 +265,6 @@ Allowed callees:
 - `Config / Env Loading Monolith`
 - `Filesystem Restore/Archive Monolith`
 - `Locking / Exclusive Access Monolith`
-- `Error / Failure Semantics Monolith` for local failure vocabulary only
 
 Forbidden callers:
 
@@ -959,7 +977,7 @@ Allowed callers:
 
 Allowed callees:
 
-- `Error / Failure Semantics Monolith` for local failure vocabulary only
+- none outside its own contour
 
 Forbidden callers:
 
@@ -1380,7 +1398,12 @@ Own the external structured result DTOs and the text/JSON rendering of completed
 Inside this unit:
 
 - `internal/contract/result/`
-- command-local result shaping and text rendering in `internal/cli/`
+- command-local `*Result` and `render*Text` functions in:
+  - `internal/cli/backup.go`
+  - `internal/cli/backup_verify.go`
+  - `internal/cli/restore.go`
+  - `internal/cli/migrate.go`
+  - `internal/cli/doctor.go`
 - `internal/cli/execution_steps.go`
 
 Allowed internal mechanisms:
@@ -1476,6 +1499,7 @@ Inside this unit:
 - CLI error transport files:
   - `internal/cli/errors.go`
   - `internal/cli/result_error.go`
+  - the root transport mapping in `internal/cli/execute.go`
 
 Allowed internal mechanisms:
 
@@ -1556,6 +1580,9 @@ Forbidden callers:
 
 ## 4. Interaction Model
 
+This section records direct operational invocation edges and named shared-kernel entry edges only.
+It does not try to enumerate passive use of shared failure/result/domain vocabulary that is already fixed by the owning contour.
+
 ### 4.1 Allowed Direct Caller -> Callee Edges
 
 Only the following direct edges are approved:
@@ -1623,9 +1650,9 @@ The following direct edges are forbidden:
 The privileged mutating path is:
 
 - `CLI Edge Monolith`
-- selected mutating workflow monolith
+- one of `Backup Execution Monolith`, `Restore Execution Monolith`, or `Migration Execution Monolith`
 - `Operation Lifecycle Monolith`
-- adapter monoliths
+- the adapter monoliths required by that workflow
 - `Error / Failure Semantics Monolith`
 - `Journal / Operation Trace Monolith`
 - `Result / Output Contract Monolith`
@@ -1650,19 +1677,22 @@ The backup verification path is:
 The final public error ownership path is:
 
 - local failure inside the owning workflow or diagnostic unit
-- boundary wrap in the owning top-level app boundary when required
+- boundary wrap in the owning top-level app boundary for `backup`, `backup verify`, `restore`, and `migrate` when a final app carrier is required
+- direct report-to-transport mapping for non-ready `doctor` reports
 - final exit/result mapping in `CLI Edge Monolith` through `Error / Failure Semantics Monolith`
 
 The output contract path is:
 
 - app info/report
 - `Result / Output Contract Monolith`
-- optional journal projection
+- journal projection for journaled commands only
 - final text or JSON rendering
 
 ## 5. Global Ops Pipeline
 
 The global ops pipeline for the retained product is fixed to these phases:
+
+Proof mode follows Section `1A`: some phases are machine-enforced, while others remain review-enforced but binding.
 
 1. `Entry / edge`
    - Owner: `CLI Edge Monolith`
@@ -1691,6 +1721,7 @@ The global ops pipeline for the retained product is fixed to these phases:
 9. `Journal`
    - Owner: `Journal / Operation Trace Monolith`
    - Applies to `backup`, `backup verify`, `restore`, and `migrate`
+   - `backup verify` intentionally remains on the persisted journal path even though it is read-only
    - `doctor` intentionally stays outside persisted journaling and returns a diagnostic report only
 10. `Output / render`
    - Owner: `Result / Output Contract Monolith`

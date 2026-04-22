@@ -154,8 +154,8 @@ Responsibilities:
 - validate flags
 - normalize input
 - call one application boundary
-- render one structured result
-- adapt result payloads for presentation and journal output
+- route the boundary result or failure through the canonical journal/result/error transport path
+- render one structured result or structured error output
 
 Must not own:
 - domain policy
@@ -172,8 +172,8 @@ Responsibilities:
 - workflow orchestration
 - preflight coordination
 - execution sequencing
-- final error mapping
-- result shaping
+- boundary info/report shaping
+- final app-level error wrapping
 - operation lifecycle coordination
 
 Application owns the workflows.
@@ -329,15 +329,15 @@ Error ownership is strict.
 - decide transport contract behavior
 - implement public `ErrorCode()` carriers for adapter/local failures
 
-### 6.3 Application boundaries own:
-- final error classification
-- final app/transport wrapping
-- final external error code mapping
+### 6.3 Final owners are split but singular:
+- the top-level application boundary owns final app-level wrapping and classification when a workflow must convert local failures into a final app carrier
+- the CLI edge owns final transport exit-code and public error-result mapping
 
 Public `ErrorCode()` carriers belong only to final app/transport wrappers.
 Adapter-local and helper-local typed causes may stay typed, but they must not present themselves as final public error-code owners.
 
-The boundary is the only place where final external error semantics may be decided.
+The boundary is the only place where final app-level error semantics may be decided.
+The CLI edge is the only place where final transport exit/output error semantics may be decided.
 
 For diagnostic/report boundaries, the boundary owns the report model and readiness semantics. The CLI edge may map a completed but non-ready diagnostic report to exit/error transport semantics when it does not introduce a second diagnostic policy owner.
 
