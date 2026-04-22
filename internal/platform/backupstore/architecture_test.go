@@ -70,6 +70,7 @@ func TestBackupStoreExportedSurfaceIsIntentional(t *testing.T) {
 		"VerifyDirectDBBackup",
 		"VerifyDirectFilesBackup",
 		"VerifyManifestDetailed",
+		"VerifyManifestSelection",
 		"WriteManifest",
 		"WriteSHA256Sidecar",
 	}
@@ -197,6 +198,9 @@ func TestBackupStoreDefinitionsStayExplicit(t *testing.T) {
 		"verify.go": {},
 	})
 	assertBackupStoreTextOwnership(t, "func VerifyManifestDetailed(", map[string]struct{}{
+		"verify.go": {},
+	})
+	assertBackupStoreTextOwnership(t, "func VerifyManifestSelection(", map[string]struct{}{
 		"verify.go": {},
 	})
 	assertBackupStoreTextOwnership(t, "func VerifyDirectDBBackup(", map[string]struct{}{

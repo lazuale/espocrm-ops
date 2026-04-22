@@ -515,6 +515,7 @@ Forbidden callers:
 #### I. Invariants
 
 - Backup success requires manifest finalization.
+- Backup JSON manifest explicitly records which backup parts were created; skipped parts remain empty instead of being implied.
 - Backup success requires explicit runtime return or an explicit skipped runtime-return step.
 - The workflow uses the canonical mutating step vocabulary only.
 - Snapshot backup inside restore uses this same kernel, not a parallel implementation.
@@ -710,6 +711,7 @@ Forbidden callers:
 #### I. Invariants
 
 - No destructive restore step executes before preflight and source verification succeed.
+- Manifest-backed restore verifies only the restore parts that were requested; complete backup-set verification remains owned by backup verification and full-set migration selection.
 - DB restore and files restore each require their own restore lock.
 - Dry-run stays within the same canonical pipeline and returns explicit planned/pending output instead of side effects.
 - Snapshot, when enabled, uses the backup execution kernel instead of a second backup implementation.

@@ -25,6 +25,7 @@ const (
 )
 
 type Store interface {
+	VerifyManifestSelection(manifestPath string, needDB, needFiles bool) (VerifiedBackup, error)
 	VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error)
 	VerifyDirectDBBackup(dbPath string) error
 	VerifyDirectFilesBackup(filesPath string) error

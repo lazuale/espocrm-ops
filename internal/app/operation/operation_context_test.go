@@ -43,6 +43,36 @@ func TestPrepareOperationDoesNotPrecreateRuntimeDirs(t *testing.T) {
 	}
 }
 
+func TestPrepareOperation_BackupAllowsReadOnlyRuntimeStorage(t *testing.T) {
+	projectDir := newOperationProject(t, "prod")
+	makeOperationRuntimeReadOnly(t, projectDir, "prod")
+
+	ctx, err := testService().PrepareOperation(OperationContextRequest{
+		Scope:      "prod",
+		Operation:  "backup",
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("backup preflight should ignore read-only runtime storage: %v", err)
+	}
+	defer func() {
+		_ = ctx.Release()
+	}()
+}
+
+func TestPrepareOperation_RestoreStillRequiresWritableRuntimeStorage(t *testing.T) {
+	projectDir := newOperationProject(t, "prod")
+	makeOperationRuntimeReadOnly(t, projectDir, "prod")
+
+	if _, err := testService().PrepareOperation(OperationContextRequest{
+		Scope:      "prod",
+		Operation:  "restore",
+		ProjectDir: projectDir,
+	}); err == nil {
+		t.Fatal("expected restore preflight to require writable runtime storage")
+	}
+}
+
 func newOperationProject(t *testing.T, scope string) string {
 	t.Helper()
 
@@ -70,4 +100,19 @@ func newOperationProject(t *testing.T, scope string) string {
 	}
 
 	return projectDir
+}
+
+func makeOperationRuntimeReadOnly(t *testing.T, projectDir, scope string) {
+	t.Helper()
+
+	runtimeDir := filepath.Join(projectDir, "runtime", scope)
+	if err := os.MkdirAll(runtimeDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(runtimeDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		_ = os.Chmod(runtimeDir, 0o755)
+	})
 }

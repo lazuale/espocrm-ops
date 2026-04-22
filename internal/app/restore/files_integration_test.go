@@ -170,6 +170,47 @@ func TestRestoreFiles_DryRunDoesNotReplaceTarget(t *testing.T) {
 	}
 }
 
+func TestRestoreFiles_PartialManifest_FilesOnly(t *testing.T) {
+	tmp := t.TempDir()
+
+	filesName := "files_20260415_123456.tar.gz"
+	filesPath := filepath.Join(tmp, filesName)
+	manifestPath := filepath.Join(tmp, "manifest.json")
+	targetDir := filepath.Join(tmp, "storage")
+
+	writeTarGz(t, filesPath, map[string]string{
+		"avatars/user1.txt": "hello",
+	})
+	writeManifest(t, manifestPath, domainbackup.Manifest{
+		Version:   1,
+		Scope:     "prod",
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		Artifacts: domainbackup.ManifestArtifacts{
+			FilesBackup: filesName,
+		},
+		Checksums: domainbackup.ManifestChecksums{
+			FilesBackup: sha256OfFile(t, filesPath),
+		},
+		FilesBackupCreated: true,
+	})
+
+	if err := os.MkdirAll(targetDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	plan, err := testRestoreFlow().RestoreFiles(restoreflow.FilesRequest{
+		ManifestPath: manifestPath,
+		TargetDir:    targetDir,
+		DryRun:       true,
+	})
+	if err != nil {
+		t.Fatalf("RestoreFiles with files-only manifest failed: %v", err)
+	}
+	if plan.Plan.SourcePath != filesPath {
+		t.Fatalf("unexpected source path: %s", plan.Plan.SourcePath)
+	}
+}
+
 func TestRestoreFiles_DirectArchive(t *testing.T) {
 	tmp := t.TempDir()
 

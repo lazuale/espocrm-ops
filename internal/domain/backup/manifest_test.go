@@ -31,6 +31,9 @@ func TestBuildManifestTrimsScopeAndUsesArtifactNames(t *testing.T) {
 	if manifest.Artifacts.FilesBackup != "files.tar.gz" {
 		t.Fatalf("unexpected files backup: %s", manifest.Artifacts.FilesBackup)
 	}
+	if !manifest.DBBackupCreated || !manifest.FilesBackupCreated {
+		t.Fatalf("expected full manifest selection flags, got %#v", manifest)
+	}
 }
 
 func TestManifestValidateRejectsPathArtifact(t *testing.T) {
@@ -51,6 +54,26 @@ func TestManifestValidateRejectsBadChecksum(t *testing.T) {
 	}
 }
 
+func TestManifestValidate_AllowsExplicitPartialManifest(t *testing.T) {
+	manifest := validManifestForTest()
+	manifest.DBBackupCreated = false
+	manifest.Artifacts.DBBackup = ""
+	manifest.Checksums.DBBackup = ""
+
+	if err := manifest.Validate(); err != nil {
+		t.Fatalf("expected partial manifest to validate: %v", err)
+	}
+}
+
+func TestManifestValidate_RejectsUnexpectedArtifactForSkippedPart(t *testing.T) {
+	manifest := validManifestForTest()
+	manifest.DBBackupCreated = false
+
+	if err := manifest.Validate(); err == nil {
+		t.Fatal("expected skipped artifact mismatch to fail")
+	}
+}
+
 func validManifestForTest() Manifest {
 	return Manifest{
 		Version:   1,
@@ -64,5 +87,7 @@ func validManifestForTest() Manifest {
 			DBBackup:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			FilesBackup: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		},
+		DBBackupCreated:    true,
+		FilesBackupCreated: true,
 	}
 }

@@ -9,11 +9,13 @@ import (
 )
 
 type Manifest struct {
-	Version   int               `json:"version"`
-	Scope     string            `json:"scope"`
-	CreatedAt string            `json:"created_at"`
-	Artifacts ManifestArtifacts `json:"artifacts"`
-	Checksums ManifestChecksums `json:"checksums"`
+	Version            int               `json:"version"`
+	Scope              string            `json:"scope"`
+	CreatedAt          string            `json:"created_at"`
+	Artifacts          ManifestArtifacts `json:"artifacts"`
+	Checksums          ManifestChecksums `json:"checksums"`
+	DBBackupCreated    bool              `json:"db_backup_created"`
+	FilesBackupCreated bool              `json:"files_backup_created"`
 }
 
 type ManifestArtifacts struct {
@@ -48,6 +50,8 @@ func BuildManifest(req ManifestBuildRequest) (Manifest, error) {
 			DBBackup:    req.DBChecksum,
 			FilesBackup: req.FilesChecksum,
 		},
+		DBBackupCreated:    true,
+		FilesBackupCreated: true,
 	}
 	if req.CreatedAt.IsZero() {
 		return Manifest{}, fmt.Errorf("created_at is required")
@@ -60,6 +64,8 @@ func BuildManifest(req ManifestBuildRequest) (Manifest, error) {
 }
 
 func (m Manifest) Validate() error {
+	m = m.Normalized()
+
 	if m.Version != 1 {
 		return fmt.Errorf("unsupported manifest version: %d", m.Version)
 	}
@@ -73,21 +79,56 @@ func (m Manifest) Validate() error {
 		return fmt.Errorf("invalid created_at: %w", err)
 	}
 
-	if err := validateArtifactName("artifacts.db_backup", m.Artifacts.DBBackup); err != nil {
-		return err
-	}
-	if err := validateArtifactName("artifacts.files_backup", m.Artifacts.FilesBackup); err != nil {
-		return err
+	if !m.DBBackupCreated && !m.FilesBackupCreated {
+		return fmt.Errorf("at least one backup artifact must be created")
 	}
 
-	if err := ValidateChecksum("checksums.db_backup", m.Checksums.DBBackup); err != nil {
+	if err := validateManifestArtifact("db", m.DBBackupCreated, m.Artifacts.DBBackup, m.Checksums.DBBackup); err != nil {
 		return err
 	}
-	if err := ValidateChecksum("checksums.files_backup", m.Checksums.FilesBackup); err != nil {
+	if err := validateManifestArtifact("files", m.FilesBackupCreated, m.Artifacts.FilesBackup, m.Checksums.FilesBackup); err != nil {
 		return err
 	}
 
 	return nil
+}
+
+func (m Manifest) Normalized() Manifest {
+	if m.DBBackupCreated || m.FilesBackupCreated {
+		return m
+	}
+
+	m.DBBackupCreated = manifestArtifactPresent(m.Artifacts.DBBackup, m.Checksums.DBBackup)
+	m.FilesBackupCreated = manifestArtifactPresent(m.Artifacts.FilesBackup, m.Checksums.FilesBackup)
+	return m
+}
+
+func validateManifestArtifact(kind string, created bool, name, checksum string) error {
+	artifactField := "artifacts." + kind + "_backup"
+	checksumField := "checksums." + kind + "_backup"
+
+	if !created {
+		if strings.TrimSpace(name) != "" {
+			return fmt.Errorf("%s must be empty when %s_created is false", artifactField, kind+"_backup")
+		}
+		if strings.TrimSpace(checksum) != "" {
+			return fmt.Errorf("%s must be empty when %s_created is false", checksumField, kind+"_backup")
+		}
+		return nil
+	}
+
+	if err := validateArtifactName(artifactField, name); err != nil {
+		return err
+	}
+	if err := ValidateChecksum(checksumField, checksum); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func manifestArtifactPresent(name, checksum string) bool {
+	return strings.TrimSpace(name) != "" || strings.TrimSpace(checksum) != ""
 }
 
 func validateArtifactName(field, value string) error {

@@ -15,12 +15,12 @@ func (s Service) resolveExecuteSource(backupRoot string, req ExecuteRequest) (ex
 	filesBackup := strings.TrimSpace(req.FilesBackup)
 
 	if manifestPath != "" {
-		info, err := s.store.VerifyManifestDetailed(manifestPath)
+		info, err := s.flow.ResolveManifestSource(manifestPath, !req.SkipDB, !req.SkipFiles)
 		if err != nil {
 			return executeSource{}, executeFailure{
 				Kind:    domainfailure.KindValidation,
 				Summary: "The selected restore manifest is not valid",
-				Action:  "Choose a valid manifest JSON that references readable, verified backup artifacts.",
+				Action:  "Choose a valid manifest JSON that contains the restore parts you requested and references readable, verified backup artifacts.",
 				Err:     err,
 			}
 		}
@@ -160,7 +160,14 @@ func restoreSourceSummary(source executeSource) string {
 func restoreSourceDetails(source executeSource) string {
 	switch source.SourceKind {
 	case "manifest":
-		return fmt.Sprintf("Using manifest %s with database backup %s and files backup %s.", source.ManifestJSON, source.DBBackup, source.FilesBackup)
+		switch source.SelectionMode {
+		case "manifest_db_only":
+			return fmt.Sprintf("Using manifest %s with database backup %s.", source.ManifestJSON, source.DBBackup)
+		case "manifest_files_only":
+			return fmt.Sprintf("Using manifest %s with files backup %s.", source.ManifestJSON, source.FilesBackup)
+		default:
+			return fmt.Sprintf("Using manifest %s with database backup %s and files backup %s.", source.ManifestJSON, source.DBBackup, source.FilesBackup)
+		}
 	case "direct_db_only":
 		return fmt.Sprintf("Using direct database backup %s.", source.DBBackup)
 	case "direct_files_only":

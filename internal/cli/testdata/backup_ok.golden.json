@@ -58,7 +58,7 @@
     },
     {
       "code": "retention",
-      "details": "Pruned backup artifacts older than 7 days under REPLACE_BACKUP_ROOT.",
+      "details": "Pruned backup sets older than 7 days under REPLACE_BACKUP_ROOT.",
       "status": "completed",
       "summary": "Retention cleanup completed"
     },

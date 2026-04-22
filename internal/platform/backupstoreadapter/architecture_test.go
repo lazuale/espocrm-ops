@@ -65,6 +65,7 @@ func TestBackupStoreAdapterExportedSurfaceStaysIntentional(t *testing.T) {
 	fset := token.NewFileSet()
 	got := map[string]struct{}{}
 	want := map[string]struct{}{
+		"method BackupStore.VerifyManifestSelection": {},
 		"type BackupStore":                           {},
 		"method BackupStore.VerifyManifestDetailed":  {},
 		"method BackupStore.VerifyDirectDBBackup":    {},

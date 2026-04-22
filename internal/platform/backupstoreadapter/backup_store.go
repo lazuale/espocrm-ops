@@ -11,6 +11,20 @@ import (
 
 type BackupStore struct{}
 
+func (BackupStore) VerifyManifestSelection(manifestPath string, needDB, needFiles bool) (backupstoreport.VerifiedBackup, error) {
+	info, err := platformbackupstore.VerifyManifestSelection(manifestPath, needDB, needFiles)
+	if err != nil {
+		return backupstoreport.VerifiedBackup{}, classifyBackupStoreError(err)
+	}
+	return backupstoreport.VerifiedBackup{
+		ManifestPath: info.ManifestPath,
+		Scope:        info.Scope,
+		CreatedAt:    info.CreatedAt,
+		DBBackupPath: info.DBBackupPath,
+		FilesPath:    info.FilesPath,
+	}, nil
+}
+
 func (BackupStore) VerifyManifestDetailed(manifestPath string) (backupstoreport.VerifiedBackup, error) {
 	info, err := platformbackupstore.VerifyManifestDetailed(manifestPath)
 	if err != nil {

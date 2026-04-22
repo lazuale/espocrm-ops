@@ -1,10 +1,18 @@
 package restoreflow
 
 import (
+	"fmt"
 	"path/filepath"
+	"strings"
 
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
+
+type ManifestSource struct {
+	ManifestPath string
+	DBBackupPath string
+	FilesPath    string
+}
 
 func (s Service) PreflightFiles(req FilesPreflightRequest) (string, error) {
 	if err := req.Validate(); err != nil {
@@ -41,7 +49,7 @@ func (s Service) filesRestoreSourcePath(manifestPath, filesBackup string) (strin
 		return filesBackup, nil
 	}
 
-	info, err := s.store.VerifyManifestDetailed(manifestPath)
+	info, err := s.ResolveManifestSource(manifestPath, false, true)
 	if err != nil {
 		return "", err
 	}
@@ -80,10 +88,27 @@ func (s Service) dbRestoreSourcePath(manifestPath, dbBackup string) (string, err
 		return dbBackup, nil
 	}
 
-	info, err := s.store.VerifyManifestDetailed(manifestPath)
+	info, err := s.ResolveManifestSource(manifestPath, true, false)
 	if err != nil {
 		return "", err
 	}
 
 	return info.DBBackupPath, nil
+}
+
+func (s Service) ResolveManifestSource(manifestPath string, needDB, needFiles bool) (ManifestSource, error) {
+	manifestPath = strings.TrimSpace(manifestPath)
+	if manifestPath == "" {
+		return ManifestSource{}, fmt.Errorf("manifest path is required")
+	}
+	info, err := s.store.VerifyManifestSelection(manifestPath, needDB, needFiles)
+	if err != nil {
+		return ManifestSource{}, err
+	}
+
+	return ManifestSource{
+		ManifestPath: info.ManifestPath,
+		DBBackupPath: info.DBBackupPath,
+		FilesPath:    info.FilesPath,
+	}, nil
 }

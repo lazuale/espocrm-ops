@@ -67,7 +67,7 @@ func (s Service) PrepareOperation(req OperationContextRequest) (OperationContext
 	ctx.ComposeProject = env.ComposeProject()
 	ctx.BackupRoot = s.env.ResolveProjectPath(ctx.ProjectDir, env.BackupRoot())
 
-	if err := s.verifyRuntimePaths(ctx.ProjectDir, env); err != nil {
+	if err := s.verifyRuntimePaths(ctx.ProjectDir, ctx.Operation, env); err != nil {
 		return ctx, domainfailure.Failure{
 			Kind: domainfailure.KindIO,
 			Code: "operation_execute_failed",

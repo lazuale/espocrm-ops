@@ -2,15 +2,18 @@ package operation
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/domain/env"
 )
 
-func (s Service) verifyRuntimePaths(projectDir string, values env.OperationEnv) error {
-	paths := []string{
-		s.env.ResolveProjectPath(projectDir, values.DBStorageDir()),
-		s.env.ResolveProjectPath(projectDir, values.ESPOStorageDir()),
-		s.env.ResolveProjectPath(projectDir, values.BackupRoot()),
+func (s Service) verifyRuntimePaths(projectDir, operation string, values env.OperationEnv) error {
+	paths := []string{s.env.ResolveProjectPath(projectDir, values.BackupRoot())}
+	if strings.TrimSpace(operation) != "backup" {
+		paths = append(paths,
+			s.env.ResolveProjectPath(projectDir, values.DBStorageDir()),
+			s.env.ResolveProjectPath(projectDir, values.ESPOStorageDir()),
+		)
 	}
 
 	for _, path := range paths {

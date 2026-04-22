@@ -28,8 +28,15 @@ type artifactVerification struct {
 }
 
 func VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error) {
+	return VerifyManifestSelection(manifestPath, true, true)
+}
+
+func VerifyManifestSelection(manifestPath string, needDB, needFiles bool) (VerifiedBackup, error) {
 	if strings.TrimSpace(manifestPath) == "" {
 		return VerifiedBackup{}, ManifestError{Err: fmt.Errorf("manifest path is required")}
+	}
+	if !needDB && !needFiles {
+		return VerifiedBackup{}, ManifestError{Err: fmt.Errorf("at least one manifest artifact must be requested")}
 	}
 
 	manifest, err := LoadManifest(manifestPath)
@@ -40,27 +47,35 @@ func VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error) {
 	dbPath := domainbackup.ResolveManifestArtifactPath(manifestPath, "db", manifest.Artifacts.DBBackup)
 	filesPath := domainbackup.ResolveManifestArtifactPath(manifestPath, "files", manifest.Artifacts.FilesBackup)
 
-	if err := verifyManifestCoherence(manifestPath, manifest); err != nil {
+	if err := verifyManifestCoherence(manifestPath, manifest, needDB, needFiles); err != nil {
 		return VerifiedBackup{}, VerificationError{Err: err}
 	}
 
-	if err := verifyBackupArtifact(artifactVerification{
-		label:          "db backup",
-		path:           dbPath,
-		suffix:         ".sql.gz",
-		expectedSHA256: manifest.Checksums.DBBackup,
-		verifyReadable: verifyGzipReadable("db backup"),
-	}); err != nil {
-		return VerifiedBackup{}, err
+	if needDB {
+		if err := verifyBackupArtifact(artifactVerification{
+			label:          "db backup",
+			path:           dbPath,
+			suffix:         ".sql.gz",
+			expectedSHA256: manifest.Checksums.DBBackup,
+			verifyReadable: verifyGzipReadable("db backup"),
+		}); err != nil {
+			return VerifiedBackup{}, err
+		}
+	} else {
+		dbPath = ""
 	}
-	if err := verifyBackupArtifact(artifactVerification{
-		label:          "files backup",
-		path:           filesPath,
-		suffix:         ".tar.gz",
-		expectedSHA256: manifest.Checksums.FilesBackup,
-		verifyReadable: verifyFilesArchiveReadable("files backup"),
-	}); err != nil {
-		return VerifiedBackup{}, err
+	if needFiles {
+		if err := verifyBackupArtifact(artifactVerification{
+			label:          "files backup",
+			path:           filesPath,
+			suffix:         ".tar.gz",
+			expectedSHA256: manifest.Checksums.FilesBackup,
+			verifyReadable: verifyFilesArchiveReadable("files backup"),
+		}); err != nil {
+			return VerifiedBackup{}, err
+		}
+	} else {
+		filesPath = ""
 	}
 
 	return VerifiedBackup{
@@ -72,11 +87,18 @@ func VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error) {
 	}, nil
 }
 
-func verifyManifestCoherence(manifestPath string, manifest domainbackup.Manifest) error {
+func verifyManifestCoherence(manifestPath string, manifest domainbackup.Manifest, needDB, needFiles bool) error {
 	dbGroup, dbOK := parsedBackupGroup(manifest.Artifacts.DBBackup, domainbackup.ParseDBBackupName)
 	filesGroup, filesOK := parsedBackupGroup(manifest.Artifacts.FilesBackup, domainbackup.ParseFilesBackupName)
 
-	if dbOK && filesOK && dbGroup != filesGroup {
+	if needDB && !manifest.DBBackupCreated {
+		return manifestCoherenceError{Details: "manifest does not include a database backup"}
+	}
+	if needFiles && !manifest.FilesBackupCreated {
+		return manifestCoherenceError{Details: "manifest does not include a files backup"}
+	}
+
+	if needDB && needFiles && dbOK && filesOK && dbGroup != filesGroup {
 		return manifestCoherenceError{
 			Details: fmt.Sprintf(
 				"database backup %q resolves to %s_%s, but files backup %q resolves to %s_%s",
@@ -95,14 +117,14 @@ func verifyManifestCoherence(manifestPath string, manifest domainbackup.Manifest
 		return nil
 	}
 
-	if !dbOK {
+	if needDB && !dbOK {
 		return invalidManifestArtifactNameError("database backup", manifest.Artifacts.DBBackup)
 	}
-	if !filesOK {
+	if needFiles && !filesOK {
 		return invalidManifestArtifactNameError("files backup", manifest.Artifacts.FilesBackup)
 	}
 
-	if dbGroup != manifestGroup {
+	if needDB && dbGroup != manifestGroup {
 		return manifestCoherenceError{
 			Details: fmt.Sprintf(
 				"manifest %q resolves to %s_%s, but database backup %q resolves to %s_%s",
@@ -115,7 +137,7 @@ func verifyManifestCoherence(manifestPath string, manifest domainbackup.Manifest
 			),
 		}
 	}
-	if filesGroup != manifestGroup {
+	if needFiles && filesGroup != manifestGroup {
 		return manifestCoherenceError{
 			Details: fmt.Sprintf(
 				"manifest %q resolves to %s_%s, but files backup %q resolves to %s_%s",

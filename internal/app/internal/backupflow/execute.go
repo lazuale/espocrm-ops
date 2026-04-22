@@ -229,7 +229,7 @@ func (s Service) Execute(req Request) (info ExecuteInfo, err error) {
 	}
 	info.Steps = append(info.Steps, domainworkflow.NewStep("finalize", domainworkflow.StatusCompleted, "Manifest finalization completed", finalizeDetails(info), ""))
 
-	if err := cleanupRetention(info.BackupRoot, req.RetentionDays, executeNow(req.Now)); err != nil {
+	if err := s.cleanupRetention(info.BackupRoot, req.RetentionDays, executeNow(req.Now)); err != nil {
 		info.Steps = append(info.Steps, domainworkflow.NewStep("retention", domainworkflow.StatusFailed, "Retention cleanup failed", err.Error(), "Resolve the retention cleanup failure before relying on the backup root state."))
 		return info, domainfailure.Failure{
 			Kind:    domainfailure.KindIO,

@@ -74,6 +74,44 @@ func TestRestoreDB_DryRun(t *testing.T) {
 	}
 }
 
+func TestRestoreDB_DryRun_WithDBOnlyManifest(t *testing.T) {
+	tmp := t.TempDir()
+
+	dbName := "db_20260415_123456.sql.gz"
+	dbPath := filepath.Join(tmp, dbName)
+	manifestPath := filepath.Join(tmp, "manifest.json")
+
+	writeGzipFile(t, dbPath, []byte("select 1;"))
+	writeManifest(t, manifestPath, domainbackup.Manifest{
+		Version:   1,
+		Scope:     "prod",
+		CreatedAt: time.Now().UTC().Format(time.RFC3339),
+		Artifacts: domainbackup.ManifestArtifacts{
+			DBBackup: dbName,
+		},
+		Checksums: domainbackup.ManifestChecksums{
+			DBBackup: sha256OfFile(t, dbPath),
+		},
+		DBBackupCreated: true,
+	})
+	prependFakeDocker(t, "", "")
+
+	plan, err := testRestoreFlow().RestoreDB(restoreflow.DBRequest{
+		ManifestPath: manifestPath,
+		DBContainer:  "db-container",
+		DBName:       "espocrm",
+		DBUser:       "espocrm",
+		DBPassword:   "secret",
+		DryRun:       true,
+	})
+	if err != nil {
+		t.Fatalf("RestoreDB dry-run with db-only manifest failed: %v", err)
+	}
+	if plan.Plan.SourcePath != dbPath {
+		t.Fatalf("unexpected source path: %s", plan.Plan.SourcePath)
+	}
+}
+
 func TestRestoreDB_DirectBackupDryRun(t *testing.T) {
 	tmp := t.TempDir()
 

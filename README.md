@@ -100,12 +100,16 @@ Verify a backup:
 ./bin/espops backup verify --backup-root /path/to/backups/dev
 ```
 
+`backup verify` still requires one complete verified backup set. A manifest produced by `backup --skip-db` or `backup --skip-files` remains valid for the matching restore mode, but not for full backup-set verification.
+
 Run a restore:
 
 ```bash
 ./bin/espops restore --scope dev --manifest /path/to/manifest.json --force
 ./bin/espops restore --scope prod --manifest /path/to/manifest.json --force --confirm-prod prod
 ```
+
+When a manifest was created from a partial backup, restore verifies only the requested restore part: `--skip-db` accepts a files-only manifest and `--skip-files` accepts a db-only manifest.
 
 Run a migration:
 

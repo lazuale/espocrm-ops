@@ -68,7 +68,7 @@ func finalizeDetails(info ExecuteInfo) string {
 }
 
 func retentionDetails(root string, retentionDays int) string {
-	return fmt.Sprintf("Pruned backup artifacts older than %d days under %s.", retentionDays, filepath.Clean(root))
+	return fmt.Sprintf("Pruned backup sets older than %d days under %s.", retentionDays, filepath.Clean(root))
 }
 
 func runtimeReturnDetails(info runtimeReturnInfo) string {

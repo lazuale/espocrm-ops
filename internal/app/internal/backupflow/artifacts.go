@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	backupstoreport "github.com/lazuale/espocrm-ops/internal/app/ports/backupstoreport"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
 	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 )
@@ -23,31 +24,15 @@ type backupExecutionState struct {
 }
 
 type backupManifestJSON struct {
-	Version                int                     `json:"version"`
-	Scope                  string                  `json:"scope"`
-	Contour                string                  `json:"contour"`
-	CreatedAt              string                  `json:"created_at"`
-	ComposeProject         string                  `json:"compose_project"`
-	Artifacts              backupManifestArtifacts `json:"artifacts"`
-	Checksums              backupManifestChecksums `json:"checksums"`
-	EnvFile                string                  `json:"env_file"`
-	EspoCRMImage           string                  `json:"espocrm_image"`
-	MariaDBTag             string                  `json:"mariadb_tag"`
-	RetentionDays          int                     `json:"retention_days"`
-	ConsistentSnapshot     bool                    `json:"consistent_snapshot"`
-	AppServicesWereRunning bool                    `json:"app_services_were_running"`
-	DBBackupCreated        bool                    `json:"db_backup_created"`
-	FilesBackupCreated     bool                    `json:"files_backup_created"`
-}
-
-type backupManifestArtifacts struct {
-	DBBackup    string `json:"db_backup"`
-	FilesBackup string `json:"files_backup"`
-}
-
-type backupManifestChecksums struct {
-	DBBackup    string `json:"db_backup"`
-	FilesBackup string `json:"files_backup"`
+	domainbackup.Manifest
+	Contour                string `json:"contour"`
+	ComposeProject         string `json:"compose_project"`
+	EnvFile                string `json:"env_file"`
+	EspoCRMImage           string `json:"espocrm_image"`
+	MariaDBTag             string `json:"mariadb_tag"`
+	RetentionDays          int    `json:"retention_days"`
+	ConsistentSnapshot     bool   `json:"consistent_snapshot"`
+	AppServicesWereRunning bool   `json:"app_services_were_running"`
 }
 
 type filesArchiveInfo struct {
@@ -233,35 +218,39 @@ func (s Service) writeManifestTXT(req Request, state backupExecutionState, path 
 
 func (s Service) writeManifestJSON(req Request, state backupExecutionState, path string) error {
 	manifest := backupManifestJSON{
-		Version:        1,
-		Scope:          req.Scope,
-		Contour:        req.Scope,
-		CreatedAt:      state.createdAt.UTC().Format(time.RFC3339),
-		ComposeProject: req.ComposeProject,
-		Artifacts: backupManifestArtifacts{
-			DBBackup:    maybeBaseName(!req.SkipDB, state.set.DBBackup.Path),
-			FilesBackup: maybeBaseName(!req.SkipFiles, state.set.FilesBackup.Path),
+		Manifest: domainbackup.Manifest{
+			Version:   1,
+			Scope:     req.Scope,
+			CreatedAt: state.createdAt.UTC().Format(time.RFC3339),
+			Artifacts: domainbackup.ManifestArtifacts{
+				DBBackup:    maybeBaseName(!req.SkipDB, state.set.DBBackup.Path),
+				FilesBackup: maybeBaseName(!req.SkipFiles, state.set.FilesBackup.Path),
+			},
+			Checksums: domainbackup.ManifestChecksums{
+				DBBackup:    maybeString(!req.SkipDB, state.dbChecksum),
+				FilesBackup: maybeString(!req.SkipFiles, state.filesChecksum),
+			},
+			DBBackupCreated:    !req.SkipDB,
+			FilesBackupCreated: !req.SkipFiles,
 		},
-		Checksums: backupManifestChecksums{
-			DBBackup:    maybeString(!req.SkipDB, state.dbChecksum),
-			FilesBackup: maybeString(!req.SkipFiles, state.filesChecksum),
-		},
+		Contour:                req.Scope,
+		ComposeProject:         req.ComposeProject,
 		EnvFile:                filepath.Base(req.EnvFile),
 		EspoCRMImage:           req.EspoCRMImage,
 		MariaDBTag:             req.MariaDBTag,
 		RetentionDays:          req.RetentionDays,
 		ConsistentSnapshot:     !req.NoStop,
 		AppServicesWereRunning: state.appServicesWereRunning,
-		DBBackupCreated:        !req.SkipDB,
-		FilesBackupCreated:     !req.SkipFiles,
 	}
 
-	raw, err := json.MarshalIndent(manifest, "", "  ")
+	if err := manifest.Validate(); err != nil {
+		return fmt.Errorf("validate json manifest: %w", err)
+	}
+
+	raw, err := marshalBackupManifestJSON(manifest)
 	if err != nil {
-		return fmt.Errorf("marshal json manifest: %w", err)
+		return err
 	}
-	raw = append(raw, '\n')
-
 	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		return fmt.Errorf("write json manifest: %w", err)
 	}
@@ -269,42 +258,54 @@ func (s Service) writeManifestJSON(req Request, state backupExecutionState, path
 	return nil
 }
 
-func cleanupRetention(root string, retentionDays int, now time.Time) error {
+func marshalBackupManifestJSON(manifest backupManifestJSON) ([]byte, error) {
+	raw, err := json.MarshalIndent(manifest, "", "  ")
+	if err != nil {
+		return nil, fmt.Errorf("marshal json manifest: %w", err)
+	}
+
+	return append(raw, '\n'), nil
+}
+
+func (s Service) cleanupRetention(root string, retentionDays int, now time.Time) error {
 	if retentionDays < 0 {
 		return fmt.Errorf("retention days must be non-negative")
 	}
 
 	cutoff := now.Add(-time.Duration(retentionDays+1) * 24 * time.Hour)
-	targets := []struct {
-		dir      string
-		patterns []string
-	}{
-		{dir: filepath.Join(root, "db"), patterns: []string{"*.sql.gz", "*.sql.gz.sha256"}},
-		{dir: filepath.Join(root, "files"), patterns: []string{"*.tar.gz", "*.tar.gz.sha256"}},
-		{dir: filepath.Join(root, "manifests"), patterns: []string{"*.manifest.txt", "*.manifest.json"}},
+	groups, err := s.store.Groups(root, backupstoreport.GroupModeAny)
+	if err != nil {
+		return fmt.Errorf("list retention backup sets: %w", err)
 	}
 
-	for _, target := range targets {
-		for _, pattern := range target.patterns {
-			matches, err := filepath.Glob(filepath.Join(target.dir, pattern))
-			if err != nil {
-				return fmt.Errorf("cleanup retention glob %s: %w", filepath.Join(target.dir, pattern), err)
-			}
-			for _, match := range matches {
-				info, err := os.Stat(match)
-				if err != nil {
-					if os.IsNotExist(err) {
-						continue
-					}
-					return fmt.Errorf("stat retention candidate %s: %w", match, err)
-				}
-				if info.IsDir() || !info.ModTime().Before(cutoff) {
-					continue
-				}
-				if err := os.Remove(match); err != nil && !os.IsNotExist(err) {
-					return fmt.Errorf("remove retention candidate %s: %w", match, err)
-				}
-			}
+	for _, group := range groups {
+		stampTime, err := time.Parse("2006-01-02_15-04-05", group.Stamp)
+		if err != nil {
+			return fmt.Errorf("parse retention backup set %s_%s: %w", group.Prefix, group.Stamp, err)
+		}
+		if !stampTime.Before(cutoff) {
+			continue
+		}
+		if err := removeRetentionBackupSet(root, group); err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+func removeRetentionBackupSet(root string, group domainbackup.BackupGroup) error {
+	set := domainbackup.BuildBackupSet(root, group.Prefix, group.Stamp)
+	for _, path := range []string{
+		set.DBBackup.Path,
+		set.DBBackup.Path + ".sha256",
+		set.FilesBackup.Path,
+		set.FilesBackup.Path + ".sha256",
+		set.ManifestTXT.Path,
+		set.ManifestJSON.Path,
+	} {
+		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+			return fmt.Errorf("remove retention backup-set path %s: %w", path, err)
 		}
 	}
 

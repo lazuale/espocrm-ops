@@ -33,6 +33,7 @@ func LoadManifest(path string) (domainbackup.Manifest, error) {
 	if err := json.Unmarshal(raw, &manifest); err != nil {
 		return manifest, ManifestError{Err: fmt.Errorf("parse manifest json: %w", err)}
 	}
+	manifest = manifest.Normalized()
 
 	if err := manifest.Validate(); err != nil {
 		return manifest, ManifestError{Err: fmt.Errorf("validate manifest: %w", err)}
@@ -42,6 +43,8 @@ func LoadManifest(path string) (domainbackup.Manifest, error) {
 }
 
 func WriteManifest(path string, manifest domainbackup.Manifest) error {
+	manifest = manifest.Normalized()
+
 	if err := manifest.Validate(); err != nil {
 		return err
 	}
