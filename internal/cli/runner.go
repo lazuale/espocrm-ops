@@ -7,6 +7,7 @@ import (
 	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
 	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
 	journalbridge "github.com/lazuale/espocrm-ops/internal/cli/journalbridge"
+	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
 )
@@ -89,7 +90,7 @@ func renderCommandResult(cmd *cobra.Command, spec CommandSpec, res result.Result
 		if err := spec.RenderText(cmd.OutOrStdout(), res); err != nil {
 			return err
 		}
-		return renderWarnings(cmd.OutOrStdout(), res.Warnings)
+		return resultbridge.RenderWarnings(cmd.OutOrStdout(), res.Warnings)
 	}
 
 	return result.Render(cmd.OutOrStdout(), res, appForCommand(cmd).JSONEnabled())
@@ -140,14 +141,4 @@ func appendCommandWarning(cmd *cobra.Command, app *App, warnings *[]string, mess
 	if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "WARNING: %s\n", message); writeErr != nil {
 		*warnings = append(*warnings, fmt.Sprintf("failed to render warning %q: %v", message, writeErr))
 	}
-}
-
-func renderWarnings(w io.Writer, warnings []string) error {
-	for _, warning := range warnings {
-		if _, err := fmt.Fprintf(w, "WARNING: %s\n", warning); err != nil {
-			return err
-		}
-	}
-
-	return nil
 }

@@ -1,4 +1,4 @@
-package cli
+package resultbridge
 
 import (
 	"fmt"
@@ -101,4 +101,14 @@ func migrateExecutionItem(raw result.ItemPayload) (result.SectionItem, error) {
 
 func upperStatusText(status string) string {
 	return strings.ToUpper(status)
+}
+
+func RenderWarnings(w io.Writer, warnings []string) error {
+	for _, warning := range warnings {
+		if _, err := fmt.Fprintf(w, "WARNING: %s\n", warning); err != nil {
+			return err
+		}
+	}
+
+	return nil
 }

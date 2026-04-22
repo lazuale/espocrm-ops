@@ -1509,13 +1509,7 @@ Own the external structured result DTOs and the text/JSON rendering of completed
 Inside this unit:
 
 - `internal/contract/result/`
-- command-local `*Result` and `render*Text` functions in:
-  - `internal/cli/backup.go`
-  - `internal/cli/backup_verify.go`
-  - `internal/cli/restore.go`
-  - `internal/cli/migrate.go`
-  - `internal/cli/doctor.go`
-- `internal/cli/execution_steps.go`
+- `internal/cli/resultbridge/`
 
 Allowed internal mechanisms:
 

@@ -3,12 +3,10 @@ package cli
 import (
 	"errors"
 	"fmt"
-	"io"
-	"strings"
 
 	doctorusecase "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	errortransport "github.com/lazuale/espocrm-ops/internal/cli/errortransport"
-	"github.com/lazuale/espocrm-ops/internal/contract/apperr"
+	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
@@ -74,7 +72,7 @@ func runDoctor(cmd *cobra.Command, in doctorInput) error {
 		Name:       "doctor",
 		ErrorCode:  "doctor_failed",
 		ExitCode:   exitcode.ValidationError,
-		RenderText: renderDoctorText,
+		RenderText: resultbridge.RenderDoctorText,
 	}, func() (result.Result, error) {
 		report, err := app.doctor.Diagnose(doctorusecase.Request{
 			Scope:           in.scope,
@@ -86,147 +84,15 @@ func runDoctor(cmd *cobra.Command, in doctorInput) error {
 			return result.Result{}, err
 		}
 
-		res := doctorResult(report)
+		res := resultbridge.DoctorResult(report)
 		if report.Ready() {
 			return res, nil
 		}
 
 		return res, errortransport.CodeError{
 			Code:    exitcode.ValidationError,
-			Err:     apperr.Wrap(apperr.KindValidation, "doctor_failed", errors.New("doctor found readiness failures")),
+			Err:     errors.New("doctor found readiness failures"),
 			ErrCode: "doctor_failed",
 		}
 	})
-}
-
-func doctorResult(report doctorusecase.Report) result.Result {
-	passed, warnings, failed := report.Counts()
-	message := "doctor passed"
-	if !report.Ready() {
-		message = "doctor found readiness failures"
-	}
-
-	items := make([]result.ItemPayload, 0, len(report.Checks))
-	for _, check := range report.Checks {
-		items = append(items, result.DoctorCheck{
-			Scope:   check.Scope,
-			Code:    check.Code,
-			Status:  check.Status,
-			Summary: check.Summary,
-			Details: check.Details,
-			Action:  check.Action,
-		})
-	}
-
-	scopes := make([]result.DoctorScopeArtifact, 0, len(report.Scopes))
-	for _, scope := range report.Scopes {
-		scopes = append(scopes, result.DoctorScopeArtifact{
-			Scope:      scope.Scope,
-			EnvFile:    scope.EnvFile,
-			BackupRoot: scope.BackupRoot,
-		})
-	}
-
-	res := result.Result{
-		Command: "doctor",
-		OK:      report.Ready(),
-		Message: message,
-		Details: result.DoctorDetails{
-			TargetScope: report.TargetScope,
-			Ready:       report.Ready(),
-			Checks:      len(report.Checks),
-			Passed:      passed,
-			Warnings:    warnings,
-			Failed:      failed,
-		},
-		Artifacts: result.DoctorArtifacts{
-			ProjectDir:  report.ProjectDir,
-			ComposeFile: report.ComposeFile,
-			Scopes:      scopes,
-		},
-		Items: items,
-	}
-
-	if !report.Ready() {
-		res.Error = &result.ErrorInfo{
-			Code:     "doctor_failed",
-			Kind:     string(apperr.KindValidation),
-			ExitCode: exitcode.ValidationError,
-			Message:  message,
-		}
-	}
-
-	return res
-}
-
-func renderDoctorText(w io.Writer, res result.Result) error {
-	details, ok := res.Details.(result.DoctorDetails)
-	if !ok {
-		return result.Render(w, res, false)
-	}
-
-	artifacts, ok := res.Artifacts.(result.DoctorArtifacts)
-	if !ok {
-		return fmt.Errorf("unexpected doctor artifacts type %T", res.Artifacts)
-	}
-
-	if _, err := fmt.Fprintln(w, "EspoCRM doctor"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "Target scope:    %s\n", details.TargetScope); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "Project dir:     %s\n", artifacts.ProjectDir); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "Compose file:    %s\n", artifacts.ComposeFile); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintln(w, "\nSummary:"); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Ready:         %t\n", details.Ready); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Checks:        %d\n", details.Checks); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Passed:        %d\n", details.Passed); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Warnings:      %d\n", details.Warnings); err != nil {
-		return err
-	}
-	if _, err := fmt.Fprintf(w, "  Failed:        %d\n", details.Failed); err != nil {
-		return err
-	}
-
-	if _, err := fmt.Fprintln(w, "\nChecks:"); err != nil {
-		return err
-	}
-	for _, rawItem := range res.Items {
-		check, ok := rawItem.(result.DoctorCheck)
-		if !ok {
-			return fmt.Errorf("unexpected doctor item type %T", rawItem)
-		}
-		prefix := fmt.Sprintf("[%s]", strings.ToUpper(check.Status))
-		if strings.TrimSpace(check.Scope) != "" {
-			prefix = fmt.Sprintf("[%s][%s]", check.Scope, strings.ToUpper(check.Status))
-		}
-		if _, err := fmt.Fprintf(w, "%s %s\n", prefix, check.Summary); err != nil {
-			return err
-		}
-		if strings.TrimSpace(check.Details) != "" {
-			if _, err := fmt.Fprintf(w, "  Details: %s\n", check.Details); err != nil {
-				return err
-			}
-		}
-		if strings.TrimSpace(check.Action) != "" {
-			if _, err := fmt.Fprintf(w, "  Action:  %s\n", check.Action); err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
 }

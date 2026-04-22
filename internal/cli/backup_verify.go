@@ -2,9 +2,9 @@ package cli
 
 import (
 	"fmt"
-	"io"
 
 	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
+	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
@@ -31,13 +31,9 @@ func newBackupVerifyCmd() *cobra.Command {
 				Name:       "backup verify",
 				ErrorCode:  "backup_verification_failed",
 				ExitCode:   exitcode.ValidationError,
-				RenderText: renderBackupVerifyText,
+				RenderText: resultbridge.RenderBackupVerifyText,
 			}, func() (result.Result, error) {
-				res := result.Result{
-					Artifacts: result.BackupVerifyArtifacts{
-						Manifest: in.manifestPath,
-					},
-				}
+				res := resultbridge.BackupVerifyPendingResult(in.manifestPath)
 
 				report, err := appForCommand(cmd).backupVerify.Diagnose(backupverifyapp.Request{
 					ManifestPath: in.manifestPath,
@@ -47,18 +43,7 @@ func newBackupVerifyCmd() *cobra.Command {
 					return res, err
 				}
 
-				res.Message = "backup verification passed"
-				res.Artifacts = result.BackupVerifyArtifacts{
-					Manifest:    report.ManifestPath,
-					DBBackup:    report.DBBackupPath,
-					FilesBackup: report.FilesPath,
-				}
-				res.Details = result.BackupVerifyDetails{
-					Scope:     report.Scope,
-					CreatedAt: report.CreatedAt,
-				}
-
-				return res, nil
+				return resultbridge.BackupVerifyResult(report), nil
 			})
 		},
 	}
@@ -92,35 +77,4 @@ func validateBackupVerifyInput(cmd *cobra.Command, in *backupVerifyInput) error 
 	}
 
 	return usageError(fmt.Errorf("--manifest or --backup-root is required"))
-}
-
-func renderBackupVerifyText(w io.Writer, res result.Result) error {
-	artifacts, ok := res.Artifacts.(result.BackupVerifyArtifacts)
-	if !ok {
-		return result.Render(w, res, false)
-	}
-
-	if _, err := fmt.Fprintln(w, "Verifying backup set"); err != nil {
-		return err
-	}
-	if artifacts.DBBackup != "" {
-		if _, err := fmt.Fprintf(w, "Database backup: %s\n", artifacts.DBBackup); err != nil {
-			return err
-		}
-	}
-	if artifacts.FilesBackup != "" {
-		if _, err := fmt.Fprintf(w, "Files backup: %s\n", artifacts.FilesBackup); err != nil {
-			return err
-		}
-	}
-	if artifacts.Manifest != "" {
-		if _, err := fmt.Fprintf(w, "JSON manifest: %s\n", artifacts.Manifest); err != nil {
-			return err
-		}
-	}
-	if _, err := fmt.Fprintln(w, "[ok] Backup set: manifest, checksums, and archive readability confirmed"); err != nil {
-		return err
-	}
-	_, err := fmt.Fprintln(w, "Backup-file verification completed successfully")
-	return err
 }

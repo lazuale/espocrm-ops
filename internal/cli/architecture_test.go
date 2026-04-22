@@ -181,6 +181,17 @@ func TestProductionCLIErrorTransportBridgeFilesStayExplicit(t *testing.T) {
 	})
 }
 
+func TestProductionCLIResultBridgeFilesStayExplicit(t *testing.T) {
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/cli/resultbridge", map[string]struct{}{
+		"backup.go":        {},
+		"backup_verify.go": {},
+		"doctor.go":        {},
+		"migrate.go":       {},
+		"restore.go":       {},
+		"runner.go":        {},
+	})
+}
+
 func TestProductionCLIErrorTransportRouteStaysCanonical(t *testing.T) {
 	assertCLITextOwnership(t, "errortransport.ErrorResult(", map[string]struct{}{
 		"execute.go": {},
@@ -189,6 +200,12 @@ func TestProductionCLIErrorTransportRouteStaysCanonical(t *testing.T) {
 		"execute.go": {},
 	})
 	assertCLITextOwnership(t, "errortransport.ResultCodeError{", map[string]struct{}{
+		"runner.go": {},
+	})
+}
+
+func TestProductionCLIResultBridgeRouteStaysCanonical(t *testing.T) {
+	assertCLITextOwnership(t, "resultbridge.RenderWarnings(", map[string]struct{}{
 		"runner.go": {},
 	})
 }
@@ -219,9 +236,6 @@ func TestProductionCLITransportBridgeDefinitionsStayExplicit(t *testing.T) {
 		"input.go": {},
 	})
 	assertCLITextOwnership(t, "func appendCommandWarning(", map[string]struct{}{
-		"runner.go": {},
-	})
-	assertCLITextOwnership(t, "func renderWarnings(", map[string]struct{}{
 		"runner.go": {},
 	})
 }

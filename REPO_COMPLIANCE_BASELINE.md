@@ -139,6 +139,7 @@ Owner-local machine-enforced surfaces:
 - `internal/cli` command-runner locality and explicit error transport bridge definitions
 - `internal/cli/errortransport` dedicated error-transport contour
 - `internal/cli/journalbridge` dedicated journal-projection bridge contour
+- `internal/cli/resultbridge` dedicated result/output contour
 - `internal/app/operation` dedicated lifecycle contour
 - `internal/app/operationtrace` dedicated journal/runtime trace contour
 - `internal/platform/docker` low-level exec and helper-shell ownership
