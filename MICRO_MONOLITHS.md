@@ -1135,6 +1135,7 @@ Inside this unit:
 - `internal/app/ports/filesport/`
 - `internal/platform/appadapter/files.go`
 - `internal/platform/fs/`
+- `internal/platform/fs/archive_create.go` remains an approved local shell seam inside this contour while it stays the sole host-`tar` archive primitive and does not gain an independent caller or policy surface
 
 Allowed internal mechanisms:
 

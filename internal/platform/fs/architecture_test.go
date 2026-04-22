@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -103,6 +104,40 @@ func TestFSShellExecutionStaysInArchiveCreateGo(t *testing.T) {
 	assertFSTextOwnership(t, "exec.Command(", map[string]struct{}{
 		"archive_create.go": {},
 	})
+}
+
+func TestFSArchiveCreateDefinitionsStayLocal(t *testing.T) {
+	t.Parallel()
+
+	assertFSTextOwnership(t, "func CreateTarGz(", map[string]struct{}{
+		"archive_create.go": {},
+	})
+	assertFSTextOwnership(t, "func tarCommandErrorSuffix(", map[string]struct{}{
+		"archive_create.go": {},
+	})
+	assertFSTextOwnership(t, "func tarLastNonBlankLine(", map[string]struct{}{
+		"archive_create.go": {},
+	})
+}
+
+func TestFSArchiveCreateDoesNotImportInternalPackages(t *testing.T) {
+	t.Parallel()
+
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, filepath.Join(".", "archive_create.go"), nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatalf("parse archive_create.go: %v", err)
+	}
+
+	for _, imp := range file.Imports {
+		resolved, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			t.Fatalf("unquote import: %v", err)
+		}
+		if strings.HasPrefix(resolved, "github.com/lazuale/espocrm-ops/internal/") {
+			t.Fatalf("archive_create.go must not import internal packages; found %s at %s", resolved, fset.Position(imp.Pos()))
+		}
+	}
 }
 
 func packageSourceFiles(t *testing.T) []string {

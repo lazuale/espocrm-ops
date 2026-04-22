@@ -149,7 +149,7 @@ Owner-local machine-enforced surfaces:
 - `internal/platform/docker` low-level exec and helper-shell ownership
 - `internal/platform/config` env-loading discipline
 - `internal/platform/backupstore` exported surface and error-code discipline
-- `internal/platform/fs` exported surface, error-code discipline, and local shell-seam locality
+- `internal/platform/fs` exported surface, error-code discipline, and local shell-seam locality including `archive_create.go`
 - `internal/platform/locks` exported surface and no hidden env/shell control path
 - `internal/platform/journalstore` exported surface and narrow journal-writer surface
 - `internal/opsconfig` exported surface and no IO/env/shell drift
