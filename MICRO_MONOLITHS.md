@@ -220,6 +220,7 @@ Inside this unit:
   - `doctor.go`
 - `internal/cli/execute.go` as root transport edge
 - `internal/cli/runner.go` as the shared command-runner bridge into the journal, result, and error transport units
+- `internal/cli/` remains an approved residual contour only for the files listed above; extracted journal, result, and error transport slices must not drift back into the root package
 
 Allowed internal mechanisms:
 

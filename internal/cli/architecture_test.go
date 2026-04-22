@@ -6,6 +6,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"testing"
@@ -55,6 +56,50 @@ func TestProductionCLIPackageHasNoPackageVars(t *testing.T) {
 	})
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestProductionCLIRootFileSetStaysResidual(t *testing.T) {
+	root := testutil.RepoRoot(t)
+	paths, err := filepath.Glob(filepath.Join(root, "internal", "cli", "*.go"))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]struct{}{}
+	want := map[string]struct{}{
+		"backup.go":        {},
+		"backup_verify.go": {},
+		"deps.go":          {},
+		"doctor.go":        {},
+		"execute.go":       {},
+		"input.go":         {},
+		"migrate.go":       {},
+		"options.go":       {},
+		"restore.go":       {},
+		"root.go":          {},
+		"runner.go":        {},
+	}
+
+	for _, path := range paths {
+		if strings.HasSuffix(path, "_test.go") {
+			continue
+		}
+		got[filepath.Base(path)] = struct{}{}
+	}
+
+	if len(got) != len(want) {
+		t.Fatalf("unexpected root cli production file set: got %v want %v", cliSortedKeys(got), cliSortedKeys(want))
+	}
+	for name := range want {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("missing root cli production file %q in %v", name, cliSortedKeys(got))
+		}
+	}
+	for name := range got {
+		if _, ok := want[name]; !ok {
+			t.Fatalf("unexpected root cli production file %q in %v", name, cliSortedKeys(got))
+		}
 	}
 }
 
@@ -184,6 +229,41 @@ func TestProductionCLIPlatformAdapterBridgeFilesStayExplicit(t *testing.T) {
 	})
 	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter", map[string]struct{}{
 		"deps.go": {},
+	})
+}
+
+func TestProductionCLIRunnerImportsStayExplicit(t *testing.T) {
+	assertCLIFileInternalImportsExactly(t, "runner.go", map[string]struct{}{
+		"github.com/lazuale/espocrm-ops/internal/app/operationtrace": {},
+		"github.com/lazuale/espocrm-ops/internal/cli/errortransport": {},
+		"github.com/lazuale/espocrm-ops/internal/cli/journalbridge":  {},
+		"github.com/lazuale/espocrm-ops/internal/cli/resultbridge":   {},
+		"github.com/lazuale/espocrm-ops/internal/contract/result":    {},
+	})
+}
+
+func TestProductionCLIExecuteImportsStayExplicit(t *testing.T) {
+	assertCLIFileInternalImportsExactly(t, "execute.go", map[string]struct{}{
+		"github.com/lazuale/espocrm-ops/internal/cli/errortransport": {},
+		"github.com/lazuale/espocrm-ops/internal/contract/exitcode":  {},
+		"github.com/lazuale/espocrm-ops/internal/contract/result":    {},
+	})
+}
+
+func TestProductionCLIDepsImportsStayExplicit(t *testing.T) {
+	assertCLIFileInternalImportsExactly(t, "deps.go", map[string]struct{}{
+		"github.com/lazuale/espocrm-ops/internal/app/backup":                  {},
+		"github.com/lazuale/espocrm-ops/internal/app/backupverify":            {},
+		"github.com/lazuale/espocrm-ops/internal/app/doctor":                  {},
+		"github.com/lazuale/espocrm-ops/internal/app/migrate":                 {},
+		"github.com/lazuale/espocrm-ops/internal/app/operation":               {},
+		"github.com/lazuale/espocrm-ops/internal/app/operationtrace":          {},
+		"github.com/lazuale/espocrm-ops/internal/app/ports/lockport":          {},
+		"github.com/lazuale/espocrm-ops/internal/app/restore":                 {},
+		"github.com/lazuale/espocrm-ops/internal/platform/appadapter":         {},
+		"github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter": {},
+		"github.com/lazuale/espocrm-ops/internal/platform/envadapter":         {},
+		"github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter":     {},
 	})
 }
 
@@ -392,10 +472,57 @@ func assertCLIImportOwnership(t *testing.T, importPath string, owners map[string
 	}
 }
 
+func assertCLIFileInternalImportsExactly(t *testing.T, fileName string, allowed map[string]struct{}) {
+	t.Helper()
+
+	root := testutil.RepoRoot(t)
+	path := filepath.Join(root, "internal", "cli", fileName)
+	fset := token.NewFileSet()
+	file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	got := map[string]struct{}{}
+	for _, imp := range file.Imports {
+		resolved, err := strconv.Unquote(imp.Path.Value)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.HasPrefix(resolved, "github.com/lazuale/espocrm-ops/internal/") {
+			continue
+		}
+		got[resolved] = struct{}{}
+	}
+
+	if len(got) != len(allowed) {
+		t.Fatalf("%s imports unexpected internal surface: got %v want %v", fileName, cliSortedKeys(got), cliSortedKeys(allowed))
+	}
+	for name := range allowed {
+		if _, ok := got[name]; !ok {
+			t.Fatalf("%s missing internal import %q in %v", fileName, name, cliSortedKeys(got))
+		}
+	}
+	for name := range got {
+		if _, ok := allowed[name]; !ok {
+			t.Fatalf("%s imports unexpected internal package %q in %v", fileName, name, cliSortedKeys(got))
+		}
+	}
+}
+
 func ownerNames(owners map[string]struct{}) []string {
 	names := make([]string, 0, len(owners))
 	for name := range owners {
 		names = append(names, name)
 	}
 	return names
+}
+
+func cliSortedKeys(set map[string]struct{}) []string {
+	keys := make([]string, 0, len(set))
+	for key := range set {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	return keys
 }

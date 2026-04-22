@@ -136,7 +136,7 @@ Repo-wide machine-enforced surfaces:
 
 Owner-local machine-enforced surfaces:
 
-- `internal/cli` command-runner locality and explicit error transport bridge definitions
+- `internal/cli` residual CLI edge contour, command-runner locality, and explicit root transport bridge definitions
 - `internal/cli/errortransport` dedicated error-transport contour
 - `internal/cli/journalbridge` dedicated journal-projection bridge contour
 - `internal/cli/resultbridge` dedicated result/output contour
