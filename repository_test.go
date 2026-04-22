@@ -73,6 +73,7 @@ func TestCommandDependencyBoundaries(t *testing.T) {
 		}, []string{
 			modulePath + "/internal/cli",
 			modulePath + "/internal/app/operation",
+			modulePath + "/internal/app/operationtrace",
 			modulePath + "/internal/platform/journalstore",
 		})
 	}

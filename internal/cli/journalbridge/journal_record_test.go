@@ -1,4 +1,4 @@
-package cli
+package journalbridge
 
 import (
 	"testing"
@@ -6,7 +6,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 )
 
-func TestJournalRecordFromResultSerializesPayload(t *testing.T) {
+func TestRecordFromResultSerializesPayload(t *testing.T) {
 	res := result.Result{
 		Message: "ok",
 		DryRun:  true,
@@ -26,7 +26,7 @@ func TestJournalRecordFromResultSerializesPayload(t *testing.T) {
 		Warnings: []string{"existing"},
 	}
 
-	record := journalRecordFromResult(&res)
+	record := RecordFromResult(&res)
 
 	if record.Message != "ok" || !record.DryRun {
 		t.Fatalf("unexpected journal record identity: %#v", record)

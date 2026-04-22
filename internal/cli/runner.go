@@ -4,7 +4,8 @@ import (
 	"fmt"
 	"io"
 
-	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	journalbridge "github.com/lazuale/espocrm-ops/internal/cli/journalbridge"
+	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/spf13/cobra"
 )
@@ -43,9 +44,9 @@ func RunDiagnosticCommand(cmd *cobra.Command, spec CommandSpec, fn func() (resul
 
 func runCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, error), opts commandRunOptions) error {
 	app := appForCommand(cmd)
-	var exec operationusecase.Execution
+	var exec operationtrace.Execution
 	if opts.journal {
-		exec = operationusecase.Begin(app.runtime, app.journalWriterFactory(app.options.JournalDir), spec.Name)
+		exec = operationtrace.Begin(app.runtime, app.journalWriterFactory(app.options.JournalDir), spec.Name)
 	}
 
 	res, err := fn()
@@ -55,17 +56,17 @@ func runCommand(cmd *cobra.Command, spec CommandSpec, fn func() (result.Result, 
 	}
 
 	if opts.journal {
-		completion, finishErr := exec.FinishSuccess(journalRecordFromResult(&res))
+		completion, finishErr := exec.FinishSuccess(journalbridge.RecordFromResult(&res))
 		if finishErr != nil {
 			return finishErr
 		}
-		applyExecutionCompletion(&res, completion)
+		journalbridge.ApplyExecutionCompletion(&res, completion)
 	}
 
 	return renderCommandResult(cmd, spec, res)
 }
 
-func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, opts commandRunOptions, exec operationusecase.Execution, res result.Result, err error) error {
+func commandFailure(cmd *cobra.Command, app *App, spec CommandSpec, opts commandRunOptions, exec operationtrace.Execution, res result.Result, err error) error {
 	res.Command = spec.Name
 	errCode := errorCodeForError(err, spec.ErrorCode)
 
@@ -98,8 +99,8 @@ func renderCommandResult(cmd *cobra.Command, spec CommandSpec, res result.Result
 	return result.Render(cmd.OutOrStdout(), res, appForCommand(cmd).JSONEnabled())
 }
 
-func finishJournalFailure(cmd *cobra.Command, app *App, exec operationusecase.Execution, res *result.Result, err error, errCode string, resultError bool) []string {
-	if journalErr := exec.FinishFailure(journalRecordFromResult(res), err, errCode); journalErr != nil {
+func finishJournalFailure(cmd *cobra.Command, app *App, exec operationtrace.Execution, res *result.Result, err error, errCode string, resultError bool) []string {
+	if journalErr := exec.FinishFailure(journalbridge.RecordFromResult(res), err, errCode); journalErr != nil {
 		message := fmt.Sprintf("failed to write journal entry: %v", journalErr)
 		if resultError {
 			appendCommandWarning(cmd, app, &res.Warnings, message)

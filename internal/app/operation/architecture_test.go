@@ -68,10 +68,12 @@ func TestOperationLifecycleImportSurfaceStaysExplicit(t *testing.T) {
 	})
 }
 
-func TestOperationJournalAndRuntimeBridgeFilesStayExplicit(t *testing.T) {
-	assertOperationImportOwnership(t, modulePath+"/internal/domain/journal", map[string]struct{}{
-		"run.go": {},
-	})
+func TestOperationLifecycleDoesNotImportJournalOrTraceBridge(t *testing.T) {
+	assertOperationImportAbsent(t, modulePath+"/internal/domain/journal")
+	assertOperationImportAbsent(t, modulePath+"/internal/app/operationtrace")
+}
+
+func TestOperationLifecycleDefinitionsStayExplicit(t *testing.T) {
 	assertOperationTextOwnership(t, "func (s Service) PrepareOperation(", map[string]struct{}{
 		"operation_context.go": {},
 	})
@@ -83,39 +85,6 @@ func TestOperationJournalAndRuntimeBridgeFilesStayExplicit(t *testing.T) {
 	})
 	assertOperationTextOwnership(t, "func classifyOperationLockError(", map[string]struct{}{
 		"operation_context.go": {},
-	})
-	assertOperationTextOwnership(t, "var ErrJournalWriterDisabled", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "type Runtime interface", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "type Writer interface", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "type JournalPayload struct", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "type JournalRecord struct", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "type Completion struct", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "func Begin(", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "func (e Execution) FinishSuccess(", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "func (e Execution) FinishFailure(", map[string]struct{}{
-		"run.go": {},
-	})
-	assertOperationTextOwnership(t, "type DefaultRuntime struct", map[string]struct{}{
-		"runtime.go": {},
-	})
-	assertOperationTextOwnership(t, "func NewOperationID()", map[string]struct{}{
-		"runtime.go": {},
 	})
 }
 
@@ -148,6 +117,42 @@ func assertOperationImportOwnership(t *testing.T, importPath string, owners map[
 			}
 			if _, ok := owners[filepath.Base(path)]; !ok {
 				t.Fatalf("%s import must stay owner-local to %v; found in %s", importPath, operationOwnerNames(owners), path)
+			}
+		}
+
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func assertOperationImportAbsent(t *testing.T, importPath string) {
+	t.Helper()
+
+	root := testutil.RepoRoot(t)
+	dir := filepath.Join(root, "internal", "app", "operation")
+	fset := token.NewFileSet()
+
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
+		if err != nil {
+			return err
+		}
+		for _, imp := range file.Imports {
+			resolved, err := strconv.Unquote(imp.Path.Value)
+			if err != nil {
+				return err
+			}
+			if resolved == importPath {
+				t.Fatalf("operation lifecycle package must not import %s; found in %s at %s", importPath, path, fset.Position(imp.Pos()))
 			}
 		}
 

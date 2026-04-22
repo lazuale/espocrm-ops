@@ -127,7 +127,7 @@ func TestProductionCLIExecutionBeginsOnlyInRunner(t *testing.T) {
 				return true
 			}
 			ident, ok := selector.X.(*ast.Ident)
-			if !ok || ident.Name != "operationusecase" {
+			if !ok || ident.Name != "operationtrace" {
 				return true
 			}
 			if filepath.Base(path) != "runner.go" {
@@ -153,17 +153,22 @@ func TestProductionCLIExecutionFinishesOnlyInRunner(t *testing.T) {
 }
 
 func TestProductionCLIJournalProjectionStaysBehindRunner(t *testing.T) {
-	assertCLITextOwnership(t, "journalRecordFromResult(", map[string]struct{}{
-		"journal_record.go": {},
-		"runner.go":         {},
+	assertCLITextOwnership(t, "journalbridge.RecordFromResult(", map[string]struct{}{
+		"runner.go": {},
+	})
+	assertCLITextOwnership(t, "journalbridge.ApplyExecutionCompletion(", map[string]struct{}{
+		"runner.go": {},
 	})
 }
 
 func TestProductionCLIAppOperationBridgeFilesStayExplicit(t *testing.T) {
 	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/app/operation", map[string]struct{}{
-		"deps.go":           {},
+		"deps.go": {},
+	})
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/app/operationtrace", map[string]struct{}{
+		"deps.go":         {},
 		"journal_record.go": {},
-		"runner.go":         {},
+		"runner.go":       {},
 	})
 }
 
@@ -210,12 +215,6 @@ func TestProductionCLITransportBridgeDefinitionsStayExplicit(t *testing.T) {
 	})
 	assertCLITextOwnership(t, "func renderWarnings(", map[string]struct{}{
 		"runner.go": {},
-	})
-	assertCLITextOwnership(t, "func journalRecordFromResult(", map[string]struct{}{
-		"journal_record.go": {},
-	})
-	assertCLITextOwnership(t, "func applyExecutionCompletion(", map[string]struct{}{
-		"journal_record.go": {},
 	})
 }
 

@@ -1,14 +1,14 @@
-package cli
+package journalbridge
 
 import (
 	"encoding/json"
 	"fmt"
 
-	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 )
 
-func journalRecordFromResult(res *result.Result) operationusecase.JournalRecord {
+func RecordFromResult(res *result.Result) operationtrace.JournalRecord {
 	// Journal payload stores JSON-compatible maps, so CLI projects the bounded
 	// result payload families through their existing JSON shape here.
 	artifacts, artifactErr := projectJournalObject(res.Artifacts)
@@ -20,11 +20,11 @@ func journalRecordFromResult(res *result.Result) operationusecase.JournalRecord 
 	items, itemsErr := projectJournalItems(res.Items)
 	appendJournalShapeWarning(res, "items", itemsErr)
 
-	return operationusecase.JournalRecord{
+	return operationtrace.JournalRecord{
 		DryRun:   res.DryRun,
 		Message:  res.Message,
 		Warnings: append([]string(nil), res.Warnings...),
-		Payload: operationusecase.JournalPayload{
+		Payload: operationtrace.JournalPayload{
 			Artifacts: artifacts,
 			Details:   details,
 			Items:     items,
@@ -40,7 +40,7 @@ func appendJournalShapeWarning(res *result.Result, field string, err error) {
 	res.Warnings = append(res.Warnings, fmt.Sprintf("failed to serialize journal %s: %v", field, err))
 }
 
-func applyExecutionCompletion(res *result.Result, completion operationusecase.Completion) {
+func ApplyExecutionCompletion(res *result.Result, completion operationtrace.Completion) {
 	res.OK = true
 	res.Timing = &result.TimingInfo{
 		StartedAt:  completion.StartedAt,

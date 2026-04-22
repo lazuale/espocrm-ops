@@ -321,8 +321,7 @@ resolve the contour env, derive project-local runtime paths, verify filesystem c
 #### C. Contour
 Inside this unit:
 
-- `internal/app/operation/operation_context.go`
-- `internal/app/operation/context_runtime_dirs.go`
+- `internal/app/operation/`
 
 Allowed internal mechanisms:
 
@@ -1419,10 +1418,9 @@ Own operation IDs, timing, journal-entry schema, journal projection from result 
 Inside this unit:
 
 - `internal/domain/journal/`
-- `internal/app/operation/run.go`
-- `internal/app/operation/runtime.go`
+- `internal/app/operationtrace/`
 - `internal/platform/journalstore/`
-- `internal/cli/journal_record.go`
+- `internal/cli/journalbridge/`
 
 Allowed internal mechanisms:
 

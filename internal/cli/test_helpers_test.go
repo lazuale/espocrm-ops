@@ -11,7 +11,7 @@ import (
 	"testing"
 	"time"
 
-	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
 	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 	"github.com/lazuale/espocrm-ops/internal/platform/journalstore"
@@ -31,10 +31,10 @@ func (f fixedRuntime) NewOperationID() string {
 	return f.id
 }
 
-var _ operationusecase.Runtime = fixedRuntime{}
+var _ operationtrace.Runtime = fixedRuntime{}
 
 type testAppConfig struct {
-	runtime              operationusecase.Runtime
+	runtime              operationtrace.Runtime
 	journalWriterFactory JournalWriterFactory
 	locks                lockport.Locks
 	options              GlobalOptions
@@ -44,7 +44,7 @@ type testAppOption func(*testAppConfig)
 
 func defaultTestAppConfig() testAppConfig {
 	return testAppConfig{
-		runtime: operationusecase.DefaultRuntime{},
+		runtime: operationtrace.DefaultRuntime{},
 		journalWriterFactory: func(dir string) JournalWriter {
 			return journalstore.FSWriter{Dir: dir}
 		},
@@ -52,7 +52,7 @@ func defaultTestAppConfig() testAppConfig {
 	}
 }
 
-func withTestRuntime(runtime operationusecase.Runtime) testAppOption {
+func withTestRuntime(runtime operationtrace.Runtime) testAppOption {
 	return func(cfg *testAppConfig) {
 		cfg.runtime = runtime
 	}

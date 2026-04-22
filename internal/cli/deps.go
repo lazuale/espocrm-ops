@@ -5,26 +5,27 @@ import (
 	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	doctorapp "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	migrateapp "github.com/lazuale/espocrm-ops/internal/app/migrate"
-	operationusecase "github.com/lazuale/espocrm-ops/internal/app/operation"
+	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
+	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
 	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	restoreapp "github.com/lazuale/espocrm-ops/internal/app/restore"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 )
 
 type JournalWriter interface {
-	operationusecase.Writer
+	operationtrace.Writer
 }
 
 type JournalWriterFactory func(dir string) JournalWriter
 
 type Dependencies struct {
-	Runtime              operationusecase.Runtime
+	Runtime              operationtrace.Runtime
 	JournalWriterFactory JournalWriterFactory
 	Locks                lockport.Locks
 }
 
 type App struct {
-	runtime              operationusecase.Runtime
+	runtime              operationtrace.Runtime
 	journalWriterFactory JournalWriterFactory
 	backup               backupapp.Service
 	backupVerify         backupverifyapp.Service
@@ -37,13 +38,13 @@ type App struct {
 func NewApp(deps Dependencies) *App {
 	runtime := deps.Runtime
 	if runtime == nil {
-		runtime = operationusecase.DefaultRuntime{}
+		runtime = operationtrace.DefaultRuntime{}
 	}
 
 	journalWriterFactory := deps.JournalWriterFactory
 	if journalWriterFactory == nil {
 		journalWriterFactory = func(dir string) JournalWriter {
-			return operationusecase.DisabledWriter{}
+			return operationtrace.DisabledWriter{}
 		}
 	}
 
@@ -52,7 +53,7 @@ func NewApp(deps Dependencies) *App {
 		locks = appadapter.Locks{}
 	}
 
-	operationService := operationusecase.NewService(operationusecase.Dependencies{
+	operationService := operationapp.NewService(operationapp.Dependencies{
 		Env:   appadapter.EnvLoader{},
 		Files: appadapter.Files{},
 		Locks: locks,
