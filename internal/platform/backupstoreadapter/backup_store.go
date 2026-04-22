@@ -1,4 +1,4 @@
-package appadapter
+package backupstoreadapter
 
 import (
 	"errors"

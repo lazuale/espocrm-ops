@@ -9,7 +9,7 @@ import (
 
 	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
-	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
+	backupstoreadapter "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter"
 )
 
 func TestBuildManifest_HashesArtifacts(t *testing.T) {
@@ -78,11 +78,11 @@ func TestWriteManifest_WritesValidatedJSON(t *testing.T) {
 		},
 	}
 
-	if err := (appadapter.BackupStore{}).WriteManifest(manifestPath, manifest); err != nil {
+	if err := (backupstoreadapter.BackupStore{}).WriteManifest(manifestPath, manifest); err != nil {
 		t.Fatal(err)
 	}
 
-	loaded, err := (appadapter.BackupStore{}).LoadManifest(manifestPath)
+	loaded, err := (backupstoreadapter.BackupStore{}).LoadManifest(manifestPath)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -100,7 +100,7 @@ func TestWriteSHA256Sidecar(t *testing.T) {
 	if err := os.WriteFile(filePath, []byte("db"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := (appadapter.BackupStore{}).WriteSHA256Sidecar(filePath, checksum, sidecarPath); err != nil {
+	if err := (backupstoreadapter.BackupStore{}).WriteSHA256Sidecar(filePath, checksum, sidecarPath); err != nil {
 		t.Fatal(err)
 	}
 

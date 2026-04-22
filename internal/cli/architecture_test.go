@@ -172,6 +172,21 @@ func TestProductionCLIAppOperationBridgeFilesStayExplicit(t *testing.T) {
 	})
 }
 
+func TestProductionCLIPlatformAdapterBridgeFilesStayExplicit(t *testing.T) {
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/platform/appadapter", map[string]struct{}{
+		"deps.go": {},
+	})
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/platform/envadapter", map[string]struct{}{
+		"deps.go": {},
+	})
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter", map[string]struct{}{
+		"deps.go": {},
+	})
+	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter", map[string]struct{}{
+		"deps.go": {},
+	})
+}
+
 func TestProductionCLIErrorTransportBridgeFilesStayExplicit(t *testing.T) {
 	assertCLIImportOwnership(t, "github.com/lazuale/espocrm-ops/internal/cli/errortransport", map[string]struct{}{
 		"doctor.go":  {},

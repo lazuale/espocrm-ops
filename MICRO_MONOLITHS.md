@@ -934,7 +934,7 @@ Own all Docker/Compose and helper-container access behind the runtime capability
 Inside this unit:
 
 - `internal/app/ports/runtimeport/`
-- `internal/platform/appadapter/runtime.go`
+- `internal/platform/runtimeadapter/`
 - `internal/platform/docker/`
 
 Allowed internal mechanisms:
@@ -1031,7 +1031,7 @@ Own explicit contour env loading, project-relative path resolution, env-derived 
 Inside this unit:
 
 - `internal/app/ports/envport/`
-- `internal/platform/appadapter/env_loader.go`
+- `internal/platform/envadapter/`
 - `internal/platform/config/`
 - `internal/domain/env/`
 - `internal/opsconfig/`
@@ -1227,7 +1227,7 @@ Own backup artifact naming, manifest schema, manifest/direct artifact verificati
 Inside this unit:
 
 - `internal/app/ports/backupstoreport/`
-- `internal/platform/appadapter/backup_store.go`
+- `internal/platform/backupstoreadapter/`
 - `internal/platform/backupstore/`
 - `internal/domain/backup/`
 

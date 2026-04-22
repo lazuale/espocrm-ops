@@ -142,6 +142,9 @@ Owner-local machine-enforced surfaces:
 - `internal/cli/resultbridge` dedicated result/output contour
 - `internal/app/operation` dedicated lifecycle contour
 - `internal/app/operationtrace` dedicated journal/runtime trace contour
+- `internal/platform/runtimeadapter` dedicated runtime adapter bridge contour
+- `internal/platform/envadapter` dedicated env/config adapter bridge contour
+- `internal/platform/backupstoreadapter` dedicated backup-store adapter bridge contour
 - `internal/platform/docker` low-level exec and helper-shell ownership
 - `internal/platform/config` env-loading discipline
 - `internal/platform/backupstore` exported surface and error-code discipline

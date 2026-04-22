@@ -10,6 +10,9 @@ import (
 	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	restoreapp "github.com/lazuale/espocrm-ops/internal/app/restore"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
+	backupstoreadapter "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter"
+	envadapter "github.com/lazuale/espocrm-ops/internal/platform/envadapter"
+	runtimeadapter "github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter"
 )
 
 type JournalWriter interface {
@@ -54,41 +57,41 @@ func NewApp(deps Dependencies) *App {
 	}
 
 	operationService := operationapp.NewService(operationapp.Dependencies{
-		Env:   appadapter.EnvLoader{},
+		Env:   envadapter.EnvLoader{},
 		Files: appadapter.Files{},
 		Locks: locks,
 	})
 	backupService := backupapp.NewService(backupapp.Dependencies{
 		Operations: operationService,
-		Env:        appadapter.EnvLoader{},
-		Runtime:    appadapter.Runtime{},
+		Env:        envadapter.EnvLoader{},
+		Runtime:    runtimeadapter.Runtime{},
 		Files:      appadapter.Files{},
-		Store:      appadapter.BackupStore{},
+		Store:      backupstoreadapter.BackupStore{},
 	})
 	backupVerifyService := backupverifyapp.NewService(backupverifyapp.Dependencies{
-		Store: appadapter.BackupStore{},
+		Store: backupstoreadapter.BackupStore{},
 	})
 	restoreService := restoreapp.NewService(restoreapp.Dependencies{
 		Operations: operationService,
-		Env:        appadapter.EnvLoader{},
-		Runtime:    appadapter.Runtime{},
+		Env:        envadapter.EnvLoader{},
+		Runtime:    runtimeadapter.Runtime{},
 		Files:      appadapter.Files{},
 		Locks:      locks,
-		Store:      appadapter.BackupStore{},
+		Store:      backupstoreadapter.BackupStore{},
 	})
 	migrateService := migrateapp.NewService(migrateapp.Dependencies{
 		Operations: operationService,
-		Env:        appadapter.EnvLoader{},
-		Runtime:    appadapter.Runtime{},
+		Env:        envadapter.EnvLoader{},
+		Runtime:    runtimeadapter.Runtime{},
 		Files:      appadapter.Files{},
 		Locks:      locks,
-		Store:      appadapter.BackupStore{},
+		Store:      backupstoreadapter.BackupStore{},
 	})
 	doctorService := doctorapp.NewService(doctorapp.Dependencies{
-		Env:     appadapter.EnvLoader{},
+		Env:     envadapter.EnvLoader{},
 		Files:   appadapter.Files{},
 		Locks:   locks,
-		Runtime: appadapter.Runtime{},
+		Runtime: runtimeadapter.Runtime{},
 	})
 
 	return &App{

@@ -38,6 +38,9 @@ func TestInternalDependencyBoundaries(t *testing.T) {
 				modulePath + "/internal/platform",
 			}, []string{
 				modulePath + "/internal/platform/appadapter",
+				modulePath + "/internal/platform/backupstoreadapter",
+				modulePath + "/internal/platform/envadapter",
+				modulePath + "/internal/platform/runtimeadapter",
 			})
 		case inLayer(pkg.ImportPath, "app"):
 			assertNoImportsExcept(t, pkg, []string{

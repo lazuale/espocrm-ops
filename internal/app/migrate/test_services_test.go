@@ -4,6 +4,9 @@ import (
 	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
 	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
+	backupstoreadapter "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter"
+	envadapter "github.com/lazuale/espocrm-ops/internal/platform/envadapter"
+	runtimeadapter "github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter"
 )
 
 func testOperationService(locks lockport.Locks) operationapp.Service {
@@ -12,7 +15,7 @@ func testOperationService(locks lockport.Locks) operationapp.Service {
 	}
 
 	return operationapp.NewService(operationapp.Dependencies{
-		Env:   appadapter.EnvLoader{},
+		Env:   envadapter.EnvLoader{},
 		Files: appadapter.Files{},
 		Locks: locks,
 	})
@@ -25,10 +28,10 @@ func testMigrateService(locks lockport.Locks) Service {
 
 	return NewService(Dependencies{
 		Operations: testOperationService(locks),
-		Env:        appadapter.EnvLoader{},
-		Runtime:    appadapter.Runtime{},
+		Env:        envadapter.EnvLoader{},
+		Runtime:    runtimeadapter.Runtime{},
 		Files:      appadapter.Files{},
 		Locks:      locks,
-		Store:      appadapter.BackupStore{},
+		Store:      backupstoreadapter.BackupStore{},
 	})
 }

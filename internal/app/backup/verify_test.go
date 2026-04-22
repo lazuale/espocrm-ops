@@ -14,7 +14,7 @@ import (
 
 	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	domainbackup "github.com/lazuale/espocrm-ops/internal/domain/backup"
-	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
+	backupstoreadapter "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter"
 )
 
 func TestVerify_OK(t *testing.T) {
@@ -303,7 +303,7 @@ func TestLoadManifest_FailsOnPathArtifact(t *testing.T) {
 		},
 	})
 
-	if _, err := (appadapter.BackupStore{}).LoadManifest(manifestPath); err == nil {
+	if _, err := (backupstoreadapter.BackupStore{}).LoadManifest(manifestPath); err == nil {
 		t.Fatal("expected path validation error")
 	}
 }
