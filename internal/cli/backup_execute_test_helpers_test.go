@@ -23,9 +23,11 @@ func prepareBackupCommandFixture(t *testing.T) backupCommandFixture {
 	tmp := t.TempDir()
 	projectDir := filepath.Join(tmp, "project")
 	storageDir := filepath.Join(projectDir, "runtime", "dev", "espo")
+	fixedNow := time.Date(2026, 4, 15, 11, 0, 0, 0, time.UTC)
 
 	mustMkdirAll(t, projectDir, storageDir)
 	mustWriteFile(t, filepath.Join(storageDir, "file.txt"), "hello\n")
+	mustSetTreeTimes(t, storageDir, fixedNow)
 
 	composeFile := mustComposeFile(t, projectDir)
 	envFile := writeDoctorEnvFile(t, projectDir, "dev", map[string]string{
@@ -41,7 +43,7 @@ func prepareBackupCommandFixture(t *testing.T) backupCommandFixture {
 		composeFile: composeFile,
 		storageDir:  storageDir,
 		envFile:     envFile,
-		fixedNow:    time.Date(2026, 4, 15, 11, 0, 0, 0, time.UTC),
+		fixedNow:    fixedNow,
 		docker:      newDockerHarness(t),
 	}
 }
@@ -78,6 +80,19 @@ func mustWriteFile(t *testing.T, path, body string) {
 	t.Helper()
 
 	if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustSetTreeTimes(t *testing.T, root string, when time.Time) {
+	t.Helper()
+
+	if err := filepath.Walk(root, func(path string, info os.FileInfo, err error) error {
+		if err != nil {
+			return err
+		}
+		return os.Chtimes(path, when, when)
+	}); err != nil {
 		t.Fatal(err)
 	}
 }

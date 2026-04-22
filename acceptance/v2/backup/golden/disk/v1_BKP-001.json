@@ -1,0 +1,62 @@
+{
+  "backup_root_entries": [
+    "db/",
+    "db/espocrm-test-dev_2026-04-15_11-00-00.sql.gz",
+    "db/espocrm-test-dev_2026-04-15_11-00-00.sql.gz.sha256",
+    "files/",
+    "files/espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz",
+    "files/espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz.sha256",
+    "locks/",
+    "locks/.maintenance.lock.flock",
+    "manifests/",
+    "manifests/espocrm-test-dev_2026-04-15_11-00-00.manifest.json",
+    "manifests/espocrm-test-dev_2026-04-15_11-00-00.manifest.txt"
+  ],
+  "backup_root_tmp_files": [],
+  "db_backup_sql": "select 1;",
+  "db_checksum": "c341f0d1bfbae2df67e59262d18829cdf55be8647cfa7bff5e21a90c5d3928a9  espocrm-test-dev_2026-04-15_11-00-00.sql.gz\n",
+  "docker_log": [
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps --status running --services",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE stop espocrm espocrm-daemon espocrm-websocket",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "exec mock-db mariadb-dump --version",
+    "exec -i -e MYSQL_PWD mock-db mariadb-dump -u espocrm espocrm --single-transaction --quick --routines --triggers --events",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE up -d espocrm espocrm-daemon espocrm-websocket"
+  ],
+  "files_archive_entries": [
+    "espo/",
+    "espo/file.txt"
+  ],
+  "files_checksum": "45d8c5d0f33ff84efa00f0f46fc1e64255e3f2292d5c229a549147949c6553c7  espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz\n",
+  "manifest_json": {
+    "app_services_were_running": true,
+    "artifacts": {
+      "db_backup": "espocrm-test-dev_2026-04-15_11-00-00.sql.gz",
+      "files_backup": "espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz"
+    },
+    "checksums": {
+      "db_backup": "c341f0d1bfbae2df67e59262d18829cdf55be8647cfa7bff5e21a90c5d3928a9",
+      "files_backup": "45d8c5d0f33ff84efa00f0f46fc1e64255e3f2292d5c229a549147949c6553c7"
+    },
+    "compose_project": "espocrm-test",
+    "consistent_snapshot": true,
+    "contour": "dev",
+    "created_at": "2026-04-15T11:00:00Z",
+    "db_backup_created": true,
+    "env_file": ".env.dev",
+    "espocrm_image": "espocrm/espocrm:9.3.4-apache",
+    "files_backup_created": true,
+    "mariadb_tag": "10.11",
+    "retention_days": 7,
+    "scope": "dev",
+    "version": 1
+  },
+  "manifest_txt": "created_at=2026-04-15_11-00-00\ncontour=dev\ncompose_project=espocrm-test\nenv_file=.env.dev\nespocrm_image=espocrm/espocrm:9.3.4-apache\nmariadb_tag=10.11\nretention_days=7\ndb_backup_created=1\nfiles_backup_created=1\nconsistent_snapshot=1\napp_services_were_running=1\ndb_backup_file=espocrm-test-dev_2026-04-15_11-00-00.sql.gz\ndb_backup_checksum_file=espocrm-test-dev_2026-04-15_11-00-00.sql.gz.sha256\ndb_backup_sha256=c341f0d1bfbae2df67e59262d18829cdf55be8647cfa7bff5e21a90c5d3928a9\ndb_backup_size_bytes=33\nfiles_backup_file=espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz\nfiles_backup_checksum_file=espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz.sha256\nfiles_backup_sha256=45d8c5d0f33ff84efa00f0f46fc1e64255e3f2292d5c229a549147949c6553c7\nfiles_backup_size_bytes=160\n",
+  "process_exit_code": 0,
+  "running_services_after": [
+    "db",
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ]
+}

@@ -1,0 +1,49 @@
+{
+  "backup_root_entries": [
+    "db/",
+    "files/",
+    "files/espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz",
+    "files/espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz.sha256",
+    "locks/",
+    "locks/.maintenance.lock.flock",
+    "manifests/",
+    "manifests/espocrm-test-dev_2026-04-15_11-00-00.manifest.json",
+    "manifests/espocrm-test-dev_2026-04-15_11-00-00.manifest.txt"
+  ],
+  "backup_root_tmp_files": [],
+  "docker_log": [
+    "image inspect alpine:3.20",
+    "run --pull=never --rm --entrypoint tar -v REPLACE_STORAGE_PARENT:/archive-source:ro -v REPLACE_BACKUP_ROOT/files:/archive-target alpine:3.20 -C /archive-source -czf /archive-target/espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz.tmp espo"
+  ],
+  "files_archive_entries": [
+    "espo/",
+    "espo/file.txt"
+  ],
+  "files_checksum": "45d8c5d0f33ff84efa00f0f46fc1e64255e3f2292d5c229a549147949c6553c7  espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz\n",
+  "manifest_json": {
+    "app_services_were_running": false,
+    "artifacts": {
+      "db_backup": "",
+      "files_backup": "espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz"
+    },
+    "checksums": {
+      "db_backup": "",
+      "files_backup": "45d8c5d0f33ff84efa00f0f46fc1e64255e3f2292d5c229a549147949c6553c7"
+    },
+    "compose_project": "espocrm-test",
+    "consistent_snapshot": false,
+    "contour": "dev",
+    "created_at": "2026-04-15T11:00:00Z",
+    "db_backup_created": false,
+    "env_file": ".env.dev",
+    "espocrm_image": "espocrm/espocrm:9.3.4-apache",
+    "files_backup_created": true,
+    "mariadb_tag": "10.11",
+    "retention_days": 7,
+    "scope": "dev",
+    "version": 1
+  },
+  "manifest_txt": "created_at=2026-04-15_11-00-00\ncontour=dev\ncompose_project=espocrm-test\nenv_file=.env.dev\nespocrm_image=espocrm/espocrm:9.3.4-apache\nmariadb_tag=10.11\nretention_days=7\ndb_backup_created=0\nfiles_backup_created=1\nconsistent_snapshot=0\napp_services_were_running=0\nfiles_backup_file=espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz\nfiles_backup_checksum_file=espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz.sha256\nfiles_backup_sha256=45d8c5d0f33ff84efa00f0f46fc1e64255e3f2292d5c229a549147949c6553c7\nfiles_backup_size_bytes=160\n",
+  "process_exit_code": 0,
+  "running_services_after": null
+}

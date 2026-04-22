@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -17,6 +18,8 @@ const (
 	cliTestDockerRuntimeUIDEnv    = "DOCKER_TEST_RUNTIME_UID"
 	cliTestDockerRuntimeGIDEnv    = "DOCKER_TEST_RUNTIME_GID"
 	cliTestDockerFailOnCallEnv    = "DOCKER_TEST_FAIL_ON_CALL"
+	cliTestDockerFailMatchEnv     = "DOCKER_TEST_FAIL_ON_MATCH"
+	cliTestDockerSystemTarEnv     = "DOCKER_TEST_SYSTEM_TAR"
 )
 
 type dockerHarness struct {
@@ -45,6 +48,11 @@ func newDockerHarness(t *testing.T) *dockerHarness {
 		t.Fatal(err)
 	}
 
+	systemTar, err := exec.LookPath("tar")
+	if err != nil {
+		t.Fatalf("resolve system tar: %v", err)
+	}
+
 	dockerPath := filepath.Join(binDir, "docker")
 	if err := os.WriteFile(dockerPath, []byte(cliTestDockerScript), 0o755); err != nil {
 		t.Fatal(err)
@@ -54,6 +62,7 @@ func newDockerHarness(t *testing.T) *dockerHarness {
 	t.Setenv(cliTestDockerStateDirEnv, stateDir)
 	t.Setenv(cliTestDockerRuntimeUIDEnv, strconv.Itoa(os.Getuid()))
 	t.Setenv(cliTestDockerRuntimeGIDEnv, strconv.Itoa(os.Getgid()))
+	t.Setenv(cliTestDockerSystemTarEnv, systemTar)
 
 	return &dockerHarness{
 		stateDir: stateDir,
@@ -64,6 +73,11 @@ func newDockerHarness(t *testing.T) *dockerHarness {
 func (h *dockerHarness) SetFailOnAnyCall(t *testing.T) {
 	t.Helper()
 	t.Setenv(cliTestDockerFailOnCallEnv, "unexpected docker invocation")
+}
+
+func (h *dockerHarness) SetFailOnMatch(t *testing.T, match string) {
+	t.Helper()
+	t.Setenv(cliTestDockerFailMatchEnv, match)
 }
 
 func (h *dockerHarness) EnableLog(t *testing.T) string {
@@ -201,6 +215,8 @@ set -Eeuo pipefail
 
 state_dir="${DOCKER_TEST_STATE_DIR:-}"
 fail_on_call="${DOCKER_TEST_FAIL_ON_CALL:-}"
+fail_on_match="${DOCKER_TEST_FAIL_ON_MATCH:-}"
+system_tar="${DOCKER_TEST_SYSTEM_TAR:-/usr/bin/tar}"
 
 log_call() {
   if [[ -n "${DOCKER_TEST_LOG:-}" ]]; then
@@ -271,6 +287,11 @@ set_running_services() {
 
 if [[ -n "$fail_on_call" ]]; then
   echo "$fail_on_call: $*" >&2
+  exit 97
+fi
+
+if [[ -n "$fail_on_match" && "$*" == *"$fail_on_match"* ]]; then
+  echo "forced docker failure on match '$fail_on_match': $*" >&2
   exit 97
 fi
 
@@ -425,6 +446,39 @@ if [[ "${1:-}" == "exec" ]]; then
 fi
 
 if [[ "${1:-}" == "run" ]]; then
+  archive_source_host=""
+  archive_target_host=""
+  archive_target_file=""
+  args=("$@")
+
+  for arg in "$@"; do
+    if [[ "$arg" == *":/archive-source:ro" ]]; then
+      archive_source_host="${arg%%:/archive-source:ro}"
+    fi
+    if [[ "$arg" == *":/archive-target" ]]; then
+      archive_target_host="${arg%%:/archive-target}"
+    fi
+  done
+  for ((i=0; i<${#args[@]}; i++)); do
+    if [[ "${args[$i]}" == "-czf" && $((i + 1)) -lt ${#args[@]} ]]; then
+      archive_target_file="${args[$((i + 1))]}"
+    fi
+  done
+
+  if [[ -n "$archive_source_host" && -n "$archive_target_host" && "$archive_target_file" == /archive-target/* ]]; then
+    source_base="${args[$((${#args[@]} - 1))]}"
+    source_path="$archive_source_host/$source_base"
+    archive_output="$archive_target_host/${archive_target_file#/archive-target/}"
+
+    if [[ ! -d "$source_path" ]]; then
+      echo "archive source directory is missing: $source_path" >&2
+      exit 52
+    fi
+    mkdir -p "$(dirname "$archive_output")"
+    "$system_tar" -C "$archive_source_host" -czf "$archive_output" "$source_base"
+    exit $?
+  fi
+
   storage_host=""
   for arg in "$@"; do
     if [[ "$arg" == *":/espo-storage" ]]; then

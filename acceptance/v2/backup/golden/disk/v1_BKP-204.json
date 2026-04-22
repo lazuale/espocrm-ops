@@ -1,0 +1,17 @@
+{
+  "backup_root_entries": [
+    "db/",
+    "files/",
+    "locks/",
+    "locks/.maintenance.lock.flock",
+    "manifests/"
+  ],
+  "backup_root_tmp_files": [],
+  "process_exit_code": 5,
+  "running_services_after": [
+    "db",
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ]
+}
