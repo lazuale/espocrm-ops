@@ -31,6 +31,15 @@ Therefore the architecture is:
 - one adapters layer
 - one privileged execution path
 
+This repository has two binding constitutional layers:
+
+- [ARCHITECTURE.md](ARCHITECTURE.md) fixes the layer model, boundary families, dependency rules, and repo-wide architectural invariants.
+- [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md) fixes the bounded internal micro-monolith units, their contours, their access classes, their allowed caller sets, their interaction model, and the global ops pipeline.
+
+The approved internal micro-monolith list is finite.
+Only the units declared in `MICRO_MONOLITHS.md` are allowed.
+No implicit split, merge, or caller edge is permitted.
+
 If remote execution is ever introduced, the only acceptable split is:
 
 - control plane
@@ -407,6 +416,7 @@ Therefore:
 Explicit destructive confirmation flags may be enforced at the CLI edge as input validation when they only gate entry to the canonical application boundary and do not create an alternate runtime or recovery path.
 
 All privileged runtime behavior must be explicit and centrally owned.
+Operational access classes and their allowed privileged surfaces are frozen in `MICRO_MONOLITHS.md`.
 
 ---
 
@@ -445,6 +455,7 @@ The correct fix is to remove the old path and keep one canonical path.
 A change must be rejected if it introduces any of the following:
 
 - a new architectural exception
+- a new micro-monolith, a silent micro-monolith split/merge, or a new direct caller edge outside `MICRO_MONOLITHS.md`
 - a new legacy shim
 - a second owner for an existing policy
 - a second way to assemble the same workflow semantics

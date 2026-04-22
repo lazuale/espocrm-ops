@@ -129,4 +129,5 @@ Run a migration:
 ## More Context
 
 Architecture rules and the layer model live in [ARCHITECTURE.md](ARCHITECTURE.md).
+The binding internal micro-monolith constitution lives in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
 Repository rules and cleanup constraints live in [AGENTS.md](AGENTS.md).

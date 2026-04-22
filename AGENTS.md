@@ -6,7 +6,7 @@
 - The retained product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
 
 ## Authority
-- Repository authority is `AGENTS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ci.yml`.
+- Repository authority is `AGENTS.md` -> `ARCHITECTURE.md` and `MICRO_MONOLITHS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ci.yml`.
 - `README.md` and `CONTRIBUTING.md` are practical docs. If they drift from the retained Go product, fix them.
 - If an archived doc conflicts with `AGENTS.md` or the retained Go product, ignore the archived doc.
 
@@ -20,6 +20,9 @@
 ## Rules
 - `internal/` owns retained-core behavior.
 - `cmd/espops/` owns the program entrypoint and command surface only.
+- No implicit micro-monolith split.
+- No implicit micro-monolith merge.
+- No cross-monolith caller edge outside `MICRO_MONOLITHS.md`.
 - No hidden fallback.
 - No auto-repair.
 - No auto-normalization.
@@ -44,4 +47,5 @@
 
 ## Done
 - Keep authority surfaces in sync.
+- Keep `ARCHITECTURE.md`, `MICRO_MONOLITHS.md`, `CONTRIBUTING.md`, and compliance docs in sync.
 - Run `make ci` before claiming repository health after product, workflow, or contributor-path changes.

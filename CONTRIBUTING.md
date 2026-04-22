@@ -14,6 +14,7 @@ Retained product behavior belongs in:
 - `internal/opsconfig/` for shared operational semantics that must stay Go-owned
 
 Do not add a second runtime. Do not reintroduce shell-owned behavior.
+Do not change the approved internal micro-monolith map implicitly; the binding micro-monolith constitution lives in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
 
 ## Local Setup
 
@@ -58,6 +59,7 @@ make ci
 - Prefer deletion over compatibility shims.
 - Prefer one source of truth over mirrored validation layers.
 - Keep operational semantics in Go.
+- Keep the approved micro-monolith list, caller matrix, access classes, and ownership map aligned with [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
 - Do not add process-env-only switches. Operator-facing behavior must come from flags or the contour env file.
 - Preflight should inspect. Execution should mutate.
 - Do not claim reliability improvements without end-to-end evidence.
@@ -74,6 +76,9 @@ make ci
 ## PR Review Gate
 
 - Reject any PR that expands top-level `internal/app/*` production surface beyond the canonical boundary shape.
+- Reject any PR that adds, removes, splits, or merges an approved micro-monolith without updating [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
+- Reject any PR that introduces a direct caller edge forbidden by the micro-monolith interaction model.
+- Reject any PR that moves privileged access to a weaker access class or introduces a hidden side channel.
 - Reject any PR that reintroduces direct `internal/app -> internal/platform/*` imports.
 - Reject any PR that introduces a second owner for an existing operational semantic.
 - If a change intentionally moves the architecture baseline, require an updated formal audit and an updated [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md).
@@ -90,5 +95,6 @@ make ci
 - Example contour env files live under `env/`.
 - `compose.yaml` and `deploy/` describe the runtime the tool operates against.
 - Architecture rules and the layer model live in [ARCHITECTURE.md](ARCHITECTURE.md).
+- The binding internal micro-monolith constitution lives in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
 - The current accepted compliance baseline lives in [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md).
 - Repository rules and cleanup constraints live in [AGENTS.md](AGENTS.md).

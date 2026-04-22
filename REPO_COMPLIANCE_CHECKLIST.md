@@ -2,7 +2,7 @@
 
 This checklist is the formal acceptance gate for architectural compliance.
 
-It exists to verify that the repository matches the rules in `ARCHITECTURE.md`.
+It exists to verify that the repository matches the rules in `ARCHITECTURE.md` and `MICRO_MONOLITHS.md`.
 Passing tests alone is not sufficient.
 The repository must also satisfy ownership, layering, workflow, policy, and access constraints.
 
@@ -39,11 +39,17 @@ Verify that architectural documents describe one consistent system.
 ### Check
 Confirm that the following files agree on:
 - strict modular monolith
+- binding micro-monolith constitution
 - layer ownership
 - CLI as edge-only
 - `internal/app/` as workflow owner
 - `internal/domain/` as policy owner
 - `internal/platform/` as adapter owner
+- approved micro-monolith list
+- micro-monolith interaction model
+- micro-monolith access classes
+- semantic ownership map
+- global ops pipeline
 - canonical mutating workflow model
 - canonical workflow status vocabulary
 - prohibition on legacy compatibility shims
@@ -51,6 +57,7 @@ Confirm that the following files agree on:
 
 ### Files
 - `ARCHITECTURE.md`
+- `MICRO_MONOLITHS.md`
 - `README.md`
 - `CONTRIBUTING.md`
 
@@ -58,6 +65,7 @@ Confirm that the following files agree on:
 - No contradictions between documents
 - No stale references to removed layers or legacy architecture
 - No document preserves old behavior "for compatibility"
+- No contradiction between the layer constitution and the micro-monolith constitution
 
 ### Findings
 - Status:
@@ -189,6 +197,43 @@ Platform must not own:
 - domain vocabulary
 
 #### Findings
+- Status:
+- Notes:
+
+---
+
+## 4A. Micro-Monolith Constitution Audit
+
+### Goal
+Verify that the internal micro-monolith constitution is explicit, finite, and aligned with the current repository.
+
+### Check
+Inspect `MICRO_MONOLITHS.md`.
+
+Confirm that:
+- the approved micro-monolith list is finite
+- every retained operational semantic is assigned to exactly one canonical micro-monolith owner
+- every micro-monolith has an explicit passport covering:
+  - name
+  - purpose
+  - contour
+  - external inputs
+  - external outputs
+  - access rights
+  - allowed caller set
+  - local pipeline
+  - invariants
+  - anti-invariants
+- the declared contours still match the actual package/file ownership in the repo
+- shared inner kernels are modeled as part of exactly one bounded micro-monolith rather than duplicated across commands
+
+### Pass Criteria
+- No missing retained-core micro-monolith
+- No semantic overlap between micro-monolith owners
+- No passport section left vague or open-ended
+- No declared unit that does not map to current repository reality
+
+### Findings
 - Status:
 - Notes:
 
@@ -330,6 +375,39 @@ Confirm:
 
 ---
 
+## 8A. Micro-Monolith Interaction Model Audit
+
+### Goal
+Verify that cross-unit dependencies follow the approved micro-monolith interaction model.
+
+### Check
+Inspect `MICRO_MONOLITHS.md` and the production import/call structure.
+
+Confirm that:
+- caller -> callee edges stay inside the approved interaction model
+- the privileged mutating path is explicit
+- the diagnostic path is explicit
+- the output contract path is explicit
+- the final public error ownership path is explicit
+- shared inner kernels are called only by their approved upstreams
+
+### Forbidden
+- CLI edge calling privileged adapters directly
+- app units calling forbidden peer workflow units
+- adapter units reaching back into orchestration or transport owners
+- a second direct caller path around `Operation Lifecycle Monolith`
+
+### Pass Criteria
+- All direct architectural edges are approved
+- No forbidden caller edge exists
+- The interaction model remains one-way where declared one-way
+
+### Findings
+- Status:
+- Notes:
+
+---
+
 ## 9. Policy Ownership Audit
 
 ### Goal
@@ -353,6 +431,35 @@ Inspect ownership of:
 
 ### Pass Criteria
 Each shared policy can be pointed to in exactly one authoritative location.
+
+### Findings
+- Status:
+- Notes:
+
+---
+
+## 9A. Semantic Ownership Map Audit
+
+### Goal
+Verify that the semantic ownership map in `MICRO_MONOLITHS.md` still matches the codebase.
+
+### Check
+Audit the declared canonical owners for:
+- workflow meaning
+- runtime meaning
+- env/config meaning
+- file/archive meaning
+- backup-store meaning
+- lock meaning
+- journal meaning
+- result contract meaning
+- final public error meaning
+- diagnostic readiness meaning
+
+### Pass Criteria
+- Every semantic area still has one canonical owner
+- No forbidden secondary owner appears in production code or docs
+- The ownership map agrees with the layer model and ports/adapters boundaries
 
 ### Findings
 - Status:
@@ -389,6 +496,49 @@ Every major operation has one owner for request/config/semantic assembly.
 
 ---
 
+## 10A. Ops Pipeline Audit
+
+### Goal
+Verify that the repository still follows one explicit global ops pipeline with only approved family-specific branches.
+
+### Check
+Inspect `MICRO_MONOLITHS.md`, app workflows, CLI runner flow, and result/journal/error shaping.
+
+Confirm the declared phases remain explicit:
+- entry / edge
+- input normalization
+- request shaping
+- workflow execution
+- runtime interaction
+- verification / health-check
+- result shaping
+- error classification
+- journal
+- output / render
+
+Confirm command traversal for:
+- `backup`
+- `backup verify`
+- `restore`
+- `migrate`
+- `doctor`
+
+### Forbidden
+- alternate hidden branch around the common pipeline
+- command-specific success path without explicit verify/report/finalize semantics
+- a new journal or error route outside the canonical pipeline
+
+### Pass Criteria
+- The common ops pipeline is still recognizable in code
+- Family-specific branches remain explicit and owner-local
+- No branch has become an architectural defect
+
+### Findings
+- Status:
+- Notes:
+
+---
+
 ## 11. Access Surface Audit
 
 ### Goal
@@ -401,6 +551,9 @@ Confirm:
 - no hidden env-driven control paths
 - no duplicate runtime access paths
 - no CLI-only privileged runtime behavior separate from app logic
+- privileged access stays inside the approved micro-monolith access classes
+- destructive operations stay inside their approved micro-monoliths
+- explicit user confirmation stays edge-owned
 
 Explicit CLI confirmation flags may gate destructive commands only as edge input validation; they must not bypass the canonical boundary or create a second runtime access path.
 
@@ -411,6 +564,31 @@ Explicit CLI confirmation flags may gate destructive commands only as edge input
 
 ### Pass Criteria
 Privileged behavior is centralized, explicit, and consistent.
+
+### Findings
+- Status:
+- Notes:
+
+---
+
+## 11A. Operational Access Class Audit
+
+### Goal
+Verify that each micro-monolith still has the access class declared in `MICRO_MONOLITHS.md` and nothing stronger.
+
+### Check
+Inspect the declared access class table and compare it to current code.
+
+Confirm that:
+- transport-only units do not gain privileged adapter access
+- read-only diagnostic or verification units do not mutate state
+- privileged adapters do not become workflow owners
+- journal and output units stay side-effect constrained to their declared surfaces
+
+### Pass Criteria
+- Every micro-monolith still matches its declared access class
+- No weaker unit has gained stronger hidden power
+- No hidden side channel bypasses the declared access model
 
 ### Findings
 - Status:
