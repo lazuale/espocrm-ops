@@ -418,13 +418,16 @@ Forbidden callers:
 `Backup Execution Monolith`
 
 #### B. Purpose
-Own the canonical backup workflow and the shared backup snapshot kernel used by `backup` and the pre-restore emergency recovery point.
+Own the current `backup v2` workflow and the retained legacy backup snapshot kernel used by the pre-restore emergency recovery point.
 
 #### C. Contour
 Inside this unit:
 
-- `internal/app/backup/`
-- `internal/app/internal/backupflow/`
+- `internal/app/backup_command.go`
+- `internal/app/backup_v2.go`
+- `internal/model/backup.go`
+- `internal/store/`
+- `internal/app/internal/backupflow/` — намеренно оставлен для `restore` emergency snapshot и oracle/reference работы; не является активным path команды `backup`
 
 Allowed internal mechanisms:
 
@@ -440,7 +443,8 @@ Allowed internal mechanisms:
 #### D. External Inputs
 This unit may accept:
 
-- top-level `backup.Request`
+- top-level `app.BackupCommandRequest`
+- v2 core `model.BackupRequest`
 - internal backup-flow `Request`
 - `OperationContext`
 - backup options such as `SkipDB`, `SkipFiles`, `NoStop`, and `Now`
@@ -448,7 +452,8 @@ This unit may accept:
 #### E. External Outputs
 This unit may emit:
 
-- `backup.ExecuteInfo`
+- `model.BackupResult`
+- legacy snapshot `backupflow.ExecuteInfo` только для pre-restore emergency recovery point
 - backup artifacts under the resolved backup root
 - manifest JSON and text files
 - checksum sidecars
@@ -475,11 +480,12 @@ Forbidden:
 - render result or output contracts
 - own final CLI confirmation rules
 - hide fallback behavior from the reported workflow steps and warnings
+- use `internal/app/internal/backupflow` as a second active implementation path for the `backup` command after cutover
 
 #### G. Availability
 Allowed callers:
 
-- `CLI Edge Monolith` through `internal/app/backup`
+- `CLI Edge Monolith` through `internal/app.BackupCommandService`
 - `Restore Execution Monolith` through the shared backup snapshot kernel
 
 Allowed callees:
@@ -1604,7 +1610,7 @@ Inside this unit:
 - `internal/contract/apperr/`
 - `internal/contract/exitcode/`
 - boundary error wrappers:
-  - `internal/app/backup/errors.go`
+  - `internal/app/backup_command.go` and `internal/model/backup.go` для `backup v2`
   - `internal/app/backupverify/errors.go`
   - `internal/app/restore/errors.go`
   - `internal/app/migrate/compatibility.go`

@@ -315,9 +315,10 @@ Coverage по этим bundles:
 - `BKP-204` ... `BKP-209`
 - `BKP-403`, `BKP-504`, `BKP-505`
 
-## Что ещё нужно доснять из `v1` до cutover `backup`
+## Статус после cutover `backup`
 
-Для initial `backup v2` slice black-box gaps больше нет.
+Команда `backup` подключена к реальному CLI path через `backup v2`.
+Старые `v1_*` bundles остаются только как regression oracle/spec harness.
 
 Не как gap, а как уже зафиксированные legacy/non-goal пункты остаются:
 

@@ -42,9 +42,9 @@ func NewBackupCommandService(deps BackupCommandDependencies) BackupCommandServic
 	}
 }
 
-// Временный cutover shim: оставляет существующий CLI/env/lock-контур,
-// но передаёт выполнение backup в v2 core. После удаления старого backup path
-// этот метод должен стать обычным входом команды без совместимости с v1.
+// Переходный CLI boundary: команда backup исполняется только через v2 core,
+// а существующий operation/env/lock-контур остаётся до отдельного переноса.
+// Этот слой не должен становиться вторым implementation path.
 func (s BackupCommandService) Execute(ctx context.Context, req BackupCommandRequest) (result model.BackupResult, err error) {
 	createdAt := time.Now().UTC()
 	if req.Now != nil {

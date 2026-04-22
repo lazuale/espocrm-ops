@@ -58,7 +58,7 @@ Current non-PASS items:
 
 Top-level application boundaries are frozen to this canon:
 
-- `internal/app/backup`: `Execute(req)`
+- `internal/app`: `BackupCommandService.Execute(ctx, req)` для команды `backup v2`
 - `internal/app/backupverify`: `Diagnose(req)`
 - `internal/app/restore`: `Execute(req)`
 - `internal/app/migrate`: `Execute(req)`
@@ -75,7 +75,7 @@ Top-level app boundary packages must not reintroduce exported production helper 
 
 Shared backup and restore execution primitives now live only under:
 
-- `internal/app/internal/backupflow`
+- `internal/app/internal/backupflow` — намеренно оставлен только для restore emergency snapshot и oracle/reference работы; не является активным path команды `backup`
 - `internal/app/internal/restoreflow`
 
 These are internal owners, not public app boundaries.
