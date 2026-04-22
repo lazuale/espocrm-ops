@@ -110,6 +110,7 @@ Rules:
 - Bridge files may carry translation, routing, or narrow shared-kernel seams only; they must not become a second policy owner or a miscellaneous staging area.
 - A mixed package must keep bridge files few enough to name exhaustively and review as a finite list. If the seam needs wildcard ownership, anonymous helper families, or package-wide exceptions, the bridge layer is already overgrown.
 - Mixed package colocation does not relax caller discipline, access discipline, or semantic ownership discipline.
+- `internal/platform/appadapter/` is an approved residual mixed package limited to `files.go` and `locks.go`; it exists only while both bridges remain thin, explicit, owner-bounded, and not independently split-triggered.
 
 ## 1D. Promotion Criteria Policy
 
