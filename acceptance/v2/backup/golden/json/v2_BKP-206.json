@@ -1,0 +1,10 @@
+{
+  "command": "espops",
+  "error": {
+    "code": "backup_failed",
+    "exit_code": 5,
+    "kind": "external"
+  },
+  "ok": false,
+  "process_exit_code": 5
+}

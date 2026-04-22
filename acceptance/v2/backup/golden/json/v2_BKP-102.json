@@ -2,9 +2,9 @@
   "artifacts": {
     "backup_root": "REPLACE_BACKUP_ROOT",
     "compose_file": "REPLACE_COMPOSE_FILE",
+    "db_backup": "REPLACE_DB_BACKUP",
+    "db_checksum": "REPLACE_DB_CHECKSUM",
     "env_file": "REPLACE_ENV_FILE",
-    "files_backup": "REPLACE_FILES_BACKUP",
-    "files_checksum": "REPLACE_FILES_CHECKSUM",
     "manifest_json": "",
     "manifest_txt": "",
     "project_dir": "REPLACE_PROJECT_DIR"
@@ -19,50 +19,43 @@
     "ready": true,
     "retention_days": 7,
     "scope": "dev",
-    "skip_db": true,
-    "skip_files": false,
+    "skip_db": false,
+    "skip_files": true,
     "skipped": 3,
     "steps": 7
   },
   "items": [
     {
       "code": "artifact_allocation",
-      "status": "completed",
-      "summary": "Artifacts подготовлены"
+      "status": "completed"
     },
     {
       "code": "runtime_prepare",
-      "status": "skipped",
-      "summary": "Подготовка runtime пропущена"
+      "status": "skipped"
     },
     {
       "code": "db_backup",
-      "status": "skipped",
-      "summary": "Backup базы данных пропущен"
+      "status": "completed"
     },
     {
       "code": "files_backup",
-      "status": "completed",
-      "summary": "Backup файлов создан"
+      "status": "skipped"
     },
     {
       "code": "finalize",
-      "status": "completed",
-      "summary": "Artifacts финализированы"
+      "status": "completed"
     },
     {
       "code": "retention",
-      "status": "completed",
-      "summary": "Retention выполнен"
+      "status": "completed"
     },
     {
       "code": "runtime_return",
-      "status": "skipped",
-      "summary": "Возврат runtime пропущен"
+      "status": "skipped"
     }
   ],
-  "message": "backup completed",
   "ok": true,
+  "process_exit_code": 0,
   "timing": {
     "finished_at": "2026-04-15T11:00:00Z",
     "started_at": "2026-04-15T11:00:00Z"

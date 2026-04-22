@@ -1,0 +1,19 @@
+{
+  "backup_root_entries": [
+    "db/",
+    "files/",
+    "files/espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz",
+    "files/espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz.sha256",
+    "locks/",
+    "locks/.maintenance.lock.flock",
+    "manifests/"
+  ],
+  "backup_root_tmp_files": [],
+  "files_archive_entries": [
+    "espo/",
+    "espo/file.txt"
+  ],
+  "files_checksum": "45d8c5d0f33ff84efa00f0f46fc1e64255e3f2292d5c229a549147949c6553c7  espocrm-test-dev_files_2026-04-15_11-00-00.tar.gz\n",
+  "process_exit_code": 0,
+  "running_services_after": null
+}

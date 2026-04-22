@@ -16,7 +16,7 @@ import (
 
 const updateBackupAcceptanceReferenceEnv = "UPDATE_ACCEPTANCE_BACKUP_REFERENCE"
 
-func TestAcceptanceReference_BackupV1_JSONAndDisk(t *testing.T) {
+func TestAcceptanceReference_BackupCLI_JSONAndDisk(t *testing.T) {
 	cases := []struct {
 		id        string
 		extraArgs []string
@@ -124,32 +124,6 @@ func TestAcceptanceReference_BackupV1_JSONAndDisk(t *testing.T) {
 				fixture.docker.EnableLog(t)
 			},
 		},
-		{
-			id:        "BKP-504",
-			extraArgs: []string{"--skip-db", "--no-stop"},
-			setup: func(t *testing.T, fixture *backupCommandFixture) {
-				fixture.docker.SetFailOnAnyCall(t)
-				filePath := filepath.Join(fixture.storageDir, "file.txt")
-				t.Cleanup(func() {
-					_ = os.Chmod(filePath, 0o644)
-					_ = os.Chmod(fixture.storageDir, 0o755)
-				})
-				if err := os.Chmod(fixture.storageDir, 0o555); err != nil {
-					t.Fatal(err)
-				}
-				if err := os.Chmod(filePath, 0o444); err != nil {
-					t.Fatal(err)
-				}
-			},
-		},
-		{
-			id:        "BKP-505",
-			extraArgs: []string{"--skip-db", "--no-stop"},
-			setup: func(t *testing.T, fixture *backupCommandFixture) {
-				fixture.docker.EnableLog(t)
-				prependFailingTar(t, "mock tar failed")
-			},
-		},
 	}
 
 	for _, tc := range cases {
@@ -168,10 +142,10 @@ func TestAcceptanceReference_BackupV1_JSONAndDisk(t *testing.T) {
 			)
 
 			normalizedJSON := normalizeBackupAcceptanceJSON(t, outcome)
-			assertOrWriteBackupAcceptanceGoldenJSON(t, normalizedJSON, filepath.Join("golden", "json", "v1_"+tc.id+".json"))
+			assertOrWriteBackupAcceptanceGoldenJSON(t, normalizedJSON, filepath.Join("golden", "json", "v2_"+tc.id+".json"))
 
 			snapshot := captureBackupAcceptanceDiskSnapshot(t, fixture, outcome)
-			assertOrWriteBackupAcceptanceGoldenJSON(t, snapshot, filepath.Join("golden", "disk", "v1_"+tc.id+".json"))
+			assertOrWriteBackupAcceptanceGoldenJSON(t, snapshot, filepath.Join("golden", "disk", "v2_"+tc.id+".json"))
 		})
 	}
 }

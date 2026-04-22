@@ -96,9 +96,9 @@ func exitCodeForKind(kind ErrorKind) int {
 }
 
 type Runtime interface {
-	InspectApplication(ctx context.Context, target RuntimeTarget) (RuntimeState, error)
-	StopApplication(ctx context.Context, target RuntimeTarget) error
-	StartApplication(ctx context.Context, target RuntimeTarget) error
+	RunningServices(ctx context.Context, target RuntimeTarget) ([]string, error)
+	StopServices(ctx context.Context, target RuntimeTarget, services ...string) error
+	StartServices(ctx context.Context, target RuntimeTarget, services ...string) error
 	DumpDatabase(ctx context.Context, target RuntimeTarget) (io.ReadCloser, error)
 	ArchiveFiles(ctx context.Context, target RuntimeTarget) (io.ReadCloser, error)
 }
@@ -107,10 +107,11 @@ type RuntimeTarget struct {
 	ProjectDir  string
 	ComposeFile string
 	EnvFile     string
-}
-
-type RuntimeState struct {
-	AppServicesRunning bool
+	StorageDir  string
+	DBService   string
+	DBUser      string
+	DBPassword  string
+	DBName      string
 }
 
 type Store interface {
@@ -131,9 +132,14 @@ type BackupRequest struct {
 	ComposeFile   string
 	EnvFile       string
 	BackupRoot    string
+	StorageDir    string
 	NamePrefix    string
 	RetentionDays int
 	CreatedAt     time.Time
+	DBService     string
+	DBUser        string
+	DBPassword    string
+	DBName        string
 	SkipDB        bool
 	SkipFiles     bool
 	NoStop        bool
@@ -469,7 +475,7 @@ func (r *BackupResult) Succeed() {
 
 func (r *BackupResult) Fail(f BackupFailure) {
 	r.OK = false
-	r.ProcessExitCode = f.ExitCode
+	r.ProcessExitCode = f.BackupError.ExitCode
 	errCopy := f.BackupError
 	r.Error = &errCopy
 	r.recount()
@@ -522,4 +528,39 @@ func SortBackupGroups(groups []BackupGroup) {
 		}
 		return groups[i].Prefix < groups[j].Prefix
 	})
+}
+
+func ApplicationServices() []string {
+	return []string{"espocrm", "espocrm-daemon", "espocrm-websocket"}
+}
+
+func RunningApplicationServices(running []string) []string {
+	seen := map[string]struct{}{}
+	for _, service := range running {
+		service = strings.TrimSpace(service)
+		if service == "" {
+			continue
+		}
+		seen[service] = struct{}{}
+	}
+
+	var selected []string
+	for _, service := range ApplicationServices() {
+		if _, ok := seen[service]; ok {
+			selected = append(selected, service)
+		}
+	}
+	return selected
+}
+
+func (f BackupFailure) ExitCode() int {
+	return f.BackupError.ExitCode
+}
+
+func (f BackupFailure) FailureCode() string {
+	return f.Code
+}
+
+func (f BackupFailure) ErrorKind() string {
+	return string(f.Kind)
 }

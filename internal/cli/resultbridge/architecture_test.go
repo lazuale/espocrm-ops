@@ -21,7 +21,6 @@ func TestResultBridgeImportsStayExplicit(t *testing.T) {
 	dir := filepath.Join(root, "internal", "cli", "resultbridge")
 	fset := token.NewFileSet()
 	allowedInternal := map[string]struct{}{
-		modulePath + "/internal/app/backup":        {},
 		modulePath + "/internal/app/backupverify":  {},
 		modulePath + "/internal/app/doctor":        {},
 		modulePath + "/internal/app/migrate":       {},
@@ -29,6 +28,7 @@ func TestResultBridgeImportsStayExplicit(t *testing.T) {
 		modulePath + "/internal/contract/apperr":   {},
 		modulePath + "/internal/contract/exitcode": {},
 		modulePath + "/internal/contract/result":   {},
+		modulePath + "/internal/model":             {},
 	}
 
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {

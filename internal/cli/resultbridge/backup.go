@@ -5,59 +5,94 @@ import (
 	"io"
 	"strings"
 
-	backupusecase "github.com/lazuale/espocrm-ops/internal/app/backup"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	"github.com/lazuale/espocrm-ops/internal/model"
 )
 
-func BackupResult(info backupusecase.ExecuteInfo) result.Result {
-	completed, skipped, blocked, failed := info.Counts()
+func BackupResult(info model.BackupResult) result.Result {
 	message := "backup completed"
-	if !info.Ready() {
+	if !info.Details.Ready {
 		message = "backup failed"
 	}
 
-	items := make([]result.ItemPayload, 0, len(info.Steps))
-	for _, step := range info.Steps {
+	items := make([]result.ItemPayload, 0, len(info.Items))
+	for _, step := range info.Items {
 		items = append(items, result.BackupItem{
-			SectionItem: newSectionItem(step.Code, step.Status, step.Summary, step.Details, step.Action),
+			SectionItem: result.SectionItem{
+				Code:    step.Code,
+				Status:  step.Status,
+				Summary: backupStepSummary(step.Code, step.Status),
+			},
 		})
 	}
 
 	return result.Result{
-		Command:  "backup",
-		OK:       info.Ready(),
-		Message:  message,
-		Warnings: append([]string(nil), info.Warnings...),
+		Command: "backup",
+		OK:      info.OK,
+		Message: message,
 		Details: result.BackupDetails{
-			Scope:                  info.Scope,
-			Ready:                  info.Ready(),
-			CreatedAt:              info.CreatedAt,
-			Steps:                  len(info.Steps),
-			Completed:              completed,
-			Skipped:                skipped,
-			Blocked:                blocked,
-			Failed:                 failed,
-			Warnings:               len(info.Warnings),
-			SkipDB:                 info.SkipDB,
-			SkipFiles:              info.SkipFiles,
-			NoStop:                 info.NoStop,
-			ConsistentSnapshot:     info.ConsistentSnapshot,
-			AppServicesWereRunning: info.AppServicesWereRunning,
-			RetentionDays:          info.RetentionDays,
+			Scope:                  info.Details.Scope,
+			Ready:                  info.Details.Ready,
+			CreatedAt:              info.Details.CreatedAt,
+			Steps:                  info.Details.Steps,
+			Completed:              info.Details.Completed,
+			Skipped:                info.Details.Skipped,
+			Blocked:                info.Details.Blocked,
+			Failed:                 info.Details.Failed,
+			SkipDB:                 info.Details.SkipDB,
+			SkipFiles:              info.Details.SkipFiles,
+			NoStop:                 info.Details.NoStop,
+			ConsistentSnapshot:     info.Details.ConsistentSnapshot,
+			AppServicesWereRunning: info.Details.AppServicesWereRunning,
+			RetentionDays:          info.Details.RetentionDays,
 		},
 		Artifacts: result.BackupArtifacts{
-			ProjectDir:    info.ProjectDir,
-			ComposeFile:   info.ComposeFile,
-			EnvFile:       info.EnvFile,
-			BackupRoot:    info.BackupRoot,
-			ManifestTXT:   info.ManifestTXTPath,
-			ManifestJSON:  info.ManifestJSONPath,
-			DBBackup:      info.DBBackupPath,
-			FilesBackup:   info.FilesBackupPath,
-			DBChecksum:    info.DBSidecarPath,
-			FilesChecksum: info.FilesSidecarPath,
+			ProjectDir:    info.Artifacts.ProjectDir,
+			ComposeFile:   info.Artifacts.ComposeFile,
+			EnvFile:       info.Artifacts.EnvFile,
+			BackupRoot:    info.Artifacts.BackupRoot,
+			ManifestTXT:   info.Artifacts.ManifestText,
+			ManifestJSON:  info.Artifacts.ManifestJSON,
+			DBBackup:      info.Artifacts.DBBackup,
+			FilesBackup:   info.Artifacts.FilesBackup,
+			DBChecksum:    info.Artifacts.DBChecksum,
+			FilesChecksum: info.Artifacts.FilesChecksum,
 		},
 		Items: items,
+	}
+}
+
+func backupStepSummary(code, status string) string {
+	if status == "skipped" {
+		switch code {
+		case "runtime_prepare":
+			return "Подготовка runtime пропущена"
+		case "db_backup":
+			return "Backup базы данных пропущен"
+		case "files_backup":
+			return "Backup файлов пропущен"
+		case "runtime_return":
+			return "Возврат runtime пропущен"
+		}
+	}
+
+	switch code {
+	case "artifact_allocation":
+		return "Artifacts подготовлены"
+	case "runtime_prepare":
+		return "Runtime подготовлен"
+	case "db_backup":
+		return "Backup базы данных создан"
+	case "files_backup":
+		return "Backup файлов создан"
+	case "finalize":
+		return "Artifacts финализированы"
+	case "retention":
+		return "Retention выполнен"
+	case "runtime_return":
+		return "Runtime возвращён"
+	default:
+		return code
 	}
 }
 

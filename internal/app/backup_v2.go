@@ -102,15 +102,21 @@ func (s BackupService) ExecuteBackup(ctx context.Context, req model.BackupReques
 		ProjectDir:  req.ProjectDir,
 		ComposeFile: req.ComposeFile,
 		EnvFile:     req.EnvFile,
+		StorageDir:  req.StorageDir,
+		DBService:   req.DBService,
+		DBUser:      req.DBUser,
+		DBPassword:  req.DBPassword,
+		DBName:      req.DBName,
 	}
 	var appServicesWereRunning bool
+	var stoppedAppServices []string
 	runtimeNeedsReturn := false
 	runtimeReturnRecorded := false
 	defer func() {
 		if err == nil || !runtimeNeedsReturn || runtimeReturnRecorded {
 			return
 		}
-		if returnErr := s.runtime.StartApplication(ctx, target); returnErr != nil {
+		if returnErr := s.runtime.StartServices(ctx, target, stoppedAppServices...); returnErr != nil {
 			result.AddStep(model.StepRuntimeReturn, model.StatusFailed)
 			err = errors.Join(err, model.NewBackupFailure(model.KindExternal, "runtime не удалось вернуть после ошибки backup", returnErr))
 			return
@@ -122,7 +128,7 @@ func (s BackupService) ExecuteBackup(ctx context.Context, req model.BackupReques
 	if req.NoStop {
 		result.AddStep(model.StepRuntimePrepare, model.StatusSkipped)
 	} else {
-		state, prepareErr := s.runtime.InspectApplication(ctx, target)
+		runningServices, prepareErr := s.runtime.RunningServices(ctx, target)
 		if prepareErr != nil {
 			result.AddStep(model.StepRuntimePrepare, model.StatusFailed)
 			blockAfter(&result, model.StepRuntimePrepare)
@@ -130,10 +136,11 @@ func (s BackupService) ExecuteBackup(ctx context.Context, req model.BackupReques
 			result.Fail(failure)
 			return result, failure
 		}
-		appServicesWereRunning = state.AppServicesRunning
+		stoppedAppServices = model.RunningApplicationServices(runningServices)
+		appServicesWereRunning = len(stoppedAppServices) != 0
 		result.Details.AppServicesWereRunning = appServicesWereRunning
 		if appServicesWereRunning {
-			if stopErr := s.runtime.StopApplication(ctx, target); stopErr != nil {
+			if stopErr := s.runtime.StopServices(ctx, target, stoppedAppServices...); stopErr != nil {
 				result.AddStep(model.StepRuntimePrepare, model.StatusFailed)
 				blockAfter(&result, model.StepRuntimePrepare)
 				failure := model.NewBackupFailure(model.KindExternal, "runtime stop завершился ошибкой", stopErr)
@@ -234,7 +241,7 @@ func (s BackupService) ExecuteBackup(ctx context.Context, req model.BackupReques
 
 	if runtimeNeedsReturn {
 		runtimeReturnRecorded = true
-		if returnErr := s.runtime.StartApplication(ctx, target); returnErr != nil {
+		if returnErr := s.runtime.StartServices(ctx, target, stoppedAppServices...); returnErr != nil {
 			result.AddStep(model.StepRuntimeReturn, model.StatusFailed)
 			failure := model.NewBackupFailure(model.KindExternal, "runtime return завершился ошибкой", returnErr)
 			result.Fail(failure)
@@ -266,6 +273,16 @@ func validateBackupRequest(req model.BackupRequest) error {
 		return model.NewBackupFailure(model.KindValidation, "compose_file обязателен", nil)
 	case strings.TrimSpace(req.EnvFile) == "":
 		return model.NewBackupFailure(model.KindValidation, "env_file обязателен", nil)
+	case !req.SkipFiles && strings.TrimSpace(req.StorageDir) == "":
+		return model.NewBackupFailure(model.KindValidation, "storage_dir обязателен для files backup", nil)
+	case !req.SkipDB && strings.TrimSpace(req.DBService) == "":
+		return model.NewBackupFailure(model.KindValidation, "db service обязателен для database backup", nil)
+	case !req.SkipDB && strings.TrimSpace(req.DBUser) == "":
+		return model.NewBackupFailure(model.KindValidation, "DB_USER обязателен для database backup", nil)
+	case !req.SkipDB && strings.TrimSpace(req.DBPassword) == "":
+		return model.NewBackupFailure(model.KindValidation, "DB_PASSWORD обязателен для database backup", nil)
+	case !req.SkipDB && strings.TrimSpace(req.DBName) == "":
+		return model.NewBackupFailure(model.KindValidation, "DB_NAME обязателен для database backup", nil)
 	case req.CreatedAt.IsZero():
 		return model.NewBackupFailure(model.KindValidation, "created_at обязателен", nil)
 	case req.RetentionDays < 0:

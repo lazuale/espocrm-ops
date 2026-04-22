@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	backupusecase "github.com/lazuale/espocrm-ops/internal/app/backup"
+	v2app "github.com/lazuale/espocrm-ops/internal/app"
 	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
@@ -84,7 +84,7 @@ func runBackup(cmd *cobra.Command, in backupInput) error {
 		ExitCode:   exitcode.InternalError,
 		RenderText: resultbridge.RenderBackupText,
 	}, func() (res result.Result, err error) {
-		info, err := appForCommand(cmd).backup.Execute(backupusecase.Request{
+		info, err := appForCommand(cmd).backup.Execute(cmd.Context(), v2app.BackupCommandRequest{
 			Scope:           in.scope,
 			ProjectDir:      in.projectDir,
 			ComposeFile:     in.composeFile,

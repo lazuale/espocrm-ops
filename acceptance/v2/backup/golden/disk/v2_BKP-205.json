@@ -1,0 +1,22 @@
+{
+  "backup_root_entries": [
+    "db/",
+    "files/",
+    "locks/",
+    "locks/.maintenance.lock.flock",
+    "manifests/"
+  ],
+  "backup_root_tmp_files": [],
+  "docker_log": [
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps --status running --services",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE stop espocrm espocrm-daemon espocrm-websocket",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE up -d espocrm espocrm-daemon espocrm-websocket"
+  ],
+  "process_exit_code": 5,
+  "running_services_after": [
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ]
+}

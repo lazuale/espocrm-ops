@@ -1,0 +1,23 @@
+{
+  "backup_root_entries": [
+    "db/",
+    "db/espocrm-test-dev_2026-04-15_11-00-00.sql.gz",
+    "db/espocrm-test-dev_2026-04-15_11-00-00.sql.gz.sha256",
+    "files/",
+    "locks/",
+    "locks/.maintenance.lock.flock",
+    "manifests/"
+  ],
+  "backup_root_tmp_files": [],
+  "db_backup_sql": "select 1;",
+  "db_checksum": "c341f0d1bfbae2df67e59262d18829cdf55be8647cfa7bff5e21a90c5d3928a9  espocrm-test-dev_2026-04-15_11-00-00.sql.gz\n",
+  "docker_log": [
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "exec mock-db mariadb-dump --version",
+    "exec -i -e MYSQL_PWD mock-db mariadb-dump -u espocrm espocrm --single-transaction --quick --routines --triggers --events"
+  ],
+  "process_exit_code": 0,
+  "running_services_after": [
+    "db"
+  ]
+}

@@ -52,7 +52,13 @@ func TestSchema_BackupExecute_JSON_FilesOnlyNoStop(t *testing.T) {
 	if err := platformfs.VerifyTarGzReadable(filesBackup, nil); err != nil {
 		t.Fatalf("expected readable files backup: %v", err)
 	}
-	requireArtifactPathsExist(t, obj, "manifest_txt", "manifest_json", "files_backup", "files_checksum")
+	requireArtifactPathsExist(t, obj, "files_backup", "files_checksum")
+	if manifest := requireJSONString(t, obj, "artifacts", "manifest_txt"); manifest != "" {
+		t.Fatalf("partial backup must not expose text manifest, got %s", manifest)
+	}
+	if manifest := requireJSONString(t, obj, "artifacts", "manifest_json"); manifest != "" {
+		t.Fatalf("partial backup must not expose json manifest, got %s", manifest)
+	}
 }
 
 func TestSchema_BackupExecute_JSON_Error_MissingBackupRoot_NoJournal(t *testing.T) {

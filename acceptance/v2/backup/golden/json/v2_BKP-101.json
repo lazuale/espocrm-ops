@@ -27,42 +27,35 @@
   "items": [
     {
       "code": "artifact_allocation",
-      "status": "completed",
-      "summary": "Artifacts подготовлены"
+      "status": "completed"
     },
     {
       "code": "runtime_prepare",
-      "status": "skipped",
-      "summary": "Подготовка runtime пропущена"
+      "status": "skipped"
     },
     {
       "code": "db_backup",
-      "status": "skipped",
-      "summary": "Backup базы данных пропущен"
+      "status": "skipped"
     },
     {
       "code": "files_backup",
-      "status": "completed",
-      "summary": "Backup файлов создан"
+      "status": "completed"
     },
     {
       "code": "finalize",
-      "status": "completed",
-      "summary": "Artifacts финализированы"
+      "status": "completed"
     },
     {
       "code": "retention",
-      "status": "completed",
-      "summary": "Retention выполнен"
+      "status": "completed"
     },
     {
       "code": "runtime_return",
-      "status": "skipped",
-      "summary": "Возврат runtime пропущен"
+      "status": "skipped"
     }
   ],
-  "message": "backup completed",
   "ok": true,
+  "process_exit_code": 0,
   "timing": {
     "finished_at": "2026-04-15T11:00:00Z",
     "started_at": "2026-04-15T11:00:00Z"

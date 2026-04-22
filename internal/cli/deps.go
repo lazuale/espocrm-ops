@@ -1,7 +1,7 @@
 package cli
 
 import (
-	backupapp "github.com/lazuale/espocrm-ops/internal/app/backup"
+	v2app "github.com/lazuale/espocrm-ops/internal/app"
 	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	doctorapp "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	migrateapp "github.com/lazuale/espocrm-ops/internal/app/migrate"
@@ -13,6 +13,8 @@ import (
 	backupstoreadapter "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter"
 	envadapter "github.com/lazuale/espocrm-ops/internal/platform/envadapter"
 	runtimeadapter "github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter"
+	v2runtime "github.com/lazuale/espocrm-ops/internal/runtime"
+	v2store "github.com/lazuale/espocrm-ops/internal/store"
 )
 
 type JournalWriter interface {
@@ -30,7 +32,7 @@ type Dependencies struct {
 type App struct {
 	runtime              operationtrace.Runtime
 	journalWriterFactory JournalWriterFactory
-	backup               backupapp.Service
+	backup               v2app.BackupCommandService
 	backupVerify         backupverifyapp.Service
 	doctor               doctorapp.Service
 	restore              restoreapp.Service
@@ -61,12 +63,12 @@ func NewApp(deps Dependencies) *App {
 		Files: appadapter.Files{},
 		Locks: locks,
 	})
-	backupService := backupapp.NewService(backupapp.Dependencies{
+	backupService := v2app.NewBackupCommandService(v2app.BackupCommandDependencies{
 		Operations: operationService,
-		Env:        envadapter.EnvLoader{},
-		Runtime:    runtimeadapter.Runtime{},
-		Files:      appadapter.Files{},
-		Store:      backupstoreadapter.BackupStore{},
+		Core: v2app.NewBackupService(v2app.BackupDependencies{
+			Runtime: v2runtime.Docker{},
+			Store:   v2store.FileStore{},
+		}),
 	})
 	backupVerifyService := backupverifyapp.NewService(backupverifyapp.Dependencies{
 		Store: backupstoreadapter.BackupStore{},

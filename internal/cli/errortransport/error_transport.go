@@ -66,7 +66,8 @@ func CodeForError(err error, fallback int) int {
 		ExitCode() int
 	}
 
-	if coded, ok := err.(exitCodedError); ok {
+	var coded exitCodedError
+	if errors.As(err, &coded) {
 		return coded.ExitCode()
 	}
 
@@ -83,6 +84,13 @@ func CodeForError(err error, fallback int) int {
 }
 
 func ErrorCodeForError(err error, fallback string) string {
+	var failureCarrier interface{ FailureCode() string }
+	if errors.As(err, &failureCarrier) {
+		if code := strings.TrimSpace(failureCarrier.FailureCode()); code != "" {
+			return code
+		}
+	}
+
 	var carrier interface{ ErrorCode() string }
 	if errors.As(err, &carrier) {
 		if code := strings.TrimSpace(carrier.ErrorCode()); code != "" {
@@ -102,6 +110,13 @@ func ErrorCodeForError(err error, fallback string) string {
 }
 
 func ErrorKindForError(err error) string {
+	var carrier interface{ ErrorKind() string }
+	if errors.As(err, &carrier) {
+		if kind := strings.TrimSpace(carrier.ErrorKind()); kind != "" {
+			return kind
+		}
+	}
+
 	if kind, ok := apperr.KindOf(err); ok {
 		return string(kind)
 	}

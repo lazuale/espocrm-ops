@@ -11,6 +11,7 @@ import (
 
 type Static struct {
 	AppServicesRunning bool
+	Running            []string
 	DBDump             []byte
 	FilesArchive       []byte
 	InspectErr         error
@@ -21,19 +22,25 @@ type Static struct {
 	Calls              []string
 }
 
-func (r *Static) InspectApplication(ctx context.Context, target model.RuntimeTarget) (model.RuntimeState, error) {
-	r.Calls = append(r.Calls, "inspect_application")
+func (r *Static) RunningServices(ctx context.Context, target model.RuntimeTarget) ([]string, error) {
+	r.Calls = append(r.Calls, "running_services")
 	if err := ctx.Err(); err != nil {
-		return model.RuntimeState{}, err
+		return nil, err
 	}
 	if r.InspectErr != nil {
-		return model.RuntimeState{}, r.InspectErr
+		return nil, r.InspectErr
 	}
-	return model.RuntimeState{AppServicesRunning: r.AppServicesRunning}, nil
+	if r.Running != nil {
+		return append([]string(nil), r.Running...), nil
+	}
+	if !r.AppServicesRunning {
+		return []string{"db"}, nil
+	}
+	return []string{"db", "espocrm", "espocrm-daemon", "espocrm-websocket"}, nil
 }
 
-func (r *Static) StopApplication(ctx context.Context, target model.RuntimeTarget) error {
-	r.Calls = append(r.Calls, "stop_application")
+func (r *Static) StopServices(ctx context.Context, target model.RuntimeTarget, services ...string) error {
+	r.Calls = append(r.Calls, "stop_services")
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -44,8 +51,8 @@ func (r *Static) StopApplication(ctx context.Context, target model.RuntimeTarget
 	return nil
 }
 
-func (r *Static) StartApplication(ctx context.Context, target model.RuntimeTarget) error {
-	r.Calls = append(r.Calls, "start_application")
+func (r *Static) StartServices(ctx context.Context, target model.RuntimeTarget, services ...string) error {
+	r.Calls = append(r.Calls, "start_services")
 	if err := ctx.Err(); err != nil {
 		return err
 	}

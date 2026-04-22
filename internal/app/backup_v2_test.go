@@ -46,7 +46,7 @@ func TestBackupV2FullBackupCreatesCompleteSet(t *testing.T) {
 		{Code: model.StepRetention, Status: model.StatusCompleted},
 		{Code: model.StepRuntimeReturn, Status: model.StatusCompleted},
 	})
-	if err := rt.RequireCallOrder([]string{"inspect_application", "stop_application", "dump_database", "archive_files", "start_application"}); err != nil {
+	if err := rt.RequireCallOrder([]string{"running_services", "stop_services", "dump_database", "archive_files", "start_services"}); err != nil {
 		t.Fatal(err)
 	}
 	if !result.Details.ConsistentSnapshot || !result.Details.AppServicesWereRunning {
@@ -89,7 +89,7 @@ func TestBackupV2FullBackupStoppedRuntimeDoesNotStart(t *testing.T) {
 	if !result.OK {
 		t.Fatalf("backup failed: %+v", result)
 	}
-	if err := rt.RequireCallOrder([]string{"inspect_application", "dump_database", "archive_files"}); err != nil {
+	if err := rt.RequireCallOrder([]string{"running_services", "dump_database", "archive_files"}); err != nil {
 		t.Fatal(err)
 	}
 	if result.Details.AppServicesWereRunning {
@@ -261,7 +261,7 @@ func TestBackupV2RuntimePrepareFailureDoesNotCreateArtifacts(t *testing.T) {
 	if result.OK || result.ProcessExitCode != model.ExitExternalError {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if err := rt.RequireCallOrder([]string{"inspect_application"}); err != nil {
+	if err := rt.RequireCallOrder([]string{"running_services"}); err != nil {
 		t.Fatal(err)
 	}
 	layout := model.NewBackupLayout(req.BackupRoot, req.NamePrefix, req.CreatedAt)
@@ -282,7 +282,7 @@ func TestBackupV2DatabaseFailureReturnsRuntimeAndDoesNotFinalize(t *testing.T) {
 	if result.OK || result.ProcessExitCode != model.ExitExternalError {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if err := rt.RequireCallOrder([]string{"inspect_application", "stop_application", "dump_database", "start_application"}); err != nil {
+	if err := rt.RequireCallOrder([]string{"running_services", "stop_services", "dump_database", "start_services"}); err != nil {
 		t.Fatal(err)
 	}
 	if !rt.AppServicesRunning {
@@ -383,7 +383,7 @@ func TestBackupV2RuntimeReturnFailureFailsAfterArtifactsRemain(t *testing.T) {
 	if result.OK || result.ProcessExitCode != model.ExitExternalError {
 		t.Fatalf("unexpected result: %+v", result)
 	}
-	if err := rt.RequireCallOrder([]string{"inspect_application", "stop_application", "dump_database", "archive_files", "start_application"}); err != nil {
+	if err := rt.RequireCallOrder([]string{"running_services", "stop_services", "dump_database", "archive_files", "start_services"}); err != nil {
 		t.Fatal(err)
 	}
 	layout := model.NewBackupLayout(req.BackupRoot, req.NamePrefix, req.CreatedAt)
@@ -423,9 +423,14 @@ func testBackupRequest(t *testing.T) model.BackupRequest {
 		ComposeFile:   filepath.Join(root, "project", "compose.yaml"),
 		EnvFile:       filepath.Join(root, "project", ".env.dev"),
 		BackupRoot:    filepath.Join(root, "backup"),
+		StorageDir:    filepath.Join(root, "project", "runtime", "dev", "espo"),
 		NamePrefix:    "espocrm-test-dev",
 		RetentionDays: 7,
 		CreatedAt:     time.Date(2026, 4, 15, 11, 0, 0, 0, time.UTC),
+		DBService:     "db",
+		DBUser:        "espocrm",
+		DBPassword:    "secret",
+		DBName:        "espocrm",
 		Metadata: model.BackupMetadata{
 			ComposeProject: "espocrm-test",
 			EnvFileName:    ".env.dev",
