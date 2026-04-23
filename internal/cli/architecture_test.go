@@ -258,7 +258,6 @@ func TestProductionCLIDepsImportsStayExplicit(t *testing.T) {
 		"github.com/lazuale/espocrm-ops/internal/app/operation":               {},
 		"github.com/lazuale/espocrm-ops/internal/app/operationtrace":          {},
 		"github.com/lazuale/espocrm-ops/internal/app/ports/lockport":          {},
-		"github.com/lazuale/espocrm-ops/internal/app/restore":                 {},
 		"github.com/lazuale/espocrm-ops/internal/platform/appadapter":         {},
 		"github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter": {},
 		"github.com/lazuale/espocrm-ops/internal/platform/envadapter":         {},

@@ -59,8 +59,9 @@ Current non-PASS items:
 Top-level application boundaries are frozen to this canon:
 
 - `internal/app`: `BackupCommandService.Execute(ctx, req)` для команды `backup v2`
+- `internal/app`: `RestoreCommandService.Execute(ctx, req)` для команды `restore v2`
 - `internal/app/backupverify`: `Diagnose(req)`
-- `internal/app/restore`: `Execute(req)`
+- `internal/app/restore`: `Execute(req)` только для legacy oracle/reference и emergency patch lane
 - `internal/app/migrate`: `Execute(req)`
 - `internal/app/doctor`: `Diagnose(req)`
 

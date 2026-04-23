@@ -9,10 +9,6 @@ import (
 	"testing"
 
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
-	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
-	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
-	"github.com/lazuale/espocrm-ops/internal/contract/result"
-	"github.com/spf13/cobra"
 )
 
 const updateRestoreAcceptanceReferenceEnv = "UPDATE_ACCEPTANCE_RESTORE_REFERENCE"
@@ -152,63 +148,6 @@ func restoreAcceptanceReferenceArgs(fixture restoreCommandFixture, extraArgs ...
 	}
 	args = append(args, extraArgs...)
 	return args
-}
-
-func executeRestoreLegacyReferenceCLI(opts []testAppOption, journalDir string, request restoreusecase.ExecuteRequest) execOutcome {
-	root := newLegacyRestoreReferenceRoot(newTestApp(opts...), request)
-	stdout := &strings.Builder{}
-	stderr := &strings.Builder{}
-
-	root.SetOut(stdout)
-	root.SetErr(stderr)
-	root.SetArgs([]string{
-		"--journal-dir", journalDir,
-		"--json",
-		"restore",
-	})
-
-	exitCode := ExecuteRoot(root)
-	return execOutcome{
-		Stdout:   stdout.String(),
-		Stderr:   stderr.String(),
-		ExitCode: exitCode,
-	}
-}
-
-func newLegacyRestoreReferenceRoot(app *App, request restoreusecase.ExecuteRequest) *cobra.Command {
-	root := &cobra.Command{
-		Use:           "espops",
-		SilenceUsage:  true,
-		SilenceErrors: true,
-		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
-			return validateGlobalOptions(app.options)
-		},
-	}
-	bindApp(root, app)
-	root.PersistentFlags().BoolVar(&app.options.JSON, "json", false, "output result as JSON")
-	root.PersistentFlags().StringVar(&app.options.JournalDir, "journal-dir", app.options.JournalDir, "directory for operation journal entries")
-
-	restoreReq := request
-	restoreCmd := &cobra.Command{
-		Use:   "restore",
-		Short: "Run the legacy restore oracle flow",
-		RunE: func(cmd *cobra.Command, args []string) error {
-			return RunCommandWithResult(cmd, CommandSpec{
-				Name:       "restore",
-				ErrorCode:  "restore_failed",
-				ExitCode:   exitcode.InternalError,
-				RenderText: resultbridge.RenderRestoreText,
-			}, func() (result.Result, error) {
-				req := restoreReq
-				req.LogWriter = cmd.ErrOrStderr()
-				req.Now = app.runtime.Now
-				info, err := app.restoreLegacy.Execute(req)
-				return resultbridge.RestoreResult(info), err
-			})
-		},
-	}
-	root.AddCommand(bindApp(restoreCmd, app))
-	return root
 }
 
 func writeRestoreReferencePartialManifest(t *testing.T, fixture restoreCommandFixture) string {

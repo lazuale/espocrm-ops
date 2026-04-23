@@ -7,7 +7,6 @@ import (
 	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
 	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
 	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
-	restoreapp "github.com/lazuale/espocrm-ops/internal/app/restore"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
 	backupstoreadapter "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter"
 	envadapter "github.com/lazuale/espocrm-ops/internal/platform/envadapter"
@@ -35,10 +34,8 @@ type App struct {
 	backupVerify         v2app.BackupVerifyService
 	doctor               doctorapp.Service
 	restore              v2app.RestoreCommandService
-	// Нужен только для v1 oracle/reference harness и аварийной lane до controlled deletion.
-	restoreLegacy restoreapp.Service
-	migrate       migrateapp.Service
-	options       GlobalOptions
+	migrate              migrateapp.Service
+	options              GlobalOptions
 }
 
 func NewApp(deps Dependencies) *App {
@@ -74,14 +71,6 @@ func NewApp(deps Dependencies) *App {
 	backupVerifyService := v2app.NewBackupVerifyService(v2app.BackupVerifyDependencies{
 		Store: v2store.FileStore{},
 	})
-	restoreService := restoreapp.NewService(restoreapp.Dependencies{
-		Operations: operationService,
-		Env:        envadapter.EnvLoader{},
-		Runtime:    runtimeadapter.Runtime{},
-		Files:      appadapter.Files{},
-		Locks:      locks,
-		Store:      backupstoreadapter.BackupStore{},
-	})
 	restoreCommandService := v2app.NewRestoreCommandService(v2app.RestoreCommandDependencies{
 		Operations: operationService,
 		Env:        envadapter.EnvLoader{},
@@ -116,7 +105,6 @@ func NewApp(deps Dependencies) *App {
 		backupVerify:         backupVerifyService,
 		doctor:               doctorService,
 		restore:              restoreCommandService,
-		restoreLegacy:        restoreService,
 		migrate:              migrateService,
 		options:              defaultGlobalOptions(),
 	}

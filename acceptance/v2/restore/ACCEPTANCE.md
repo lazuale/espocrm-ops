@@ -253,6 +253,7 @@ Legacy facts, которые фиксируются как reference, но не 
 - Exact English strings и transport quirks `v1`, если они конфликтуют с `V2_SCOPE.md`, остаются legacy reference, а не обязательным `v2` contract.
 - Behavior-based compatibility shim после cutover удалён из active CLI path.
 - `v1` больше не участвует в real `restore` wiring; он остаётся только как spec harness / regression oracle / emergency patch lane.
+- Default app graph больше не конструирует legacy `restore` service; reference/oracle lane использует отдельный legacy-only test harness.
 
 ## Первый Internal Slice
 

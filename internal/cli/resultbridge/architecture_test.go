@@ -23,7 +23,6 @@ func TestResultBridgeImportsStayExplicit(t *testing.T) {
 	allowedInternal := map[string]struct{}{
 		modulePath + "/internal/app/doctor":        {},
 		modulePath + "/internal/app/migrate":       {},
-		modulePath + "/internal/app/restore":       {},
 		modulePath + "/internal/contract/apperr":   {},
 		modulePath + "/internal/contract/exitcode": {},
 		modulePath + "/internal/contract/result":   {},

@@ -5,7 +5,6 @@ import (
 	"io"
 	"strings"
 
-	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 )
 
@@ -56,14 +55,6 @@ func renderStepItemsBlock(w io.Writer, items []result.ItemPayload, extract func(
 	return nil
 }
 
-func restoreExecutionItems(steps []restoreusecase.ExecuteStep) []result.ItemPayload {
-	return mapExecutionItems(steps, func(step restoreusecase.ExecuteStep) result.RestoreItem {
-		return result.RestoreItem{
-			SectionItem: newSectionItem(step.Code, step.Status, step.Summary, step.Details, step.Action),
-		}
-	})
-}
-
 func newSectionItem(code string, status fmt.Stringer, summary, details, action string) result.SectionItem {
 	return result.SectionItem{
 		Code:    code,
@@ -72,14 +63,6 @@ func newSectionItem(code string, status fmt.Stringer, summary, details, action s
 		Details: details,
 		Action:  action,
 	}
-}
-
-func mapExecutionItems[S any, I result.ItemPayload](steps []S, build func(S) I) []result.ItemPayload {
-	items := make([]result.ItemPayload, 0, len(steps))
-	for _, step := range steps {
-		items = append(items, build(step))
-	}
-	return items
 }
 
 func restoreExecutionItem(raw result.ItemPayload) (result.SectionItem, error) {

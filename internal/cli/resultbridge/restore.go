@@ -1,31 +1,16 @@
 package resultbridge
 
 import (
-	"fmt"
 	"io"
 	"strings"
 
-	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
+	"fmt"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
 	"github.com/lazuale/espocrm-ops/internal/model"
 )
 
-func RestoreResult(raw any) result.Result {
-	switch info := raw.(type) {
-	case model.RestoreResult:
-		return restoreV2Result(info)
-	case restoreusecase.ExecuteInfo:
-		return restoreLegacyResult(info)
-	default:
-		return result.Result{
-			Command: "restore",
-			OK:      false,
-			Error: &result.ErrorInfo{
-				Code:    "internal_error",
-				Message: fmt.Sprintf("unexpected restore result type %T", raw),
-			},
-		}
-	}
+func RestoreResult(info model.RestoreResult) result.Result {
+	return restoreV2Result(info)
 }
 
 func restoreV2Result(info model.RestoreResult) result.Result {
@@ -83,66 +68,6 @@ func restoreV2Result(info model.RestoreResult) result.Result {
 			SnapshotFilesChecksum: info.Artifacts.SnapshotFilesChecksum,
 		},
 		Items: items,
-	}
-}
-
-func restoreLegacyResult(info restoreusecase.ExecuteInfo) result.Result {
-	planned, completed, skipped, blocked, failed := info.Counts()
-	message := "restore completed"
-	if info.DryRun {
-		message = "restore dry-run plan completed"
-	}
-	if !info.Ready() {
-		if info.DryRun {
-			message = "restore dry-run plan found blocking conditions"
-		} else {
-			message = "restore failed"
-		}
-	}
-
-	return result.Result{
-		Command:  "restore",
-		OK:       info.Ready(),
-		Message:  message,
-		DryRun:   info.DryRun,
-		Warnings: append([]string(nil), info.Warnings...),
-		Details: result.RestoreDetails{
-			Scope:                  info.Scope,
-			Ready:                  info.Ready(),
-			SelectionMode:          info.SelectionMode,
-			SourceKind:             info.SourceKind,
-			Steps:                  len(info.Steps),
-			Planned:                planned,
-			Completed:              completed,
-			Skipped:                skipped,
-			Blocked:                blocked,
-			Failed:                 failed,
-			Warnings:               len(info.Warnings),
-			SnapshotEnabled:        info.SnapshotEnabled,
-			SkipDB:                 info.SkipDB,
-			SkipFiles:              info.SkipFiles,
-			NoStop:                 info.NoStop,
-			NoStart:                info.NoStart,
-			AppServicesWereRunning: info.AppServicesWereRunning,
-			StartedDBTemporarily:   info.StartedDBTemporarily,
-		},
-		Artifacts: result.RestoreArtifacts{
-			ProjectDir:            info.ProjectDir,
-			ComposeFile:           info.ComposeFile,
-			EnvFile:               info.EnvFile,
-			BackupRoot:            info.BackupRoot,
-			ManifestTXT:           info.ManifestTXTPath,
-			ManifestJSON:          info.ManifestJSONPath,
-			DBBackup:              info.DBBackupPath,
-			FilesBackup:           info.FilesBackupPath,
-			SnapshotManifestTXT:   info.SnapshotManifestTXT,
-			SnapshotManifestJSON:  info.SnapshotManifestJSON,
-			SnapshotDBBackup:      info.SnapshotDBBackup,
-			SnapshotFilesBackup:   info.SnapshotFilesBackup,
-			SnapshotDBChecksum:    info.SnapshotDBChecksum,
-			SnapshotFilesChecksum: info.SnapshotFilesChecksum,
-		},
-		Items: restoreExecutionItems(info.Steps),
 	}
 }
 

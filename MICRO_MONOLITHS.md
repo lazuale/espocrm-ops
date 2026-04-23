@@ -619,7 +619,7 @@ Forbidden callers:
 `Restore Execution Monolith`
 
 #### B. Purpose
-Own the canonical destructive restore workflow, including source resolution, optional emergency recovery point, runtime preparation and return, DB restore, files restore, and dry-run planning.
+Own the legacy destructive restore workflow for oracle/reference and emergency work, including source resolution, optional emergency recovery point, runtime preparation and return, DB restore, files restore, and dry-run planning.
 
 #### C. Contour
 Inside this unit:
@@ -680,7 +680,7 @@ Forbidden:
 #### G. Availability
 Allowed callers:
 
-- `CLI Edge Monolith` through `internal/app/restore`
+- explicit legacy-only oracle/reference harness; not through default `NewApp`
 - `Migration Execution Monolith` through the shared restore kernel
 
 Allowed callees:
