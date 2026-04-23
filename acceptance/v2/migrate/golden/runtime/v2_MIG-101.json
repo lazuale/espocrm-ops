@@ -5,7 +5,8 @@
     "stop_services",
     "restore_database",
     "start_services",
-    "post_migrate_check"
+    "post_migrate_check",
+    "running_services"
   ],
   "post_check_services": [
     "db",

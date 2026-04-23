@@ -1,0 +1,12 @@
+{
+  "migrate_calls": null,
+  "post_check_services": null,
+  "process_exit_code": 4,
+  "restored_db_path": "",
+  "running_after": [
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ],
+  "snapshot_calls": null
+}

@@ -5,63 +5,155 @@ import (
 	"io"
 	"strings"
 
-	migrateusecase "github.com/lazuale/espocrm-ops/internal/app/migrate"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	"github.com/lazuale/espocrm-ops/internal/model"
 )
 
-func MigrateResult(info migrateusecase.ExecuteInfo) result.Result {
-	completed, skipped, blocked, failed := info.Counts()
-	message := "backup migration completed"
-	if !info.Ready() {
-		message = "backup migration failed"
-	}
-
-	items := make([]result.ItemPayload, 0, len(info.Steps))
-	for _, step := range info.Steps {
+func MigrateResult(info model.MigrateResult) result.Result {
+	items := make([]result.ItemPayload, 0, len(info.Items))
+	for _, step := range info.Items {
 		items = append(items, result.MigrateItem{
-			SectionItem: newSectionItem(step.Code, step.Status, step.Summary, step.Details, step.Action),
+			SectionItem: result.SectionItem{
+				Code:    step.Code,
+				Status:  step.Status,
+				Summary: migrateStepSummary(step.Code, step.Status),
+			},
 		})
 	}
 
 	return result.Result{
 		Command:  "migrate",
-		OK:       info.Ready(),
-		Message:  message,
+		OK:       info.OK,
+		Message:  migrateMessage(info.OK),
 		Warnings: append([]string(nil), info.Warnings...),
 		Details: result.MigrateDetails{
-			SourceScope:            info.SourceScope,
-			TargetScope:            info.TargetScope,
-			Ready:                  info.Ready(),
-			SelectionMode:          info.SelectionMode,
-			RequestedSelectionMode: info.RequestedSelectionMode,
-			Steps:                  len(info.Steps),
-			Completed:              completed,
-			Skipped:                skipped,
-			Blocked:                blocked,
-			Failed:                 failed,
-			Warnings:               len(info.Warnings),
-			SkipDB:                 info.SkipDB,
-			SkipFiles:              info.SkipFiles,
-			NoStart:                info.NoStart,
-			StartedDBTemporarily:   info.StartedDBTemporarily,
+			SourceScope:            info.Details.SourceScope,
+			TargetScope:            info.Details.TargetScope,
+			Ready:                  info.Details.Ready,
+			SelectionMode:          info.Details.SelectionMode,
+			SourceKind:             info.Details.SourceKind,
+			SnapshotEnabled:        info.Details.SnapshotEnabled,
+			Steps:                  info.Details.Steps,
+			Planned:                info.Details.Planned,
+			Completed:              info.Details.Completed,
+			Skipped:                info.Details.Skipped,
+			Blocked:                info.Details.Blocked,
+			Failed:                 info.Details.Failed,
+			Warnings:               info.Details.Warnings,
+			SkipDB:                 info.Details.SkipDB,
+			SkipFiles:              info.Details.SkipFiles,
+			NoStart:                info.Details.NoStart,
+			AppServicesWereRunning: info.Details.AppServicesWereRunning,
+			StartedDBTemporarily:   info.Details.StartedDBTemporarily,
 		},
 		Artifacts: result.MigrateArtifacts{
-			ProjectDir:           info.ProjectDir,
-			ComposeFile:          info.ComposeFile,
-			SourceEnvFile:        info.SourceEnvFile,
-			TargetEnvFile:        info.TargetEnvFile,
-			SourceBackupRoot:     info.SourceBackupRoot,
-			TargetBackupRoot:     info.TargetBackupRoot,
-			RequestedDBBackup:    info.RequestedDBBackup,
-			RequestedFilesBackup: info.RequestedFilesBackup,
-			SelectedPrefix:       info.SelectedPrefix,
-			SelectedStamp:        info.SelectedStamp,
-			ManifestTXT:          info.ManifestTXTPath,
-			ManifestJSON:         info.ManifestJSONPath,
-			DBBackup:             info.DBBackupPath,
-			FilesBackup:          info.FilesBackupPath,
+			ProjectDir:            info.Artifacts.ProjectDir,
+			ComposeFile:           info.Artifacts.ComposeFile,
+			SourceEnvFile:         info.Artifacts.SourceEnvFile,
+			TargetEnvFile:         info.Artifacts.TargetEnvFile,
+			SourceBackupRoot:      info.Artifacts.SourceBackupRoot,
+			TargetBackupRoot:      info.Artifacts.TargetBackupRoot,
+			ManifestTXT:           info.Artifacts.ManifestTXT,
+			ManifestJSON:          info.Artifacts.ManifestJSON,
+			DBBackup:              info.Artifacts.DBBackup,
+			FilesBackup:           info.Artifacts.FilesBackup,
+			SnapshotManifestTXT:   info.Artifacts.SnapshotManifestTXT,
+			SnapshotManifestJSON:  info.Artifacts.SnapshotManifestJSON,
+			SnapshotDBBackup:      info.Artifacts.SnapshotDBBackup,
+			SnapshotFilesBackup:   info.Artifacts.SnapshotFilesBackup,
+			SnapshotDBChecksum:    info.Artifacts.SnapshotDBChecksum,
+			SnapshotFilesChecksum: info.Artifacts.SnapshotFilesChecksum,
 		},
 		Items: items,
+	}
+}
+
+func migrateMessage(ok bool) string {
+	if ok {
+		return "migrate завершён"
+	}
+	return "migrate завершился ошибкой"
+}
+
+func migrateStepSummary(code, status string) string {
+	if status == model.StatusBlocked {
+		switch code {
+		case model.MigrateStepCompatibility:
+			return "Compatibility migrate заблокирована"
+		case model.MigrateStepTargetSnapshot:
+			return "Target snapshot заблокирован"
+		case model.StepRuntimePrepare:
+			return "Подготовка runtime заблокирована"
+		case model.MigrateStepDBApply:
+			return "Database migrate заблокирован"
+		case model.MigrateStepFilesApply:
+			return "Files migrate заблокирован"
+		case model.MigrateStepPermission:
+			return "Согласование прав заблокировано"
+		case model.StepRuntimeReturn:
+			return "Возврат runtime заблокирован"
+		case model.MigrateStepPostCheck:
+			return "Пост-проверка migrate заблокирована"
+		}
+	}
+	if status == model.StatusSkipped {
+		switch code {
+		case model.MigrateStepTargetSnapshot:
+			return "Target snapshot пропущен"
+		case model.MigrateStepDBApply:
+			return "Database migrate пропущен"
+		case model.MigrateStepFilesApply:
+			return "Files migrate пропущен"
+		case model.MigrateStepPermission:
+			return "Согласование прав пропущено"
+		case model.StepRuntimeReturn:
+			return "Возврат runtime пропущен"
+		}
+	}
+	if status == model.StatusFailed {
+		switch code {
+		case model.MigrateStepSourceSelection:
+			return "Источник migrate не прошёл проверку"
+		case model.MigrateStepCompatibility:
+			return "Compatibility migrate завершилась ошибкой"
+		case model.MigrateStepTargetSnapshot:
+			return "Target snapshot завершился ошибкой"
+		case model.StepRuntimePrepare:
+			return "Подготовка runtime завершилась ошибкой"
+		case model.MigrateStepDBApply:
+			return "Database migrate завершился ошибкой"
+		case model.MigrateStepFilesApply:
+			return "Files migrate завершился ошибкой"
+		case model.MigrateStepPermission:
+			return "Согласование прав завершилось ошибкой"
+		case model.StepRuntimeReturn:
+			return "Возврат runtime завершился ошибкой"
+		case model.MigrateStepPostCheck:
+			return "Пост-проверка migrate завершилась ошибкой"
+		}
+	}
+
+	switch code {
+	case model.MigrateStepSourceSelection:
+		return "Источник migrate выбран"
+	case model.MigrateStepCompatibility:
+		return "Compatibility migrate подтверждена"
+	case model.MigrateStepTargetSnapshot:
+		return "Target snapshot создан"
+	case model.StepRuntimePrepare:
+		return "Runtime подготовлен"
+	case model.MigrateStepDBApply:
+		return "База данных перенесена"
+	case model.MigrateStepFilesApply:
+		return "Файлы перенесены"
+	case model.MigrateStepPermission:
+		return "Права согласованы"
+	case model.StepRuntimeReturn:
+		return "Runtime возвращён"
+	case model.MigrateStepPostCheck:
+		return "Пост-проверка migrate выполнена"
+	default:
+		return code
 	}
 }
 
@@ -76,7 +168,7 @@ func RenderMigrateText(w io.Writer, res result.Result) error {
 		return fmt.Errorf("unexpected migrate artifacts type %T", res.Artifacts)
 	}
 
-	if _, err := fmt.Fprintln(w, "EspoCRM backup migrate"); err != nil {
+	if _, err := fmt.Fprintln(w, "EspoCRM migrate"); err != nil {
 		return err
 	}
 	if _, err := fmt.Fprintf(w, "Source contour: %s\n", details.SourceScope); err != nil {
@@ -96,6 +188,11 @@ func RenderMigrateText(w io.Writer, res result.Result) error {
 			return err
 		}
 	}
+	if strings.TrimSpace(details.SourceKind) != "" {
+		if _, err := fmt.Fprintf(w, "Source kind: %s\n", details.SourceKind); err != nil {
+			return err
+		}
+	}
 	if strings.TrimSpace(artifacts.ManifestJSON) != "" {
 		if _, err := fmt.Fprintf(w, "Manifest JSON: %s\n", artifacts.ManifestJSON); err != nil {
 			return err
@@ -108,6 +205,11 @@ func RenderMigrateText(w io.Writer, res result.Result) error {
 	}
 	if strings.TrimSpace(artifacts.FilesBackup) != "" {
 		if _, err := fmt.Fprintf(w, "Files backup: %s\n", artifacts.FilesBackup); err != nil {
+			return err
+		}
+	}
+	if strings.TrimSpace(artifacts.SnapshotManifestJSON) != "" {
+		if _, err := fmt.Fprintf(w, "Target snapshot manifest: %s\n", artifacts.SnapshotManifestJSON); err != nil {
 			return err
 		}
 	}

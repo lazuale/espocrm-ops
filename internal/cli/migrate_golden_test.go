@@ -8,8 +8,11 @@ import (
 func TestGolden_Migrate_JSON(t *testing.T) {
 	lockOpt := isolateRecoveryLocks(t)
 	fixture := prepareMigrateCommandFixture(t)
-	fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
+	fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 	fixture.docker.SetServiceHealth(t, "db", "healthy")
+	fixture.docker.SetServiceHealth(t, "espocrm", "healthy")
+	fixture.docker.SetServiceHealth(t, "espocrm-daemon", "healthy")
+	fixture.docker.SetServiceHealth(t, "espocrm-websocket", "healthy")
 
 	outcome := executeCLIWithOptions(
 		[]testAppOption{

@@ -1,6 +1,6 @@
 # `v1` Reference Bundles для `migrate`
 
-Этот файл связывает `MIG-*` с воспроизводимыми black-box reference bundles из current legacy CLI path.
+Этот файл связывает `MIG-*` с воспроизводимыми black-box reference bundles из test-only legacy `migrate` harness.
 
 Источник генерации:
 
@@ -31,8 +31,8 @@ go test ./internal/cli -run 'TestAcceptanceReference_MigrateV1_JSONDiskAndRuntim
 
 - exact English UI strings
 - exact `summary` / `details` / `action` phrasing
-- legacy item grouping внутри current CLI envelope
-- отсутствие target snapshot в legacy CLI path
+- legacy item grouping внутри legacy CLI envelope
+- отсутствие target snapshot в legacy `migrate` harness
 - legacy implicit pairing semantics, если они конфликтуют с `V2_SCOPE.md` или не нужны для первого internal slice
 
 ## Bundles
@@ -60,6 +60,30 @@ go test ./internal/cli -run 'TestAcceptanceReference_MigrateV1_JSONDiskAndRuntim
   JSON: `acceptance/v2/migrate/golden/json/v1_MIG-102.json`
   Disk: `acceptance/v2/migrate/golden/disk/v1_MIG-102.json`
   Runtime: `acceptance/v2/migrate/golden/runtime/v1_MIG-102.json`
+
+- `MIG-201`
+  Подтверждает: usage error без `--force`.
+  JSON: `acceptance/v2/migrate/golden/json/v1_MIG-201.json`
+  Disk: `acceptance/v2/migrate/golden/disk/v1_MIG-201.json`
+  Runtime: `acceptance/v2/migrate/golden/runtime/v1_MIG-201.json`
+
+- `MIG-202`
+  Подтверждает: usage error без `--confirm-prod prod`.
+  JSON: `acceptance/v2/migrate/golden/json/v1_MIG-202.json`
+  Disk: `acceptance/v2/migrate/golden/disk/v1_MIG-202.json`
+  Runtime: `acceptance/v2/migrate/golden/runtime/v1_MIG-202.json`
+
+- `MIG-203`
+  Подтверждает: usage error при совпадающих source/target contour.
+  JSON: `acceptance/v2/migrate/golden/json/v1_MIG-203.json`
+  Disk: `acceptance/v2/migrate/golden/disk/v1_MIG-203.json`
+  Runtime: `acceptance/v2/migrate/golden/runtime/v1_MIG-203.json`
+
+- `MIG-204`
+  Подтверждает: usage error при одновременном `--skip-db` и `--skip-files`.
+  JSON: `acceptance/v2/migrate/golden/json/v1_MIG-204.json`
+  Disk: `acceptance/v2/migrate/golden/disk/v1_MIG-204.json`
+  Runtime: `acceptance/v2/migrate/golden/runtime/v1_MIG-204.json`
 
 - `MIG-205`
   Подтверждает: invalid matching manifest blocks automatic complete source selection.
@@ -98,7 +122,7 @@ go test ./internal/cli -run 'TestAcceptanceReference_MigrateV1_JSONDiskAndRuntim
   JSON: `acceptance/v2/migrate/golden/json/v1_MIG-402.json`
   Disk: `acceptance/v2/migrate/golden/disk/v1_MIG-402.json`
   Runtime: `acceptance/v2/migrate/golden/runtime/v1_MIG-402.json`
-  Примечание: current CLI path оставляет запущенным только `db`; final `target_start` step transportно помечается `skipped`, а target backup root не получает snapshot artifacts.
+  Примечание: legacy CLI harness оставляет запущенным только `db`; final `target_start` step transportно помечается `skipped`, а target backup root не получает snapshot artifacts.
 
 - `MIG-403`
   Подтверждает: runtime return / target health failure after destructive apply.
@@ -116,4 +140,4 @@ go test ./internal/cli -run 'TestAcceptanceReference_MigrateV1_JSONDiskAndRuntim
 
 - `MIG-401` и `MIG-501`
   Примечание:
-  target snapshot semantics не имеют отдельного `v1` reference bundle, потому что current legacy CLI path не создаёт target snapshot как наблюдаемый migrate step.
+  target snapshot semantics не имеют отдельного `v1` reference bundle, потому что legacy `migrate` harness не создаёт target snapshot как наблюдаемый migrate step.

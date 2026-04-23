@@ -469,6 +469,78 @@ func TestMigrateV2Acceptance_JSONDiskAndRuntime(t *testing.T) {
 	}
 }
 
+func TestMigrateV2RejectsIncoherentRequest(t *testing.T) {
+	cases := []struct {
+		name        string
+		mutate      func(*model.MigrateRequest)
+		messagePart string
+	}{
+		{
+			name: "snapshot_scope_mismatch",
+			mutate: func(req *model.MigrateRequest) {
+				req.Snapshot.Scope = "dev"
+			},
+			messagePart: "snapshot scope не согласован",
+		},
+		{
+			name: "missing_target_db_root_password",
+			mutate: func(req *model.MigrateRequest) {
+				req.Target.DBRootPassword = ""
+			},
+			messagePart: "target DB root password обязателен",
+		},
+		{
+			name: "snapshot_flags_mismatch",
+			mutate: func(req *model.MigrateRequest) {
+				req.Snapshot.SkipDB = !req.SkipDB
+			},
+			messagePart: "target snapshot flags должны совпадать",
+		},
+		{
+			name: "empty_source_settings",
+			mutate: func(req *model.MigrateRequest) {
+				req.SourceSettings = model.MigrateCompatibilitySettings{}
+			},
+			messagePart: "source ESPOCRM_IMAGE обязателен",
+		},
+	}
+
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			fx := newMigrateAcceptanceFixture(t)
+			req := finalizeMigrateRequest(fx.request())
+			tc.mutate(&req)
+
+			result, err := fx.service.ExecuteMigrate(context.Background(), req)
+			if err == nil {
+				t.Fatal("expected validation failure")
+			}
+			if result.OK {
+				t.Fatal("expected result.OK=false")
+			}
+			if result.Error == nil {
+				t.Fatal("expected result.Error")
+			}
+			if !strings.Contains(result.Error.Message, tc.messagePart) {
+				t.Fatalf("expected error message to contain %q, got %q", tc.messagePart, result.Error.Message)
+			}
+			if len(result.Items) != 0 {
+				t.Fatalf("expected no execution steps, got %#v", result.Items)
+			}
+			if len(fx.runtime.Calls) != 0 {
+				t.Fatalf("expected no migrate runtime calls, got %v", fx.runtime.Calls)
+			}
+			if len(fx.snapshotRuntime.Calls) != 0 {
+				t.Fatalf("expected no snapshot runtime calls, got %v", fx.snapshotRuntime.Calls)
+			}
+			if strings.TrimSpace(result.Artifacts.SnapshotManifestJSON) != "" {
+				t.Fatalf("expected no snapshot artifacts, got %#v", result.Artifacts)
+			}
+		})
+	}
+}
+
 func newMigrateAcceptanceFixture(t *testing.T) migrateAcceptanceFixture {
 	t.Helper()
 	return newMigrateAcceptanceFixtureWithStoreAndFiles(t, store.FileStore{}, map[string]string{
@@ -592,6 +664,9 @@ func (fx migrateAcceptanceFixture) request() model.MigrateRequest {
 func finalizeMigrateRequest(req model.MigrateRequest) model.MigrateRequest {
 	req.Snapshot.SkipDB = req.SkipDB
 	req.Snapshot.SkipFiles = req.SkipFiles
+	req.Snapshot.HelperArchive.Image = req.Target.HelperImage
+	req.Snapshot.Metadata.EspoCRMImage = req.TargetSettings.EspoCRMImage
+	req.Snapshot.Metadata.MariaDBTag = req.TargetSettings.MariaDBTag
 	return req
 }
 

@@ -12,11 +12,15 @@ const updateMigrateAcceptanceReferenceEnv = "UPDATE_ACCEPTANCE_MIGRATE_REFERENCE
 
 func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 	cases := []struct {
-		id    string
-		setup func(*testing.T, *migrateCommandFixture) []string
+		id          string
+		withForce   bool
+		withConfirm bool
+		setup       func(*testing.T, *migrateCommandFixture) []string
 	}{
 		{
-			id: "MIG-001",
+			id:          "MIG-001",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -25,7 +29,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-002",
+			id:          "MIG-002",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -37,7 +43,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-101",
+			id:          "MIG-101",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -49,7 +57,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-102",
+			id:          "MIG-102",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -61,7 +71,42 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-205",
+			id:          "MIG-201",
+			withConfirm: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				return nil
+			},
+		},
+		{
+			id:        "MIG-202",
+			withForce: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				return nil
+			},
+		},
+		{
+			id:          "MIG-203",
+			withForce:   true,
+			withConfirm: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				return []string{
+					"--from", "prod",
+					"--to", "prod",
+				}
+			},
+		},
+		{
+			id:          "MIG-204",
+			withForce:   true,
+			withConfirm: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				return []string{"--skip-db", "--skip-files"}
+			},
+		},
+		{
+			id:          "MIG-205",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				otherSet := writeBackupSet(t, fixture.sourceRoot, "espocrm-dev", "2026-04-19_07-00-00", "dev", nil)
 				writeJSON(t, fixture.sourceBackup.ManifestJSON, map[string]any{
@@ -82,7 +127,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-206",
+			id:          "MIG-206",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				otherSet := writeBackupSet(t, fixture.sourceRoot, "espocrm-dev", "2026-04-19_07-00-00", "dev", nil)
 				fixture.docker.EnableLog(t)
@@ -93,7 +140,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-207",
+			id:          "MIG-207",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -104,7 +153,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-208",
+			id:          "MIG-208",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -115,7 +166,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-301",
+			id:          "MIG-301",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				writeDoctorEnvFile(t, fixture.projectDir, "dev", map[string]string{
 					"ESPOCRM_IMAGE": "espocrm/espocrm:9.3.4-apache",
@@ -128,7 +181,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-402",
+			id:          "MIG-402",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -137,7 +192,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-403",
+			id:          "MIG-403",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -148,7 +205,9 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
-			id: "MIG-504",
+			id:          "MIG-504",
+			withForce:   true,
+			withConfirm: true,
 			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
 				fixture.docker.SetRunningServices(t, "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetServiceHealth(t, "db", "healthy")
@@ -171,12 +230,13 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 			beforeRunning := readRunningServicesSnapshot(t, fixture.docker.stateDir)
 
 			extraArgs := tc.setup(t, &fixture)
-			outcome := executeCLIWithOptions(
+			outcome := executeMigrateLegacyReferenceCLI(
 				[]testAppOption{
 					lockOpt,
 					withFixedTestRuntime(fixture.fixedNow, "op-"+strings.ToLower(tc.id)),
 				},
-				migrateAcceptanceReferenceArgs(fixture, extraArgs...)...,
+				fixture.journalDir,
+				migrateAcceptanceReferenceArgs(fixture, tc.withForce, tc.withConfirm, extraArgs...)...,
 			)
 
 			normalizedJSON := normalizeMigrateAcceptanceReferenceJSON(t, fixture, outcome)
@@ -191,16 +251,17 @@ func TestAcceptanceReference_MigrateV1_JSONDiskAndRuntime(t *testing.T) {
 	}
 }
 
-func migrateAcceptanceReferenceArgs(fixture migrateCommandFixture, extraArgs ...string) []string {
+func migrateAcceptanceReferenceArgs(fixture migrateCommandFixture, withForce bool, withConfirm bool, extraArgs ...string) []string {
 	args := []string{
-		"--journal-dir", fixture.journalDir,
-		"--json",
-		"migrate",
 		"--from", "dev",
 		"--to", "prod",
 		"--project-dir", fixture.projectDir,
-		"--force",
-		"--confirm-prod", "prod",
+	}
+	if withForce {
+		args = append(args, "--force")
+	}
+	if withConfirm {
+		args = append(args, "--confirm-prod", "prod")
 	}
 	args = append(args, extraArgs...)
 	return args
@@ -211,6 +272,12 @@ func normalizeMigrateAcceptanceReferenceJSON(t *testing.T, fixture migrateComman
 
 	obj := parseCLIJSONBytes(t, []byte(outcome.Stdout))
 	obj["process_exit_code"] = outcome.ExitCode
+	if details, ok := obj["details"].(map[string]any); ok {
+		delete(details, "source_kind")
+		delete(details, "snapshot_enabled")
+		delete(details, "app_services_were_running")
+		delete(details, "planned")
+	}
 
 	replacements := map[string]string{
 		fixture.projectDir: "REPLACE_PROJECT_DIR",

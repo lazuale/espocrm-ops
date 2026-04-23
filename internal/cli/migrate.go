@@ -3,7 +3,7 @@ package cli
 import (
 	"fmt"
 
-	migrateusecase "github.com/lazuale/espocrm-ops/internal/app/migrate"
+	v2app "github.com/lazuale/espocrm-ops/internal/app"
 	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
@@ -111,6 +111,22 @@ func validateMigrateInput(cmd *cobra.Command, in *migrateInput) error {
 	if err := normalizeOptionalAbsolutePathFlag(cmd, "files-backup", &in.filesBackup); err != nil {
 		return err
 	}
+	switch {
+	case in.skipDB:
+		if in.filesBackup == "" {
+			return usageError(fmt.Errorf("files-only migrate требует явный --files-backup"))
+		}
+	case in.skipFiles:
+		if in.dbBackup == "" {
+			return usageError(fmt.Errorf("db-only migrate требует явный --db-backup"))
+		}
+	default:
+		hasDB := in.dbBackup != ""
+		hasFiles := in.filesBackup != ""
+		if hasDB != hasFiles {
+			return usageError(fmt.Errorf("полный migrate требует либо latest complete backup-set, либо explicit direct pair"))
+		}
+	}
 
 	if !in.force {
 		return usageError(fmt.Errorf("migrate requires an explicit --force flag"))
@@ -130,7 +146,7 @@ func runMigrateExecute(cmd *cobra.Command, in migrateInput) error {
 		ExitCode:   exitcode.InternalError,
 		RenderText: resultbridge.RenderMigrateText,
 	}, func() (result.Result, error) {
-		info, err := app.migrate.Execute(migrateusecase.ExecuteRequest{
+		info, err := app.migrate.Execute(cmd.Context(), v2app.MigrateCommandRequest{
 			SourceScope: in.fromScope,
 			TargetScope: in.toScope,
 			ProjectDir:  in.projectDir,
@@ -140,7 +156,7 @@ func runMigrateExecute(cmd *cobra.Command, in migrateInput) error {
 			SkipDB:      in.skipDB,
 			SkipFiles:   in.skipFiles,
 			NoStart:     in.noStart,
-			LogWriter:   cmd.ErrOrStderr(),
+			Now:         app.runtime.Now,
 		})
 
 		return resultbridge.MigrateResult(info), err

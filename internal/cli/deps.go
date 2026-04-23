@@ -3,12 +3,10 @@ package cli
 import (
 	v2app "github.com/lazuale/espocrm-ops/internal/app"
 	doctorapp "github.com/lazuale/espocrm-ops/internal/app/doctor"
-	migrateapp "github.com/lazuale/espocrm-ops/internal/app/migrate"
 	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
 	operationtrace "github.com/lazuale/espocrm-ops/internal/app/operationtrace"
 	lockport "github.com/lazuale/espocrm-ops/internal/app/ports/lockport"
 	appadapter "github.com/lazuale/espocrm-ops/internal/platform/appadapter"
-	backupstoreadapter "github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter"
 	envadapter "github.com/lazuale/espocrm-ops/internal/platform/envadapter"
 	runtimeadapter "github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter"
 	v2runtime "github.com/lazuale/espocrm-ops/internal/runtime"
@@ -34,7 +32,7 @@ type App struct {
 	backupVerify         v2app.BackupVerifyService
 	doctor               doctorapp.Service
 	restore              v2app.RestoreCommandService
-	migrate              migrateapp.Service
+	migrate              v2app.MigrateCommandService
 	options              GlobalOptions
 }
 
@@ -83,13 +81,17 @@ func NewApp(deps Dependencies) *App {
 			}),
 		}),
 	})
-	migrateService := migrateapp.NewService(migrateapp.Dependencies{
+	migrateService := v2app.NewMigrateCommandService(v2app.MigrateCommandDependencies{
 		Operations: operationService,
 		Env:        envadapter.EnvLoader{},
-		Runtime:    runtimeadapter.Runtime{},
-		Files:      appadapter.Files{},
-		Locks:      locks,
-		Store:      backupstoreadapter.BackupStore{},
+		Core: v2app.NewMigrateService(v2app.MigrateDependencies{
+			Runtime: v2runtime.Docker{},
+			Store:   v2store.FileStore{},
+			Snapshot: v2app.NewBackupService(v2app.BackupDependencies{
+				Runtime: v2runtime.Docker{},
+				Store:   v2store.FileStore{},
+			}),
+		}),
 	})
 	doctorService := doctorapp.NewService(doctorapp.Dependencies{
 		Env:     envadapter.EnvLoader{},

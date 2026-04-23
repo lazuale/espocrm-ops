@@ -45,21 +45,43 @@ func normalizeMigrateJSON(t *testing.T, raw []byte) []byte {
 	t.Helper()
 
 	obj := parseCLIJSONBytes(t, raw)
+	delete(obj, "message")
+	delete(obj, "timing")
 	replacements := normalizeArtifactPlaceholders(obj, map[string]string{
-		"project_dir":            "REPLACE_PROJECT_DIR",
-		"compose_file":           "REPLACE_COMPOSE_FILE",
-		"source_env_file":        "REPLACE_SOURCE_ENV_FILE",
-		"target_env_file":        "REPLACE_TARGET_ENV_FILE",
-		"source_backup_root":     "REPLACE_SOURCE_BACKUP_ROOT",
-		"target_backup_root":     "REPLACE_TARGET_BACKUP_ROOT",
-		"manifest_txt":           "REPLACE_MANIFEST_TXT",
-		"manifest_json":          "REPLACE_MANIFEST_JSON",
-		"db_backup":              "REPLACE_DB_BACKUP",
-		"files_backup":           "REPLACE_FILES_BACKUP",
-		"requested_db_backup":    "REPLACE_REQUESTED_DB_BACKUP",
-		"requested_files_backup": "REPLACE_REQUESTED_FILES_BACKUP",
+		"project_dir":             "REPLACE_PROJECT_DIR",
+		"compose_file":            "REPLACE_COMPOSE_FILE",
+		"source_env_file":         "REPLACE_SOURCE_ENV_FILE",
+		"target_env_file":         "REPLACE_TARGET_ENV_FILE",
+		"source_backup_root":      "REPLACE_SOURCE_BACKUP_ROOT",
+		"target_backup_root":      "REPLACE_TARGET_BACKUP_ROOT",
+		"manifest_txt":            "REPLACE_MANIFEST_TXT",
+		"manifest_json":           "REPLACE_MANIFEST_JSON",
+		"db_backup":               "REPLACE_DB_BACKUP",
+		"files_backup":            "REPLACE_FILES_BACKUP",
+		"snapshot_manifest_txt":   "REPLACE_SNAPSHOT_MANIFEST_TXT",
+		"snapshot_manifest_json":  "REPLACE_SNAPSHOT_MANIFEST_JSON",
+		"snapshot_db_backup":      "REPLACE_SNAPSHOT_DB_BACKUP",
+		"snapshot_files_backup":   "REPLACE_SNAPSHOT_FILES_BACKUP",
+		"snapshot_db_checksum":    "REPLACE_SNAPSHOT_DB_CHECKSUM",
+		"snapshot_files_checksum": "REPLACE_SNAPSHOT_FILES_CHECKSUM",
 	})
+	if errObj, ok := obj["error"].(map[string]any); ok {
+		delete(errObj, "message")
+	}
+	if items, ok := obj["items"].([]any); ok {
+		normalized := make([]any, 0, len(items))
+		for _, rawItem := range items {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			normalized = append(normalized, map[string]any{
+				"code":   item["code"],
+				"status": item["status"],
+			})
+		}
+		obj["items"] = normalized
+	}
 	normalizeWarningsPaths(obj, replacements)
-	normalizeItemStringFields(obj, replacements, "details", "action")
 	return marshalCLIJSON(t, obj)
 }

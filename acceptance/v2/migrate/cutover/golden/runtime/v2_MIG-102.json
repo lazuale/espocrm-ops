@@ -1,0 +1,30 @@
+{
+  "migrate_calls": [
+    "running_services",
+    "stop_services",
+    "reconcile_files_permissions",
+    "start_services",
+    "post_migrate_check",
+    "running_services"
+  ],
+  "post_check_services": [
+    "db",
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ],
+  "process_exit_code": 0,
+  "restored_db_path": "",
+  "running_after": [
+    "db",
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ],
+  "snapshot_calls": [
+    "running_services",
+    "stop_services",
+    "archive_files",
+    "start_services"
+  ]
+}

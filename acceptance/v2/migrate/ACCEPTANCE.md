@@ -51,7 +51,7 @@ Legacy facts, которые фиксируются только как referenc
 - exact English strings
 - legacy step phrasing и envelope quirks
 - implicit pairing из одного explicit artifact, если оно не нужно для первого internal slice
-- отсутствие target snapshot в current legacy CLI path
+- отсутствие target snapshot в test-only legacy `migrate` harness
 
 ## Минимальный Машинный Contract
 
@@ -94,7 +94,7 @@ Legacy facts, которые фиксируются только как referenc
 
 Статусы источника:
 
-- `подтверждено v1`: black-box reference bundle снят с current legacy CLI path
+- `подтверждено v1`: black-box reference bundle снят с test-only legacy `migrate` harness
 - `internal v2`: покрывается первым internal implementation slice
 - `legacy divergence`: зафиксировано как legacy fact и не поднимается в `v2` invariant
 - `отложено`: не входит в первый internal slice и остаётся на отдельный parity/cutover шаг
@@ -126,22 +126,22 @@ Legacy facts, которые фиксируются только как referenc
 - `MIG-201` Usage error: `--force` обязателен.
   Ожидается:
   mutating path не стартует; success не сообщается.
-  Статус: `подтверждено v1`, `отложено`.
+  Статус: `подтверждено v1`, `real CLI v2`.
 
 - `MIG-202` Usage error: prod target требует `--confirm-prod prod`.
   Ожидается:
   mutating path не стартует; success не сообщается.
-  Статус: `подтверждено v1`, `отложено`.
+  Статус: `подтверждено v1`, `real CLI v2`.
 
 - `MIG-203` Usage error: source и target contour совпадают.
   Ожидается:
   mutating path не стартует; success не сообщается.
-  Статус: `подтверждено v1`, `отложено`.
+  Статус: `подтверждено v1`, `real CLI v2`.
 
 - `MIG-204` Usage error: одновременно `--skip-db` и `--skip-files`.
   Ожидается:
   mutating path не стартует; success не сообщается.
-  Статус: `подтверждено v1`, `отложено`.
+  Статус: `подтверждено v1`, `real CLI v2`.
 
 - `MIG-205` Invalid matching manifest blocks latest complete selection.
   Ожидается:
@@ -176,7 +176,7 @@ Legacy facts, которые фиксируются только как referenc
   Ожидается:
   `v2` делает target snapshot до runtime prepare и destructive apply; snapshot artifacts попадают в machine result.
   Статус: `internal v2`.
-  Примечание: current legacy CLI path не имеет отдельного target snapshot behavior, поэтому `v1` reference здесь отсутствует.
+  Примечание: test-only legacy `migrate` harness не имеет отдельного target snapshot behavior, поэтому `v1` reference здесь отсутствует.
 
 - `MIG-402` `--no-start`.
   Ожидается:
@@ -255,13 +255,21 @@ Legacy facts, которые фиксируются только как referenc
 
 На этом шаге не закрываются:
 
-- CLI cutover `migrate`
-- current CLI validation parity в `v2` boundary
 - любые новые flags и режимы
+
+Следующий cutover lane дополнительно закрывает:
+
+- real CLI boundary через один `internal/app` owner
+- fail-closed запрет legacy selection routes на command surface
+- `MIG-201`, `MIG-202`, `MIG-203`, `MIG-204` на реальном command path
+- cutover acceptance lane для реального `migrate` CLI
+- удаление legacy `migrate` path из production graph; legacy остаётся только как test-only oracle
 
 ## Reference Material
 
-Black-box reference bundles из current legacy CLI path описаны в [acceptance/v2/migrate/cases/REFERENCE_V1.md](/home/febinet/code/docker/acceptance/v2/migrate/cases/REFERENCE_V1.md).
+Black-box reference bundles из test-only legacy `migrate` harness описаны в [acceptance/v2/migrate/cases/REFERENCE_V1.md](/home/febinet/code/docker/acceptance/v2/migrate/cases/REFERENCE_V1.md).
+
+Real CLI cutover bundles живут в `acceptance/v2/migrate/cutover/golden/`.
 
 ## Статус После Первого Slice
 
@@ -271,6 +279,10 @@ Black-box reference bundles из current legacy CLI path описаны в [acce
 - `MIG-002`
 - `MIG-101`
 - `MIG-102`
+- `MIG-201`
+- `MIG-202`
+- `MIG-203`
+- `MIG-204`
 - `MIG-205`
 - `MIG-206`
 - `MIG-207`
@@ -302,17 +314,39 @@ Black-box reference bundles из current legacy CLI path описаны в [acce
 - `MIG-506`
 - `MIG-507`
 
-Остаются отложенными до отдельного parity/cutover шага:
+Уже покрыты real CLI cutover acceptance tests:
 
+- `MIG-001`
+- `MIG-002`
+- `MIG-101`
+- `MIG-102`
 - `MIG-201`
 - `MIG-202`
 - `MIG-203`
 - `MIG-204`
+- `MIG-207`
+- `MIG-208`
+- `MIG-301`
+- `MIG-402`
+- `MIG-403`
+- `MIG-504`
+
+Остальная real CLI matrix пока намеренно не дублирует весь internal corpus:
+
+- `MIG-205`
+- `MIG-206`
+- `MIG-401`
+- `MIG-501`
+- `MIG-502`
+- `MIG-503`
+- `MIG-505`
+- `MIG-506`
+- `MIG-507`
 
 Причина:
-это current CLI validation surface, который относится к отдельному boundary/cutover слою и не требует изменения первого internal `migrate v2` core.
+этот cutover lane остаётся узким и злым: он доказывает новый boundary, запрещённые legacy routes и критические success/runtime semantics, не раздувая отдельный второй acceptance suite.
 
 ## Статус Slice
 
-Этот slice готовит только internal parity foundation для `migrate v2`.
-Он не является `cutover-safe wiring` шагом и не переключает real CLI path.
+Этот шаг уже переключает real CLI path на `migrate v2` boundary внутри `internal/app`.
+Legacy `migrate` больше не участвует в production wiring и остаётся только test-only oracle для `v1` reference bundles.

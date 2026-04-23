@@ -22,7 +22,6 @@ func TestResultBridgeImportsStayExplicit(t *testing.T) {
 	fset := token.NewFileSet()
 	allowedInternal := map[string]struct{}{
 		modulePath + "/internal/app/doctor":        {},
-		modulePath + "/internal/app/migrate":       {},
 		modulePath + "/internal/contract/apperr":   {},
 		modulePath + "/internal/contract/exitcode": {},
 		modulePath + "/internal/contract/result":   {},

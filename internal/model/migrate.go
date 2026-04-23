@@ -238,7 +238,7 @@ func (r *MigrateResult) recount() {
 	r.Details.Blocked = blocked
 	r.Details.Failed = failed
 	r.Details.Warnings = len(r.Warnings)
-	r.Details.Ready = failed == 0 && blocked == 0 && len(r.Items) > 0
+	r.Details.Ready = r.OK && failed == 0 && blocked == 0 && len(r.Items) > 0
 }
 
 func NewMigrateFailure(kind ErrorKind, message string, cause error) BackupFailure {

@@ -252,18 +252,16 @@ func TestProductionCLIExecuteImportsStayExplicit(t *testing.T) {
 
 func TestProductionCLIDepsImportsStayExplicit(t *testing.T) {
 	assertCLIFileInternalImportsExactly(t, "deps.go", map[string]struct{}{
-		"github.com/lazuale/espocrm-ops/internal/app":                         {},
-		"github.com/lazuale/espocrm-ops/internal/app/doctor":                  {},
-		"github.com/lazuale/espocrm-ops/internal/app/migrate":                 {},
-		"github.com/lazuale/espocrm-ops/internal/app/operation":               {},
-		"github.com/lazuale/espocrm-ops/internal/app/operationtrace":          {},
-		"github.com/lazuale/espocrm-ops/internal/app/ports/lockport":          {},
-		"github.com/lazuale/espocrm-ops/internal/platform/appadapter":         {},
-		"github.com/lazuale/espocrm-ops/internal/platform/backupstoreadapter": {},
-		"github.com/lazuale/espocrm-ops/internal/platform/envadapter":         {},
-		"github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter":     {},
-		"github.com/lazuale/espocrm-ops/internal/runtime":                     {},
-		"github.com/lazuale/espocrm-ops/internal/store":                       {},
+		"github.com/lazuale/espocrm-ops/internal/app":                     {},
+		"github.com/lazuale/espocrm-ops/internal/app/doctor":              {},
+		"github.com/lazuale/espocrm-ops/internal/app/operation":           {},
+		"github.com/lazuale/espocrm-ops/internal/app/operationtrace":      {},
+		"github.com/lazuale/espocrm-ops/internal/app/ports/lockport":      {},
+		"github.com/lazuale/espocrm-ops/internal/platform/appadapter":     {},
+		"github.com/lazuale/espocrm-ops/internal/platform/envadapter":     {},
+		"github.com/lazuale/espocrm-ops/internal/platform/runtimeadapter": {},
+		"github.com/lazuale/espocrm-ops/internal/runtime":                 {},
+		"github.com/lazuale/espocrm-ops/internal/store":                   {},
 	})
 }
 
