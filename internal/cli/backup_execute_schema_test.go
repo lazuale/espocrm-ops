@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -116,6 +117,55 @@ func TestSchema_BackupExecute_JSON_HelperFallback_FilesOnlyNoStop(t *testing.T) 
 	log := fixture.docker.ReadLog(t)
 	if !containsAll(log, "image inspect alpine:3.20", "run --pull=never --rm --entrypoint tar") {
 		t.Fatalf("expected explicit helper archive path, got log:\n%s", log)
+	}
+}
+
+func TestSchema_BackupExecute_JSON_Error_HelperContractMissing_FailClosed(t *testing.T) {
+	fixture := prepareBackupCommandFixture(t)
+	fixture.docker.SetFailOnAnyCall(t)
+	envFile := writeDoctorEnvFile(t, fixture.projectDir, "dev", map[string]string{
+		"ESPO_HELPER_IMAGE": "",
+	})
+
+	outcome := executeCLI(
+		"--journal-dir", fixture.journalDir,
+		"--json",
+		"backup",
+		"--scope", "dev",
+		"--project-dir", fixture.projectDir,
+		"--compose-file", fixture.composeFile,
+		"--env-file", envFile,
+		"--skip-db",
+		"--no-stop",
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "backup_failed", "ESPO_HELPER_IMAGE is not set")
+}
+
+func TestSchema_BackupExecute_JSON_Error_HelperFallbackExecutionFailure_NoSuccess(t *testing.T) {
+	fixture := prepareBackupCommandFixture(t)
+	fixture.docker.SetFailOnMatch(t, "run --pull=never --rm --entrypoint tar")
+	prependFailingTar(t, "local tar failed")
+
+	outcome := executeCLI(
+		"--journal-dir", fixture.journalDir,
+		"--json",
+		"backup",
+		"--scope", "dev",
+		"--project-dir", fixture.projectDir,
+		"--compose-file", fixture.composeFile,
+		"--env-file", fixture.envFile,
+		"--skip-db",
+		"--no-stop",
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.RestoreError, "backup_failed", "helper fallback")
+	matches, err := filepath.Glob(filepath.Join(fixture.projectDir, "backups", "dev", "files", "*.tar.gz"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("helper execution failure must not leave files artifacts: %v", matches)
 	}
 }
 
