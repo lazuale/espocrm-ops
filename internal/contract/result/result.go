@@ -1,16 +1,17 @@
 package result
 
 type Result struct {
-	Command   string           `json:"command"`
-	OK        bool             `json:"ok"`
-	Message   string           `json:"message,omitempty"`
-	Error     *ErrorInfo       `json:"error,omitempty"`
-	Warnings  []string         `json:"warnings,omitempty"`
-	Details   DetailsPayload   `json:"details,omitempty"`
-	Artifacts ArtifactsPayload `json:"artifacts,omitempty"`
-	Timing    *TimingInfo      `json:"timing,omitempty"`
-	DryRun    bool             `json:"dry_run,omitempty"`
-	Items     []ItemPayload    `json:"items,omitempty"`
+	Command         string           `json:"command"`
+	OK              bool             `json:"ok"`
+	ProcessExitCode *int             `json:"process_exit_code,omitempty"`
+	Message         string           `json:"message,omitempty"`
+	Error           *ErrorInfo       `json:"error,omitempty"`
+	Warnings        []string         `json:"warnings,omitempty"`
+	Details         DetailsPayload   `json:"details,omitempty"`
+	Artifacts       ArtifactsPayload `json:"artifacts,omitempty"`
+	Timing          *TimingInfo      `json:"timing,omitempty"`
+	DryRun          bool             `json:"dry_run,omitempty"`
+	Items           []ItemPayload    `json:"items,omitempty"`
 }
 
 type ErrorInfo struct {

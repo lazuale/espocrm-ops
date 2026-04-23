@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -204,44 +205,87 @@ func TestSchema_BackupVerify_JSON_Error_InvalidManifestContract(t *testing.T) {
 		"--manifest", manifestPath,
 	)
 
-	assertCLIErrorOutput(t, outcome, exitcode.ManifestError, "manifest_invalid", "validate manifest")
+	assertCLIErrorOutput(t, outcome, exitcode.ManifestError, "manifest_invalid", "manifest verify")
 }
 
 func TestSchema_BackupVerify_JSON_Error_ChecksumMismatchContract(t *testing.T) {
 	tmp := t.TempDir()
 	journalDir := filepath.Join(tmp, "journal")
+	backupRoot := filepath.Join(tmp, "backups")
 
-	dbName := "db.sql.gz"
-	filesName := "files.tar.gz"
-	dbPath := filepath.Join(tmp, dbName)
-	filesPath := filepath.Join(tmp, filesName)
-	manifestPath := filepath.Join(tmp, "manifest.json")
-
-	writeGzipFile(t, dbPath, []byte("select 1;"))
-	writeTarGzFile(t, filesPath, map[string]string{
-		"storage/a.txt": "hello",
-	})
-	writeJSON(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-15T11:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    dbName,
-			"files_backup": filesName,
-		},
-		"checksums": map[string]any{
-			"db_backup":    strings.Repeat("0", 64),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
+	set := writeBackupSet(t, backupRoot, "espocrm-prod", "2026-04-07_01-00-00", "prod", nil)
+	if err := os.WriteFile(set.DBBackup+".sha256", []byte(strings.Repeat("0", 64)+"  "+filepath.Base(set.DBBackup)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	outcome := executeCLI(
 		"--journal-dir", journalDir,
 		"--json",
 		"backup",
 		"verify",
-		"--manifest", manifestPath,
+		"--manifest", set.ManifestJSON,
 	)
 
-	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "backup_verification_failed", "checksum verification failed")
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "backup_verification_failed", "artifact verify")
+}
+
+func TestSchema_BackupVerify_JSON_Error_BrokenArchiveContract(t *testing.T) {
+	tmp := t.TempDir()
+	journalDir := filepath.Join(tmp, "journal")
+	backupRoot := filepath.Join(tmp, "backups")
+
+	set := writeBackupSet(t, backupRoot, "espocrm-prod", "2026-04-07_01-00-00", "prod", nil)
+	writeGzipFile(t, set.FilesBackup, []byte("not a tar stream"))
+	writeBackupVerifyReferenceManifest(t, set, sha256OfFile(t, set.DBBackup), sha256OfFile(t, set.FilesBackup))
+	if err := os.WriteFile(set.FilesBackup+".sha256", []byte(sha256OfFile(t, set.FilesBackup)+"  "+filepath.Base(set.FilesBackup)+"\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome := executeCLI(
+		"--journal-dir", journalDir,
+		"--json",
+		"backup",
+		"verify",
+		"--manifest", set.ManifestJSON,
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "backup_verification_failed", "artifact verify")
+}
+
+func TestSchema_BackupVerify_JSON_Error_MissingArtifactContract(t *testing.T) {
+	tmp := t.TempDir()
+	journalDir := filepath.Join(tmp, "journal")
+	backupRoot := filepath.Join(tmp, "backups")
+
+	set := writeBackupSet(t, backupRoot, "espocrm-prod", "2026-04-07_01-00-00", "prod", nil)
+	if err := os.Remove(set.DBBackup); err != nil {
+		t.Fatal(err)
+	}
+
+	outcome := executeCLI(
+		"--journal-dir", journalDir,
+		"--json",
+		"backup",
+		"verify",
+		"--manifest", set.ManifestJSON,
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "backup_verification_failed", "artifact verify")
+}
+
+func TestSchema_BackupVerify_JSON_Error_BackupRootNoCompleteSet(t *testing.T) {
+	tmp := t.TempDir()
+	journalDir := filepath.Join(tmp, "journal")
+	backupRoot := filepath.Join(tmp, "backups")
+	writeBackupVerifyPartialManifest(t, backupRoot, "espocrm-prod", "2026-04-07_01-00-00")
+
+	outcome := executeCLI(
+		"--journal-dir", journalDir,
+		"--json",
+		"backup",
+		"verify",
+		"--backup-root", backupRoot,
+	)
+
+	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "backup_verification_failed", "complete backup-set")
 }

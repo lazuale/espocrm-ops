@@ -2,7 +2,6 @@ package cli
 
 import (
 	v2app "github.com/lazuale/espocrm-ops/internal/app"
-	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	doctorapp "github.com/lazuale/espocrm-ops/internal/app/doctor"
 	migrateapp "github.com/lazuale/espocrm-ops/internal/app/migrate"
 	operationapp "github.com/lazuale/espocrm-ops/internal/app/operation"
@@ -33,7 +32,7 @@ type App struct {
 	runtime              operationtrace.Runtime
 	journalWriterFactory JournalWriterFactory
 	backup               v2app.BackupCommandService
-	backupVerify         backupverifyapp.Service
+	backupVerify         v2app.BackupVerifyService
 	doctor               doctorapp.Service
 	restore              restoreapp.Service
 	migrate              migrateapp.Service
@@ -70,8 +69,8 @@ func NewApp(deps Dependencies) *App {
 			Store:   v2store.FileStore{},
 		}),
 	})
-	backupVerifyService := backupverifyapp.NewService(backupverifyapp.Dependencies{
-		Store: backupstoreadapter.BackupStore{},
+	backupVerifyService := v2app.NewBackupVerifyService(v2app.BackupVerifyDependencies{
+		Store: v2store.FileStore{},
 	})
 	restoreService := restoreapp.NewService(restoreapp.Dependencies{
 		Operations: operationService,

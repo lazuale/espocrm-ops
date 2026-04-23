@@ -184,3 +184,31 @@ Exact wording `message` / `error.message` / text UI не фиксируется 
 
 `BKV-201` и `BKV-202` остаются покрытыми текущими CLI-level tests как reference для existing command surface.
 Cutover-safe wiring для CLI выполняется только после parity review по этому corpus.
+
+## Cutover-Safe Wiring Slice
+
+После internal parity real CLI path `backup verify` переключается на `backup verify v2` только для существующей surface:
+
+- `--manifest`
+- `--backup-root`
+
+Новые direct DB/files CLI flags не добавляются.
+Direct DB/files verify остаётся core-only до отдельного product-surface решения.
+
+Через реальный CLI path должны проходить:
+
+- `BKV-001`
+- `BKV-002`
+- `BKV-201`
+- `BKV-202`
+- `BKV-301`
+- `BKV-302`
+- `BKV-303`
+- `BKV-304`
+- `BKV-401`
+
+Legacy facts, которые не поднимаются до `v2` invariant:
+
+- failure envelope `command == "espops"` на некоторых `v1` failure paths
+- partial-manifest semantics
+- exact English strings

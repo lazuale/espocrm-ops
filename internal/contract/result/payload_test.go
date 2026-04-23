@@ -14,6 +14,7 @@ var (
 	_ ArtifactsPayload = DoctorArtifacts{}
 
 	_ ItemPayload = BackupItem{}
+	_ ItemPayload = BackupVerifyItem{}
 	_ ItemPayload = RestoreItem{}
 	_ ItemPayload = MigrateItem{}
 	_ ItemPayload = DoctorCheck{}

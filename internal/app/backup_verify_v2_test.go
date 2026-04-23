@@ -55,8 +55,8 @@ func TestBackupVerifyV2Acceptance_JSONAndDisk(t *testing.T) {
 			id: "BKV-101",
 			setup: func(t *testing.T) (model.BackupVerifyRequest, string) {
 				root := t.TempDir()
-				set := writeVerifyBackupSet(t, root, "espocrm-prod", "2026-04-07_01-00-00")
-				return model.BackupVerifyRequest{DBBackupPath: set.Layout.DBArtifact}, root
+				dbPath := writeDirectVerifyDBArtifact(t, root, "espocrm-prod", "2026-04-07_01-00-00")
+				return model.BackupVerifyRequest{DBBackupPath: dbPath}, root
 			},
 			wantOK: true,
 		},
@@ -64,8 +64,8 @@ func TestBackupVerifyV2Acceptance_JSONAndDisk(t *testing.T) {
 			id: "BKV-102",
 			setup: func(t *testing.T) (model.BackupVerifyRequest, string) {
 				root := t.TempDir()
-				set := writeVerifyBackupSet(t, root, "espocrm-prod", "2026-04-07_01-00-00")
-				return model.BackupVerifyRequest{FilesPath: set.Layout.FilesArtifact}, root
+				filesPath := writeDirectVerifyFilesArtifact(t, root, "espocrm-prod", "2026-04-07_01-00-00")
+				return model.BackupVerifyRequest{FilesPath: filesPath}, root
 			},
 			wantOK: true,
 		},
@@ -192,6 +192,30 @@ func writeVerifyBackupSet(t *testing.T, root, prefix, stamp string) verifyBackup
 	return verifyBackupSet{Layout: layout}
 }
 
+func writeDirectVerifyDBArtifact(t *testing.T, root, prefix, stamp string) string {
+	t.Helper()
+
+	layout := model.NewBackupLayoutForStamp(root, prefix, stamp)
+	mustMkdirAll(t, filepath.Dir(layout.DBArtifact))
+	if err := os.WriteFile(layout.DBArtifact, gzipBytes("select 1;\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, layout.DBChecksum, sha256OfPath(t, layout.DBArtifact)+"  "+filepath.Base(layout.DBArtifact)+"\n")
+	return layout.DBArtifact
+}
+
+func writeDirectVerifyFilesArtifact(t *testing.T, root, prefix, stamp string) string {
+	t.Helper()
+
+	layout := model.NewBackupLayoutForStamp(root, prefix, stamp)
+	mustMkdirAll(t, filepath.Dir(layout.FilesArtifact))
+	if err := os.WriteFile(layout.FilesArtifact, tarGzBytes(map[string]string{"espo/file.txt": "hello\n"}), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mustWriteFile(t, layout.FilesChecksum, sha256OfPath(t, layout.FilesArtifact)+"  "+filepath.Base(layout.FilesArtifact)+"\n")
+	return layout.FilesArtifact
+}
+
 func mustMkdirAll(t *testing.T, paths ...string) {
 	t.Helper()
 
@@ -252,6 +276,7 @@ func rewriteVerifyChecksums(t *testing.T, set verifyBackupSet) {
 	if err := os.WriteFile(set.Layout.ManifestJSON, append(raw, '\n'), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	mustWriteFile(t, set.Layout.ManifestText, "created_at="+createdAt.UTC().Format(time.RFC3339)+"\n")
 }
 
 func writePartialVerifyManifest(t *testing.T, root, prefix, stamp string) string {

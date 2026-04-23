@@ -9,9 +9,9 @@ import (
 	"time"
 )
 
-const updateBackupVerifyReferenceEnv = "UPDATE_ACCEPTANCE_BACKUP_VERIFY_REFERENCE"
+const updateBackupVerifyCLIAcceptanceEnv = "UPDATE_ACCEPTANCE_BACKUP_VERIFY_CLI"
 
-func TestAcceptanceReference_BackupVerifyCLI_JSONAndDisk(t *testing.T) {
+func TestAcceptance_BackupVerifyCLI_V2_JSONAndDisk(t *testing.T) {
 	cases := []struct {
 		id    string
 		setup func(*testing.T, string) ([]string, string)
@@ -20,13 +20,15 @@ func TestAcceptanceReference_BackupVerifyCLI_JSONAndDisk(t *testing.T) {
 			id: "BKV-001",
 			setup: func(t *testing.T, root string) ([]string, string) {
 				set := writeBackupSet(t, root, "espocrm-prod", "2026-04-07_01-00-00", "prod", nil)
+				writeBackupVerifyReferenceManifest(t, set, sha256OfFile(t, set.DBBackup), sha256OfFile(t, set.FilesBackup))
 				return []string{"--manifest", set.ManifestJSON}, root
 			},
 		},
 		{
 			id: "BKV-002",
 			setup: func(t *testing.T, root string) ([]string, string) {
-				writeBackupSet(t, root, "espocrm-prod", "2026-04-07_01-00-00", "prod", nil)
+				set := writeBackupSet(t, root, "espocrm-prod", "2026-04-07_01-00-00", "prod", nil)
+				writeBackupVerifyReferenceManifest(t, set, sha256OfFile(t, set.DBBackup), sha256OfFile(t, set.FilesBackup))
 				writeIncompleteManifestForRootSelection(t, root, "espocrm-prod", "2026-04-07_02-00-00", "prod")
 				return []string{"--backup-root", root}, root
 			},
@@ -103,6 +105,7 @@ func TestAcceptanceReference_BackupVerifyCLI_JSONAndDisk(t *testing.T) {
 			root := filepath.Join(tmp, "backups")
 			journalDir := filepath.Join(tmp, "journal")
 			extraArgs, backupRoot := tc.setup(t, root)
+			before := collectRelativeTreeEntries(t, backupRoot)
 
 			args := []string{"--journal-dir", journalDir, "--json", "backup", "verify"}
 			args = append(args, extraArgs...)
@@ -111,13 +114,14 @@ func TestAcceptanceReference_BackupVerifyCLI_JSONAndDisk(t *testing.T) {
 			}, args...)
 
 			normalizedJSON := normalizeBackupVerifyReferenceJSON(t, outcome)
-			assertOrWriteBackupVerifyReferenceGoldenJSON(t, normalizedJSON, filepath.Join("golden", "json", "v1_"+tc.id+".json"))
+			assertOrWriteBackupVerifyReferenceGoldenJSON(t, normalizedJSON, filepath.Join("golden", "json", "v2_"+tc.id+".json"))
 
 			snapshot := marshalBackupVerifyReferenceJSON(t, map[string]any{
-				"process_exit_code":   outcome.ExitCode,
-				"backup_root_entries": collectRelativeTreeEntries(t, backupRoot),
+				"process_exit_code": outcome.ExitCode,
+				"before_entries":    before,
+				"after_entries":     collectRelativeTreeEntries(t, backupRoot),
 			})
-			assertOrWriteBackupVerifyReferenceGoldenJSON(t, snapshot, filepath.Join("golden", "disk", "v1_"+tc.id+".json"))
+			assertOrWriteBackupVerifyReferenceGoldenJSON(t, snapshot, filepath.Join("golden", "disk", "v2_"+tc.id+".json"))
 		})
 	}
 }
@@ -172,15 +176,32 @@ func normalizeBackupVerifyReferenceJSON(t *testing.T, outcome execOutcome) []byt
 	obj["process_exit_code"] = outcome.ExitCode
 
 	replacements := normalizeArtifactPlaceholders(obj, map[string]string{
-		"manifest":     "REPLACE_MANIFEST",
-		"db_backup":    "REPLACE_DB_BACKUP",
-		"files_backup": "REPLACE_FILES_BACKUP",
+		"backup_root":    "REPLACE_BACKUP_ROOT",
+		"manifest":       "REPLACE_MANIFEST",
+		"db_backup":      "REPLACE_DB_BACKUP",
+		"db_checksum":    "REPLACE_DB_CHECKSUM",
+		"files_backup":   "REPLACE_FILES_BACKUP",
+		"files_checksum": "REPLACE_FILES_CHECKSUM",
 	})
 	normalizeWarningsPaths(obj, replacements)
 	normalizeItemStringFields(obj, replacements, "summary", "details", "action")
 
 	if errObj, ok := obj["error"].(map[string]any); ok {
 		delete(errObj, "message")
+	}
+	if items, ok := obj["items"].([]any); ok {
+		normalizedItems := make([]any, 0, len(items))
+		for _, rawItem := range items {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			normalizedItems = append(normalizedItems, map[string]any{
+				"code":   item["code"],
+				"status": item["status"],
+			})
+		}
+		obj["items"] = normalizedItems
 	}
 	delete(obj, "message")
 	delete(obj, "timing")
@@ -203,7 +224,7 @@ func assertOrWriteBackupVerifyReferenceGoldenJSON(t *testing.T, got []byte, relP
 
 	path := filepath.Join("..", "..", "acceptance", "v2", "backup_verify", relPath)
 	gotNorm := normalizeBackupVerifyReferenceJSONBytes(t, got)
-	if os.Getenv(updateBackupVerifyReferenceEnv) == "1" {
+	if os.Getenv(updateBackupVerifyCLIAcceptanceEnv) == "1" {
 		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
 			t.Fatal(err)
 		}

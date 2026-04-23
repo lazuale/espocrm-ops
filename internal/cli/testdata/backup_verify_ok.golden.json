@@ -1,18 +1,43 @@
 {
   "command": "backup verify",
   "ok": true,
-  "message": "backup verification passed",
+  "process_exit_code": 0,
+  "message": "backup verify completed",
   "details": {
+    "ready": true,
+    "source_kind": "manifest",
     "scope": "prod",
-    "created_at": "2026-04-15T11:00:00Z"
+    "created_at": "2026-04-07T01:00:00Z",
+    "steps": 3,
+    "completed": 3
   },
   "artifacts": {
+    "backup_root": "REPLACE_AT_RUNTIME",
     "manifest": "REPLACE_AT_RUNTIME",
     "db_backup": "REPLACE_AT_RUNTIME",
-    "files_backup": "REPLACE_AT_RUNTIME"
+    "db_checksum": "REPLACE_AT_RUNTIME",
+    "files_backup": "REPLACE_AT_RUNTIME",
+    "files_checksum": "REPLACE_AT_RUNTIME"
   },
   "timing": {
     "started_at": "2026-04-15T12:00:00Z",
     "finished_at": "2026-04-15T12:00:00Z"
-  }
+  },
+  "items": [
+    {
+      "code": "manifest_contract",
+      "status": "completed",
+      "summary": "Manifest полного backup-set проверен"
+    },
+    {
+      "code": "db_artifact",
+      "status": "completed",
+      "summary": "Database artifact проверен"
+    },
+    {
+      "code": "files_artifact",
+      "status": "completed",
+      "summary": "Files artifact проверен"
+    }
+  ]
 }

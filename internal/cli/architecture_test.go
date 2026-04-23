@@ -253,7 +253,6 @@ func TestProductionCLIExecuteImportsStayExplicit(t *testing.T) {
 func TestProductionCLIDepsImportsStayExplicit(t *testing.T) {
 	assertCLIFileInternalImportsExactly(t, "deps.go", map[string]struct{}{
 		"github.com/lazuale/espocrm-ops/internal/app":                         {},
-		"github.com/lazuale/espocrm-ops/internal/app/backupverify":            {},
 		"github.com/lazuale/espocrm-ops/internal/app/doctor":                  {},
 		"github.com/lazuale/espocrm-ops/internal/app/migrate":                 {},
 		"github.com/lazuale/espocrm-ops/internal/app/operation":               {},

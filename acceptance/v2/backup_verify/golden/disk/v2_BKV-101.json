@@ -2,22 +2,12 @@
   "after_entries": [
     "db/",
     "db/espocrm-prod_2026-04-07_01-00-00.sql.gz",
-    "db/espocrm-prod_2026-04-07_01-00-00.sql.gz.sha256",
-    "files/",
-    "files/espocrm-prod_files_2026-04-07_01-00-00.tar.gz",
-    "files/espocrm-prod_files_2026-04-07_01-00-00.tar.gz.sha256",
-    "manifests/",
-    "manifests/espocrm-prod_2026-04-07_01-00-00.manifest.json"
+    "db/espocrm-prod_2026-04-07_01-00-00.sql.gz.sha256"
   ],
   "before_entries": [
     "db/",
     "db/espocrm-prod_2026-04-07_01-00-00.sql.gz",
-    "db/espocrm-prod_2026-04-07_01-00-00.sql.gz.sha256",
-    "files/",
-    "files/espocrm-prod_files_2026-04-07_01-00-00.tar.gz",
-    "files/espocrm-prod_files_2026-04-07_01-00-00.tar.gz.sha256",
-    "manifests/",
-    "manifests/espocrm-prod_2026-04-07_01-00-00.manifest.json"
+    "db/espocrm-prod_2026-04-07_01-00-00.sql.gz.sha256"
   ],
   "process_exit_code": 0
 }

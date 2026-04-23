@@ -9,8 +9,15 @@ type SectionItem struct {
 }
 
 type BackupVerifyDetails struct {
-	Scope     string `json:"scope"`
-	CreatedAt string `json:"created_at"`
+	Ready      bool   `json:"ready"`
+	SourceKind string `json:"source_kind,omitempty"`
+	Scope      string `json:"scope,omitempty"`
+	CreatedAt  string `json:"created_at,omitempty"`
+	Steps      int    `json:"steps"`
+	Completed  int    `json:"completed,omitempty"`
+	Skipped    int    `json:"skipped,omitempty"`
+	Blocked    int    `json:"blocked,omitempty"`
+	Failed     int    `json:"failed,omitempty"`
 }
 
 func (BackupVerifyDetails) isResultDetails() {}
@@ -42,12 +49,21 @@ type BackupItem struct {
 func (BackupItem) isResultItem() {}
 
 type BackupVerifyArtifacts struct {
-	Manifest    string `json:"manifest"`
-	DBBackup    string `json:"db_backup,omitempty"`
-	FilesBackup string `json:"files_backup,omitempty"`
+	BackupRoot    string `json:"backup_root,omitempty"`
+	Manifest      string `json:"manifest,omitempty"`
+	DBBackup      string `json:"db_backup,omitempty"`
+	DBChecksum    string `json:"db_checksum,omitempty"`
+	FilesBackup   string `json:"files_backup,omitempty"`
+	FilesChecksum string `json:"files_checksum,omitempty"`
 }
 
 func (BackupVerifyArtifacts) isResultArtifacts() {}
+
+type BackupVerifyItem struct {
+	SectionItem
+}
+
+func (BackupVerifyItem) isResultItem() {}
 
 type BackupArtifacts struct {
 	ProjectDir    string `json:"project_dir,omitempty"`

@@ -20,37 +20,18 @@ func TestGolden_BackupVerify_JSON(t *testing.T) {
 		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-fixed-1"),
 	}
 
-	dbName := "db.sql.gz"
-	filesName := "files.tar.gz"
-	manifestPath := filepath.Join(tmp, "manifest.json")
-	dbPath := filepath.Join(tmp, dbName)
-	filesPath := filepath.Join(tmp, filesName)
-
-	writeGzipFile(t, dbPath, []byte("select 1;"))
-	writeTarGzFile(t, filesPath, map[string]string{
+	backupRoot := filepath.Join(tmp, "backups")
+	set := writeBackupSet(t, backupRoot, "espocrm-prod", "2026-04-15_11-00-00", "prod", map[string]string{
 		"storage/a.txt": "hello",
 	})
-
-	writeJSON(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-15T11:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    dbName,
-			"files_backup": filesName,
-		},
-		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, dbPath),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
+	writeBackupVerifyReferenceManifest(t, set, sha256OfFile(t, set.DBBackup), sha256OfFile(t, set.FilesBackup))
 
 	out, err := runRootCommandWithOptions(t, opts,
 		"--journal-dir", journalDir,
 		"--json",
 		"backup",
 		"verify",
-		"--manifest", manifestPath,
+		"--manifest", set.ManifestJSON,
 	)
 	if err != nil {
 		t.Fatalf("command failed: %v\noutput=%s", err, out)
@@ -65,9 +46,12 @@ func normalizeBackupVerifyJSON(t *testing.T, raw []byte) []byte {
 
 	obj := parseCLIJSONBytes(t, raw)
 	normalizeArtifactPlaceholders(obj, map[string]string{
-		"manifest":     "REPLACE_AT_RUNTIME",
-		"db_backup":    "REPLACE_AT_RUNTIME",
-		"files_backup": "REPLACE_AT_RUNTIME",
+		"backup_root":    "REPLACE_AT_RUNTIME",
+		"manifest":       "REPLACE_AT_RUNTIME",
+		"db_backup":      "REPLACE_AT_RUNTIME",
+		"db_checksum":    "REPLACE_AT_RUNTIME",
+		"files_backup":   "REPLACE_AT_RUNTIME",
+		"files_checksum": "REPLACE_AT_RUNTIME",
 	})
 	return marshalCLIJSON(t, obj)
 }

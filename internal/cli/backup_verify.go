@@ -3,10 +3,10 @@ package cli
 import (
 	"fmt"
 
-	backupverifyapp "github.com/lazuale/espocrm-ops/internal/app/backupverify"
 	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	"github.com/lazuale/espocrm-ops/internal/model"
 	"github.com/spf13/cobra"
 )
 
@@ -27,23 +27,21 @@ func newBackupVerifyCmd() *cobra.Command {
 				return err
 			}
 
-			return RunCommand(cmd, CommandSpec{
+			return RunCommandWithResult(cmd, CommandSpec{
 				Name:       "backup verify",
 				ErrorCode:  "backup_verification_failed",
 				ExitCode:   exitcode.ValidationError,
 				RenderText: resultbridge.RenderBackupVerifyText,
 			}, func() (result.Result, error) {
-				res := resultbridge.BackupVerifyPendingResult(in.manifestPath)
-
-				report, err := appForCommand(cmd).backupVerify.Diagnose(backupverifyapp.Request{
+				info, err := appForCommand(cmd).backupVerify.VerifyBackup(cmd.Context(), model.BackupVerifyRequest{
 					ManifestPath: in.manifestPath,
 					BackupRoot:   in.backupRoot,
 				})
 				if err != nil {
-					return res, err
+					return resultbridge.BackupVerifyResult(info), err
 				}
 
-				return resultbridge.BackupVerifyResult(report), nil
+				return resultbridge.BackupVerifyResult(info), nil
 			})
 		},
 	}
