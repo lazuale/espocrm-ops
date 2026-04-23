@@ -212,3 +212,16 @@ Legacy facts, которые не поднимаются до `v2` invariant:
 - failure envelope `command == "espops"` на некоторых `v1` failure paths
 - partial-manifest semantics
 - exact English strings
+
+## Контролируемое Удаление
+
+После cutover реальный CLI path `backup verify` обслуживается только `backup verify v2`.
+Старый command-specific app path удаляется, потому что он больше не участвует в выполнении команды.
+
+Сознательно сохраняются:
+
+- `v1_BKV-*` golden/reference bundles как oracle-only материал
+- общие `backupstore` manifest/checksum helpers, пока они используются `restore` / `migrate`
+- legacy store adapter методы, пока они нужны retained commands вне `backup verify`
+
+Старые transport-quirks из `v1` не возвращаются как обязательный `v2` contract.

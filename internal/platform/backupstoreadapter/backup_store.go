@@ -47,22 +47,6 @@ func (BackupStore) VerifyDirectFilesBackup(filesPath string) error {
 	return classifyBackupStoreError(platformbackupstore.VerifyDirectFilesBackup(filesPath))
 }
 
-func (BackupStore) ManifestCandidates(backupRoot string) ([]backupstoreport.ManifestCandidate, error) {
-	candidates, err := platformbackupstore.ManifestCandidates(backupRoot)
-	if err != nil {
-		return nil, err
-	}
-	out := make([]backupstoreport.ManifestCandidate, 0, len(candidates))
-	for _, candidate := range candidates {
-		out = append(out, backupstoreport.ManifestCandidate{
-			Prefix:       candidate.Prefix,
-			Stamp:        candidate.Stamp,
-			ManifestPath: candidate.ManifestPath,
-		})
-	}
-	return out, nil
-}
-
 func (BackupStore) Groups(backupRoot string, mode backupstoreport.GroupMode) ([]domainbackup.BackupGroup, error) {
 	return platformbackupstore.Groups(backupRoot, platformbackupstore.GroupMode(mode))
 }

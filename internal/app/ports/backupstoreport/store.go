@@ -10,12 +10,6 @@ type VerifiedBackup struct {
 	FilesPath    string
 }
 
-type ManifestCandidate struct {
-	Prefix       string
-	Stamp        string
-	ManifestPath string
-}
-
 type GroupMode int
 
 const (
@@ -26,10 +20,10 @@ const (
 
 type Store interface {
 	VerifyManifestSelection(manifestPath string, needDB, needFiles bool) (VerifiedBackup, error)
+	// Сохранено для migrate: CLI `backup verify` больше не использует legacy port.
 	VerifyManifestDetailed(manifestPath string) (VerifiedBackup, error)
 	VerifyDirectDBBackup(dbPath string) error
 	VerifyDirectFilesBackup(filesPath string) error
-	ManifestCandidates(backupRoot string) ([]ManifestCandidate, error)
 	Groups(backupRoot string, mode GroupMode) ([]domainbackup.BackupGroup, error)
 	LoadManifest(path string) (domainbackup.Manifest, error)
 	WriteManifest(path string, manifest domainbackup.Manifest) error

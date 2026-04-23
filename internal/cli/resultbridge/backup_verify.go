@@ -8,14 +8,6 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/model"
 )
 
-func BackupVerifyPendingResult(manifestPath string) result.Result {
-	return result.Result{
-		Artifacts: result.BackupVerifyArtifacts{
-			Manifest: manifestPath,
-		},
-	}
-}
-
 // Временный cutover shim: CLI пока использует общий result transport,
 // а v2 core возвращает собственный model-result. После удаления старого
 // backup verify path этот bridge можно сузить вместе с остальными resultbridge.

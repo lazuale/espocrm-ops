@@ -46,3 +46,6 @@ Golden bundles лежат в:
 
 После cutover `v1_BKV-*` bundles остаются oracle-only.
 Текущий CI проверяет `v2_BKV-*` через реальный CLI path.
+
+После контролируемого удаления старый command-specific `internal/app/backupverify` path удалён.
+Оставшиеся legacy helpers вокруг manifest/checksum/store считаются retained только для `restore` / `migrate` или oracle/reference сценариев.

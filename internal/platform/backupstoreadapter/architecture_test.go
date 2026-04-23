@@ -70,7 +70,6 @@ func TestBackupStoreAdapterExportedSurfaceStaysIntentional(t *testing.T) {
 		"method BackupStore.VerifyManifestDetailed":  {},
 		"method BackupStore.VerifyDirectDBBackup":    {},
 		"method BackupStore.VerifyDirectFilesBackup": {},
-		"method BackupStore.ManifestCandidates":      {},
 		"method BackupStore.Groups":                  {},
 		"method BackupStore.LoadManifest":            {},
 		"method BackupStore.WriteManifest":           {},

@@ -21,7 +21,6 @@ func TestResultBridgeImportsStayExplicit(t *testing.T) {
 	dir := filepath.Join(root, "internal", "cli", "resultbridge")
 	fset := token.NewFileSet()
 	allowedInternal := map[string]struct{}{
-		modulePath + "/internal/app/backupverify":  {},
 		modulePath + "/internal/app/doctor":        {},
 		modulePath + "/internal/app/migrate":       {},
 		modulePath + "/internal/app/restore":       {},
@@ -69,18 +68,17 @@ func TestResultBridgeExportedSurfaceStaysIntentional(t *testing.T) {
 	fset := token.NewFileSet()
 	got := map[string]struct{}{}
 	want := map[string]struct{}{
-		"func BackupResult":              {},
-		"func RenderBackupText":          {},
-		"func BackupVerifyPendingResult": {},
-		"func BackupVerifyResult":        {},
-		"func RenderBackupVerifyText":    {},
-		"func RestoreResult":             {},
-		"func RenderRestoreText":         {},
-		"func MigrateResult":             {},
-		"func RenderMigrateText":         {},
-		"func DoctorResult":              {},
-		"func RenderDoctorText":          {},
-		"func RenderWarnings":            {},
+		"func BackupResult":           {},
+		"func RenderBackupText":       {},
+		"func BackupVerifyResult":     {},
+		"func RenderBackupVerifyText": {},
+		"func RestoreResult":          {},
+		"func RenderRestoreText":      {},
+		"func MigrateResult":          {},
+		"func RenderMigrateText":      {},
+		"func DoctorResult":           {},
+		"func RenderDoctorText":       {},
+		"func RenderWarnings":         {},
 	}
 
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
