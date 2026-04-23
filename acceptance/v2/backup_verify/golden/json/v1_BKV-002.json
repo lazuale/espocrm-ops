@@ -1,0 +1,14 @@
+{
+  "artifacts": {
+    "db_backup": "REPLACE_DB_BACKUP",
+    "files_backup": "REPLACE_FILES_BACKUP",
+    "manifest": "REPLACE_MANIFEST"
+  },
+  "command": "backup verify",
+  "details": {
+    "created_at": "2026-04-18T10:00:00Z",
+    "scope": "prod"
+  },
+  "ok": true,
+  "process_exit_code": 0
+}

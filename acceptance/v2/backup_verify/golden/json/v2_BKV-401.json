@@ -1,0 +1,38 @@
+{
+  "artifacts": {
+    "backup_root": "REPLACE_BACKUP_ROOT"
+  },
+  "command": "backup verify",
+  "details": {
+    "blocked": 3,
+    "failed": 1,
+    "ready": false,
+    "source_kind": "backup_root",
+    "steps": 4
+  },
+  "error": {
+    "code": "backup_verification_failed",
+    "exit_code": 4,
+    "kind": "validation"
+  },
+  "items": [
+    {
+      "code": "source_selection",
+      "status": "failed"
+    },
+    {
+      "code": "manifest_contract",
+      "status": "blocked"
+    },
+    {
+      "code": "db_artifact",
+      "status": "blocked"
+    },
+    {
+      "code": "files_artifact",
+      "status": "blocked"
+    }
+  ],
+  "ok": false,
+  "process_exit_code": 4
+}

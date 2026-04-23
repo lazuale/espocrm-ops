@@ -17,6 +17,7 @@ const (
 	BackupFailedCode       = "backup_failed"
 	ExitOK                 = 0
 	ExitUsageError         = 2
+	ExitManifestError      = 3
 	ExitValidationError    = 4
 	ExitExternalError      = 5
 	ExitIOError            = 6
@@ -37,6 +38,7 @@ type ErrorKind string
 
 const (
 	KindUsage      ErrorKind = "usage"
+	KindManifest   ErrorKind = "manifest"
 	KindValidation ErrorKind = "validation"
 	KindExternal   ErrorKind = "external"
 	KindIO         ErrorKind = "io"
@@ -55,10 +57,18 @@ type BackupError struct {
 }
 
 func NewBackupFailure(kind ErrorKind, message string, cause error) BackupFailure {
+	return NewCommandFailure(kind, BackupFailedCode, message, cause)
+}
+
+func NewCommandFailure(kind ErrorKind, code, message string, cause error) BackupFailure {
+	code = strings.TrimSpace(code)
+	if code == "" {
+		code = BackupFailedCode
+	}
 	return BackupFailure{
 		BackupError: BackupError{
 			Kind:     kind,
-			Code:     BackupFailedCode,
+			Code:     code,
 			ExitCode: exitCodeForKind(kind),
 			Message:  strings.TrimSpace(message),
 		},
@@ -84,6 +94,8 @@ func exitCodeForKind(kind ErrorKind) int {
 	switch kind {
 	case KindUsage:
 		return ExitUsageError
+	case KindManifest:
+		return ExitManifestError
 	case KindValidation:
 		return ExitValidationError
 	case KindExternal:

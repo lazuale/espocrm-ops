@@ -1,0 +1,10 @@
+{
+  "command": "espops",
+  "error": {
+    "code": "backup_verification_failed",
+    "exit_code": 4,
+    "kind": "validation"
+  },
+  "ok": false,
+  "process_exit_code": 4
+}

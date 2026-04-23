@@ -1,0 +1,34 @@
+{
+  "artifacts": {
+    "manifest": "REPLACE_MANIFEST"
+  },
+  "command": "backup verify",
+  "details": {
+    "completed": 2,
+    "failed": 1,
+    "ready": false,
+    "source_kind": "manifest",
+    "steps": 3
+  },
+  "error": {
+    "code": "backup_verification_failed",
+    "exit_code": 4,
+    "kind": "validation"
+  },
+  "items": [
+    {
+      "code": "manifest_contract",
+      "status": "completed"
+    },
+    {
+      "code": "db_artifact",
+      "status": "completed"
+    },
+    {
+      "code": "files_artifact",
+      "status": "failed"
+    }
+  ],
+  "ok": false,
+  "process_exit_code": 4
+}

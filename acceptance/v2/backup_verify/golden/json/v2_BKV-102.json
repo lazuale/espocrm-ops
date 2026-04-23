@@ -1,0 +1,21 @@
+{
+  "artifacts": {
+    "files_backup": "REPLACE_FILES_BACKUP",
+    "files_checksum": "REPLACE_FILES_CHECKSUM"
+  },
+  "command": "backup verify",
+  "details": {
+    "completed": 1,
+    "ready": true,
+    "source_kind": "direct_files",
+    "steps": 1
+  },
+  "items": [
+    {
+      "code": "files_artifact",
+      "status": "completed"
+    }
+  ],
+  "ok": true,
+  "process_exit_code": 0
+}
