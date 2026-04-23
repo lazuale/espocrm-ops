@@ -735,11 +735,19 @@ Forbidden callers:
 `Migration Execution Monolith`
 
 #### B. Purpose
-Own cross-contour migration of a verified backup set from a source contour into a target contour while reusing the restore kernel for destructive apply semantics.
+Own cross-contour migration of a verified backup set from a source contour into a target contour.
+
+На текущем acceptance-first этапе:
+
+- active CLI path всё ещё использует retained legacy owner `internal/app/migrate/`
+- internal parity foundation для `migrate v2` живёт в `internal/app/migrate_v2.go` и `internal/model/migrate.go`
+- target snapshot и fail-closed migrate semantics собираются в `v2` без CLI cutover
 
 #### C. Contour
 Inside this unit:
 
+- `internal/app/migrate_v2.go`
+- `internal/model/migrate.go`
 - `internal/app/migrate/`
 
 Allowed internal mechanisms:
@@ -748,6 +756,7 @@ Allowed internal mechanisms:
 - target contour preflight through the operation lifecycle
 - source backup selection
 - cross-contour compatibility checks
+- target snapshot before destructive apply
 - target runtime preparation
 - restore-kernel reuse for DB/files apply
 - target runtime start

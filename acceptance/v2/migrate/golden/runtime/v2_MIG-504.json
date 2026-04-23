@@ -1,0 +1,22 @@
+{
+  "migrate_calls": [
+    "running_services",
+    "start_db",
+    "stop_services",
+    "restore_database",
+    "reconcile_files_permissions"
+  ],
+  "post_check_services": null,
+  "process_exit_code": 5,
+  "restored_db_path": "REPLACE_PROJECT_DIR/backups/dev/db/espocrm-dev_2026-04-19_08-00-00.sql.gz",
+  "running_after": [
+    "db"
+  ],
+  "snapshot_calls": [
+    "running_services",
+    "stop_services",
+    "dump_database",
+    "archive_files",
+    "start_services"
+  ]
+}

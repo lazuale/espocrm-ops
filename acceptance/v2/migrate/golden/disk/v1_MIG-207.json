@@ -1,0 +1,52 @@
+{
+  "after_source_backup_root": [
+    "db/",
+    "db/espocrm-dev_2026-04-19_08-00-00.sql.gz",
+    "db/espocrm-dev_2026-04-19_08-00-00.sql.gz.sha256",
+    "files/",
+    "files/espocrm-dev_files_2026-04-19_08-00-00.tar.gz",
+    "files/espocrm-dev_files_2026-04-19_08-00-00.tar.gz.sha256",
+    "manifests/",
+    "manifests/espocrm-dev_2026-04-19_08-00-00.manifest.json",
+    "manifests/espocrm-dev_2026-04-19_08-00-00.manifest.txt"
+  ],
+  "after_storage": [
+    "test.txt"
+  ],
+  "after_target_backup_root": [
+    "locks/",
+    "locks/.maintenance.lock.flock"
+  ],
+  "before_source_backup_root": [
+    "db/",
+    "db/espocrm-dev_2026-04-19_08-00-00.sql.gz",
+    "db/espocrm-dev_2026-04-19_08-00-00.sql.gz.sha256",
+    "files/",
+    "files/espocrm-dev_files_2026-04-19_08-00-00.tar.gz",
+    "files/espocrm-dev_files_2026-04-19_08-00-00.tar.gz.sha256",
+    "manifests/",
+    "manifests/espocrm-dev_2026-04-19_08-00-00.manifest.json",
+    "manifests/espocrm-dev_2026-04-19_08-00-00.manifest.txt"
+  ],
+  "before_storage": [
+    "before.txt"
+  ],
+  "before_target_backup_root": null,
+  "manifest_json": {
+    "artifacts": {
+      "db_backup": "espocrm-dev_2026-04-19_08-00-00.sql.gz",
+      "files_backup": "espocrm-dev_files_2026-04-19_08-00-00.tar.gz"
+    },
+    "checksums": {
+      "db_backup": "de2d0f6191d0d7050d6a3612321073b1cc998c3b91db7532ee01a3968629d6cf",
+      "files_backup": "4ecc751c32cbf1ddd2ce753cc92f3a8ce7ff7048548fdcab910542b24aac9b26"
+    },
+    "created_at": "2026-04-18T10:00:00Z",
+    "scope": "dev",
+    "version": 1
+  },
+  "process_exit_code": 0,
+  "storage_modes_after": {
+    "test.txt": "644"
+  }
+}
