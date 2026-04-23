@@ -21,6 +21,11 @@ type Static struct {
 	DumpErr            error
 	ArchiveErr         error
 	HelperArchiveErr   error
+	RestoreDBErr       error
+	PermissionErr      error
+	PostCheckErr       error
+	RestoredDBPath     string
+	PostCheckServices  []string
 	Calls              []string
 }
 
@@ -99,6 +104,35 @@ func (r *Static) ArchiveFilesWithHelper(ctx context.Context, target model.Runtim
 		return io.NopCloser(bytes.NewReader(r.HelperFilesArchive)), nil
 	}
 	return io.NopCloser(bytes.NewReader(r.FilesArchive)), nil
+}
+
+func (r *Static) RestoreDatabase(ctx context.Context, target model.RuntimeTarget, dbBackupPath string) error {
+	r.Calls = append(r.Calls, "restore_database")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if r.RestoreDBErr != nil {
+		return r.RestoreDBErr
+	}
+	r.RestoredDBPath = dbBackupPath
+	return nil
+}
+
+func (r *Static) ReconcileFilesPermissions(ctx context.Context, target model.RuntimeTarget) error {
+	r.Calls = append(r.Calls, "reconcile_files_permissions")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return r.PermissionErr
+}
+
+func (r *Static) PostRestoreCheck(ctx context.Context, target model.RuntimeTarget, services ...string) error {
+	r.Calls = append(r.Calls, "post_restore_check")
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	r.PostCheckServices = append([]string(nil), services...)
+	return r.PostCheckErr
 }
 
 func (r *Static) RequireCallOrder(want []string) error {

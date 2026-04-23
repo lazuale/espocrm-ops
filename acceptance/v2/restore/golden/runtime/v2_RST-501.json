@@ -1,0 +1,12 @@
+{
+  "post_check_services": null,
+  "process_exit_code": 5,
+  "restore_calls": [
+    "running_services",
+    "stop_services",
+    "restore_database",
+    "start_services"
+  ],
+  "restored_db_path": "",
+  "snapshot_calls": null
+}

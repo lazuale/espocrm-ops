@@ -100,6 +100,42 @@ func (Docker) ArchiveFilesWithHelper(ctx context.Context, target model.RuntimeTa
 	return openRemoveOnClose(tmpPath)
 }
 
+func (Docker) RestoreDatabase(ctx context.Context, target model.RuntimeTarget, dbBackupPath string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	dbService := strings.TrimSpace(target.DBService)
+	if dbService == "" {
+		dbService = "db"
+	}
+	container, err := platformdocker.ComposeServiceContainerID(composeConfig(target), dbService)
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(container) == "" {
+		return platformdocker.ContainerNotRunningError{Container: dbService}
+	}
+	return platformdocker.ResetAndRestoreMySQLDumpGz(dbBackupPath, container, target.DBRootPassword, target.DBName, target.DBUser)
+}
+
+func (Docker) ReconcileFilesPermissions(ctx context.Context, target model.RuntimeTarget) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return platformdocker.ReconcileEspoStoragePermissions(target.StorageDir, target.HelperImage, target.RuntimeUID, target.RuntimeGID)
+}
+
+func (Docker) PostRestoreCheck(ctx context.Context, target model.RuntimeTarget, services ...string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	timeout := target.ReadinessTimeout
+	if timeout <= 0 {
+		timeout = 60
+	}
+	return platformdocker.WaitForServicesReady(composeConfig(target), timeout, services...)
+}
+
 func composeConfig(target model.RuntimeTarget) platformdocker.ComposeConfig {
 	return platformdocker.ComposeConfig{
 		ProjectDir:  target.ProjectDir,

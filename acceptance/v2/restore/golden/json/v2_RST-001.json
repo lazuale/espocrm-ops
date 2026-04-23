@@ -1,0 +1,67 @@
+{
+  "artifacts": {
+    "backup_root": "REPLACE_BACKUP_ROOT",
+    "compose_file": "REPLACE_COMPOSE_FILE",
+    "db_backup": "REPLACE_DB_BACKUP",
+    "env_file": "REPLACE_ENV_FILE",
+    "files_backup": "REPLACE_FILES_BACKUP",
+    "manifest_json": "REPLACE_MANIFEST_JSON",
+    "project_dir": "REPLACE_PROJECT_DIR",
+    "snapshot_db_backup": "REPLACE_SNAPSHOT_DB_BACKUP",
+    "snapshot_db_checksum": "REPLACE_SNAPSHOT_DB_CHECKSUM",
+    "snapshot_files_backup": "REPLACE_SNAPSHOT_FILES_BACKUP",
+    "snapshot_files_checksum": "REPLACE_SNAPSHOT_FILES_CHECKSUM",
+    "snapshot_manifest_json": "REPLACE_SNAPSHOT_MANIFEST_JSON"
+  },
+  "command": "restore",
+  "details": {
+    "app_services_were_running": true,
+    "completed": 8,
+    "no_start": false,
+    "no_stop": false,
+    "ready": true,
+    "scope": "prod",
+    "selection_mode": "manifest_full",
+    "skip_db": false,
+    "skip_files": false,
+    "snapshot_enabled": true,
+    "source_kind": "manifest",
+    "steps": 8
+  },
+  "items": [
+    {
+      "code": "source_resolution",
+      "status": "completed"
+    },
+    {
+      "code": "runtime_prepare",
+      "status": "completed"
+    },
+    {
+      "code": "snapshot_recovery_point",
+      "status": "completed"
+    },
+    {
+      "code": "db_restore",
+      "status": "completed"
+    },
+    {
+      "code": "files_restore",
+      "status": "completed"
+    },
+    {
+      "code": "permission_reconcile",
+      "status": "completed"
+    },
+    {
+      "code": "runtime_return",
+      "status": "completed"
+    },
+    {
+      "code": "post_restore_check",
+      "status": "completed"
+    }
+  ],
+  "ok": true,
+  "process_exit_code": 0
+}

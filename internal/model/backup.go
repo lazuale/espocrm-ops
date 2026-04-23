@@ -117,14 +117,19 @@ type Runtime interface {
 }
 
 type RuntimeTarget struct {
-	ProjectDir  string
-	ComposeFile string
-	EnvFile     string
-	StorageDir  string
-	DBService   string
-	DBUser      string
-	DBPassword  string
-	DBName      string
+	ProjectDir       string
+	ComposeFile      string
+	EnvFile          string
+	StorageDir       string
+	DBService        string
+	DBUser           string
+	DBPassword       string
+	DBRootPassword   string
+	DBName           string
+	HelperImage      string
+	RuntimeUID       int
+	RuntimeGID       int
+	ReadinessTimeout int
 }
 
 type Store interface {

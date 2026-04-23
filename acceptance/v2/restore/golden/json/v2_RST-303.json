@@ -1,0 +1,69 @@
+{
+  "artifacts": {
+    "backup_root": "REPLACE_BACKUP_ROOT",
+    "compose_file": "REPLACE_COMPOSE_FILE",
+    "db_backup": "REPLACE_DB_BACKUP",
+    "env_file": "REPLACE_ENV_FILE",
+    "files_backup": "REPLACE_FILES_BACKUP",
+    "manifest_json": "REPLACE_MANIFEST_JSON",
+    "project_dir": "REPLACE_PROJECT_DIR"
+  },
+  "command": "restore",
+  "details": {
+    "app_services_were_running": true,
+    "blocked": 4,
+    "completed": 3,
+    "failed": 1,
+    "no_start": false,
+    "no_stop": false,
+    "ready": false,
+    "scope": "prod",
+    "selection_mode": "manifest_full",
+    "skip_db": false,
+    "skip_files": false,
+    "snapshot_enabled": true,
+    "source_kind": "manifest",
+    "steps": 8
+  },
+  "error": {
+    "code": "restore_failed",
+    "exit_code": 5,
+    "kind": "external"
+  },
+  "items": [
+    {
+      "code": "source_resolution",
+      "status": "completed"
+    },
+    {
+      "code": "runtime_prepare",
+      "status": "completed"
+    },
+    {
+      "code": "snapshot_recovery_point",
+      "status": "failed"
+    },
+    {
+      "code": "db_restore",
+      "status": "blocked"
+    },
+    {
+      "code": "files_restore",
+      "status": "blocked"
+    },
+    {
+      "code": "permission_reconcile",
+      "status": "blocked"
+    },
+    {
+      "code": "post_restore_check",
+      "status": "blocked"
+    },
+    {
+      "code": "runtime_return",
+      "status": "completed"
+    }
+  ],
+  "ok": false,
+  "process_exit_code": 5
+}

@@ -1,0 +1,10 @@
+{
+  "after_storage": [
+    "stale.txt"
+  ],
+  "before_storage": [
+    "stale.txt"
+  ],
+  "process_exit_code": 0,
+  "snapshot_entries": null
+}
