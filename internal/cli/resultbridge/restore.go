@@ -7,9 +7,84 @@ import (
 
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
 	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	"github.com/lazuale/espocrm-ops/internal/model"
 )
 
-func RestoreResult(info restoreusecase.ExecuteInfo) result.Result {
+func RestoreResult(raw any) result.Result {
+	switch info := raw.(type) {
+	case model.RestoreResult:
+		return restoreV2Result(info)
+	case restoreusecase.ExecuteInfo:
+		return restoreLegacyResult(info)
+	default:
+		return result.Result{
+			Command: "restore",
+			OK:      false,
+			Error: &result.ErrorInfo{
+				Code:    "internal_error",
+				Message: fmt.Sprintf("unexpected restore result type %T", raw),
+			},
+		}
+	}
+}
+
+func restoreV2Result(info model.RestoreResult) result.Result {
+	items := make([]result.ItemPayload, 0, len(info.Items))
+	for _, step := range info.Items {
+		items = append(items, result.RestoreItem{
+			SectionItem: result.SectionItem{
+				Code:    step.Code,
+				Status:  step.Status,
+				Summary: restoreStepSummary(step.Code, step.Status),
+			},
+		})
+	}
+
+	return result.Result{
+		Command:  "restore",
+		OK:       info.OK,
+		Message:  restoreMessage(info.OK),
+		Warnings: append([]string(nil), info.Warnings...),
+		Details: result.RestoreDetails{
+			Scope:                  info.Details.Scope,
+			Ready:                  info.Details.Ready,
+			SelectionMode:          info.Details.SelectionMode,
+			SourceKind:             info.Details.SourceKind,
+			Steps:                  info.Details.Steps,
+			Completed:              info.Details.Completed,
+			Skipped:                info.Details.Skipped,
+			Blocked:                info.Details.Blocked,
+			Failed:                 info.Details.Failed,
+			Warnings:               info.Details.Warnings,
+			SnapshotEnabled:        info.Details.SnapshotEnabled,
+			SkipDB:                 info.Details.SkipDB,
+			SkipFiles:              info.Details.SkipFiles,
+			NoStop:                 info.Details.NoStop,
+			NoStart:                info.Details.NoStart,
+			AppServicesWereRunning: info.Details.AppServicesWereRunning,
+			StartedDBTemporarily:   false,
+		},
+		Artifacts: result.RestoreArtifacts{
+			ProjectDir:            info.Artifacts.ProjectDir,
+			ComposeFile:           info.Artifacts.ComposeFile,
+			EnvFile:               info.Artifacts.EnvFile,
+			BackupRoot:            info.Artifacts.BackupRoot,
+			ManifestTXT:           info.Artifacts.ManifestTXT,
+			ManifestJSON:          info.Artifacts.ManifestJSON,
+			DBBackup:              info.Artifacts.DBBackup,
+			FilesBackup:           info.Artifacts.FilesBackup,
+			SnapshotManifestTXT:   info.Artifacts.SnapshotManifestTXT,
+			SnapshotManifestJSON:  info.Artifacts.SnapshotManifestJSON,
+			SnapshotDBBackup:      info.Artifacts.SnapshotDBBackup,
+			SnapshotFilesBackup:   info.Artifacts.SnapshotFilesBackup,
+			SnapshotDBChecksum:    info.Artifacts.SnapshotDBChecksum,
+			SnapshotFilesChecksum: info.Artifacts.SnapshotFilesChecksum,
+		},
+		Items: items,
+	}
+}
+
+func restoreLegacyResult(info restoreusecase.ExecuteInfo) result.Result {
 	planned, completed, skipped, blocked, failed := info.Counts()
 	message := "restore completed"
 	if info.DryRun {
@@ -66,6 +141,89 @@ func RestoreResult(info restoreusecase.ExecuteInfo) result.Result {
 			SnapshotFilesChecksum: info.SnapshotFilesChecksum,
 		},
 		Items: restoreExecutionItems(info.Steps),
+	}
+}
+
+func restoreMessage(ok bool) string {
+	if ok {
+		return "restore completed"
+	}
+	return "restore failed"
+}
+
+func restoreStepSummary(code, status string) string {
+	if status == model.StatusBlocked {
+		switch code {
+		case model.StepRuntimePrepare:
+			return "Подготовка runtime заблокирована"
+		case model.RestoreStepSnapshot:
+			return "Аварийный snapshot заблокирован"
+		case model.RestoreStepDBRestore:
+			return "Восстановление базы данных заблокировано"
+		case model.RestoreStepFilesRestore:
+			return "Восстановление файлов заблокировано"
+		case model.RestoreStepPermission:
+			return "Согласование прав заблокировано"
+		case model.StepRuntimeReturn:
+			return "Возврат runtime заблокирован"
+		case model.RestoreStepPostCheck:
+			return "Пост-проверка restore заблокирована"
+		}
+	}
+	if status == model.StatusSkipped {
+		switch code {
+		case model.RestoreStepSnapshot:
+			return "Аварийный snapshot пропущен"
+		case model.RestoreStepDBRestore:
+			return "Восстановление базы данных пропущено"
+		case model.RestoreStepFilesRestore:
+			return "Восстановление файлов пропущено"
+		case model.RestoreStepPermission:
+			return "Согласование прав пропущено"
+		case model.StepRuntimeReturn:
+			return "Возврат runtime пропущен"
+		}
+	}
+	if status == model.StatusFailed {
+		switch code {
+		case model.RestoreStepSourceResolution:
+			return "Источник restore не прошёл проверку"
+		case model.StepRuntimePrepare:
+			return "Подготовка runtime завершилась ошибкой"
+		case model.RestoreStepSnapshot:
+			return "Аварийный snapshot завершился ошибкой"
+		case model.RestoreStepDBRestore:
+			return "Восстановление базы данных завершилось ошибкой"
+		case model.RestoreStepFilesRestore:
+			return "Восстановление файлов завершилось ошибкой"
+		case model.RestoreStepPermission:
+			return "Согласование прав завершилось ошибкой"
+		case model.StepRuntimeReturn:
+			return "Возврат runtime завершился ошибкой"
+		case model.RestoreStepPostCheck:
+			return "Пост-проверка restore завершилась ошибкой"
+		}
+	}
+
+	switch code {
+	case model.RestoreStepSourceResolution:
+		return "Источник restore выбран"
+	case model.StepRuntimePrepare:
+		return "Runtime подготовлен"
+	case model.RestoreStepSnapshot:
+		return "Аварийный snapshot создан"
+	case model.RestoreStepDBRestore:
+		return "База данных восстановлена"
+	case model.RestoreStepFilesRestore:
+		return "Файлы восстановлены"
+	case model.RestoreStepPermission:
+		return "Права согласованы"
+	case model.StepRuntimeReturn:
+		return "Runtime возвращён"
+	case model.RestoreStepPostCheck:
+		return "Пост-проверка restore выполнена"
+	default:
+		return code
 	}
 }
 

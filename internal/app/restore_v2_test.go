@@ -552,6 +552,15 @@ func normalizeRestoreAcceptanceJSON(t *testing.T, result model.RestoreResult) []
 	if err := json.Unmarshal(raw, &obj); err != nil {
 		t.Fatal(err)
 	}
+	if details, ok := obj["details"].(map[string]any); ok {
+		if _, ok := details["selection_mode"]; !ok {
+			details["selection_mode"] = ""
+		}
+		if _, ok := details["source_kind"]; !ok {
+			details["source_kind"] = ""
+		}
+		details["started_db_temporarily"] = false
+	}
 	replacements := restorePathReplacements(obj)
 	if errObj, ok := obj["error"].(map[string]any); ok {
 		delete(errObj, "message")
@@ -607,9 +616,11 @@ func restorePathReplacements(obj map[string]any) map[string]string {
 		"compose_file",
 		"env_file",
 		"backup_root",
+		"manifest_txt",
 		"manifest_json",
 		"db_backup",
 		"files_backup",
+		"snapshot_manifest_txt",
 		"snapshot_manifest_json",
 		"snapshot_db_backup",
 		"snapshot_files_backup",

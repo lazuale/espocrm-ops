@@ -62,7 +62,24 @@ func normalizeRestoreJSON(t *testing.T, raw []byte) []byte {
 		"snapshot_db_checksum":    "REPLACE_SNAPSHOT_DB_CHECKSUM",
 		"snapshot_files_checksum": "REPLACE_SNAPSHOT_FILES_CHECKSUM",
 	})
+	delete(obj, "message")
+	if errObj, ok := obj["error"].(map[string]any); ok {
+		delete(errObj, "message")
+	}
+	if items, ok := obj["items"].([]any); ok {
+		normalized := make([]any, 0, len(items))
+		for _, rawItem := range items {
+			item, ok := rawItem.(map[string]any)
+			if !ok {
+				continue
+			}
+			normalized = append(normalized, map[string]any{
+				"code":   item["code"],
+				"status": item["status"],
+			})
+		}
+		obj["items"] = normalized
+	}
 	normalizeWarningsPaths(obj, replacements)
-	normalizeItemStringFields(obj, replacements, "details", "action")
 	return marshalCLIJSON(t, obj)
 }

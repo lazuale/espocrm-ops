@@ -19,7 +19,8 @@
 - fail-closed behavior на destructive path
 - отсутствие ложного success
 
-На этом slice cutover CLI не выполняется.
+После закрытия parity blockers выполнен `cutover-safe wiring` real CLI path для parity-покрытых destructive restore scenarios.
+Legacy path остаётся только как regression oracle и временный compatibility shim для явно вынесенных legacy-only случаев.
 
 ## Источник истины
 
@@ -240,12 +241,18 @@ Legacy facts, которые фиксируются как reference, но не 
 
 Подробные bundles и ссылки лежат в [acceptance/v2/restore/cases/REFERENCE_V1.md](/home/febinet/code/docker/acceptance/v2/restore/cases/REFERENCE_V1.md).
 
-### 7. Оставшиеся Пробелы Перед Cutover Wiring
+### 7. Статус После Cutover `restore`
 
-- Недоснятых `v1` reference prerequisites для `restore` больше нет.
-- `RST-205` закрыт как `legacy divergence`, а не как `v2` contract gap.
-- Parity blockers `RST-303` и `RST-503` закрыты в internal `v2`.
-- После этого `restore v2` готов к отдельному шагу `cutover-safe wiring restore`.
+- Реальный CLI path `restore` теперь идёт через `restore v2` для:
+  `RST-001`, `RST-002`, `RST-101`, `RST-102`, `RST-204`, `RST-301`, `RST-302`, `RST-303`, `RST-401`, `RST-402`, `RST-403`, `RST-404`, `RST-501`, `RST-502`, `RST-503`, `RST-504`, `RST-505`, `RST-506`, `RST-507`.
+- `RST-201`, `RST-202`, `RST-203` по-прежнему закрываются на CLI validation layer до mutating path и не требуют legacy restore engine.
+- `RST-205` остаётся `legacy divergence`: partial-manifest semantics не становятся `v2` contract и не поднимаются в общий parity invariant.
+- `v1_RST-*` bundles после cutover остаются только oracle/reference material.
+- Exact English strings и transport quirks `v1`, если они конфликтуют с `V2_SCOPE.md`, остаются legacy reference, а не обязательным `v2` contract.
+- Временный compatibility shim после cutover ограничен двумя случаями:
+  `restore --dry-run`
+  partial-manifest path `manifest + --skip-*`
+  Это не новый product surface и не долгоживущий dual-stack; после отдельного решения по dry-run/legacy cleanup старый command-specific restore path должен быть удалён.
 
 ## Первый Internal Slice
 
@@ -272,5 +279,4 @@ Legacy facts, которые фиксируются как reference, но не 
 - `RST-506`
 - `RST-507`
 
-`RST-201`, `RST-202`, `RST-203` остаются CLI usage reference до cutover wiring.
-На этом шаге real CLI `restore` не переключается на `v2`.
+`RST-201`, `RST-202`, `RST-203` после cutover подтверждаются CLI validation surface.

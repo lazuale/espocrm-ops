@@ -18,7 +18,7 @@
   "command": "restore",
   "details": {
     "app_services_were_running": true,
-    "completed": 7,
+    "completed": 8,
     "no_start": false,
     "no_stop": false,
     "ready": true,
@@ -29,53 +29,42 @@
     "snapshot_enabled": true,
     "source_kind": "manifest",
     "started_db_temporarily": false,
-    "steps": 7
+    "steps": 8
   },
   "items": [
     {
-      "code": "operation_preflight",
-      "details": "Using REPLACE_ENV_FILE for contour prod.",
-      "status": "completed",
-      "summary": "Restore preflight completed"
-    },
-    {
       "code": "source_resolution",
-      "details": "Using manifest REPLACE_MANIFEST_JSON with database backup REPLACE_DB_BACKUP and files backup REPLACE_FILES_BACKUP.",
-      "status": "completed",
-      "summary": "Restore source resolution completed from manifest"
+      "status": "completed"
     },
     {
       "code": "runtime_prepare",
-      "details": "Using database container mock-db. Stopped application services before restore: espocrm, espocrm-daemon, espocrm-websocket.",
-      "status": "completed",
-      "summary": "Runtime preparation completed"
+      "status": "completed"
     },
     {
       "code": "snapshot_recovery_point",
-      "details": "Created emergency recovery point at REPLACE_SNAPSHOT_MANIFEST_JSON. Database snapshot: REPLACE_SNAPSHOT_DB_BACKUP. Files snapshot: REPLACE_SNAPSHOT_FILES_BACKUP.",
-      "status": "completed",
-      "summary": "Emergency recovery point completed"
+      "status": "completed"
     },
     {
       "code": "db_restore",
-      "details": "Restored database espocrm in container mock-db from REPLACE_DB_BACKUP. The manifest REPLACE_MANIFEST_JSON anchored the selected backup set.",
-      "status": "completed",
-      "summary": "Database restore completed"
+      "status": "completed"
     },
     {
       "code": "files_restore",
-      "details": "Replaced REPLACE_PROJECT_DIR/runtime/prod/espo from REPLACE_FILES_BACKUP and reconciled the storage permissions to the runtime image contract. The manifest REPLACE_MANIFEST_JSON anchored the selected backup set.",
-      "status": "completed",
-      "summary": "Files restore completed"
+      "status": "completed"
+    },
+    {
+      "code": "permission_reconcile",
+      "status": "completed"
     },
     {
       "code": "runtime_return",
-      "details": "Restarted application services after restore: espocrm, espocrm-daemon, espocrm-websocket. Post-restore health validation passed for: espocrm, espocrm-daemon, espocrm-websocket, db.",
-      "status": "completed",
-      "summary": "Runtime return completed"
+      "status": "completed"
+    },
+    {
+      "code": "post_restore_check",
+      "status": "completed"
     }
   ],
-  "message": "restore completed",
   "ok": true,
   "timing": {
     "finished_at": "2026-04-19T09:00:00Z",

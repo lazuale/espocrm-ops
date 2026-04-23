@@ -16,9 +16,12 @@
     "no_stop": false,
     "ready": false,
     "scope": "prod",
+    "selection_mode": "",
     "skip_db": false,
     "skip_files": false,
     "snapshot_enabled": false,
+    "source_kind": "",
+    "started_db_temporarily": false,
     "steps": 8,
     "warnings": 1
   },

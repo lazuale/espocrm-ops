@@ -106,6 +106,7 @@ func TestAcceptanceReference_RestoreV1_JSONDiskAndRuntime(t *testing.T) {
 			outcome := executeCLIWithOptions(
 				[]testAppOption{
 					lockOpt,
+					withLegacyRestoreCLIPath(),
 					withFixedTestRuntime(fixture.fixedNow, "op-"+strings.ToLower(tc.id)),
 				},
 				restoreAcceptanceReferenceArgs(fixture, extraArgs...)...,

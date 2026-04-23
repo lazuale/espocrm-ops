@@ -20,6 +20,7 @@
     "skipped": 3,
     "snapshot_enabled": false,
     "source_kind": "direct",
+    "started_db_temporarily": false,
     "steps": 8,
     "warnings": 3
   },

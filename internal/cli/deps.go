@@ -34,9 +34,11 @@ type App struct {
 	backup               v2app.BackupCommandService
 	backupVerify         v2app.BackupVerifyService
 	doctor               doctorapp.Service
-	restore              restoreapp.Service
+	restore              v2app.RestoreCommandService
+	restoreLegacy        restoreapp.Service
 	migrate              migrateapp.Service
 	options              GlobalOptions
+	forceLegacyRestore   bool
 }
 
 func NewApp(deps Dependencies) *App {
@@ -80,6 +82,18 @@ func NewApp(deps Dependencies) *App {
 		Locks:      locks,
 		Store:      backupstoreadapter.BackupStore{},
 	})
+	restoreCommandService := v2app.NewRestoreCommandService(v2app.RestoreCommandDependencies{
+		Operations: operationService,
+		Env:        envadapter.EnvLoader{},
+		Core: v2app.NewRestoreService(v2app.RestoreDependencies{
+			Runtime: v2runtime.Docker{},
+			Store:   v2store.FileStore{},
+			Snapshot: v2app.NewBackupService(v2app.BackupDependencies{
+				Runtime: v2runtime.Docker{},
+				Store:   v2store.FileStore{},
+			}),
+		}),
+	})
 	migrateService := migrateapp.NewService(migrateapp.Dependencies{
 		Operations: operationService,
 		Env:        envadapter.EnvLoader{},
@@ -101,7 +115,8 @@ func NewApp(deps Dependencies) *App {
 		backup:               backupService,
 		backupVerify:         backupVerifyService,
 		doctor:               doctorService,
-		restore:              restoreService,
+		restore:              restoreCommandService,
+		restoreLegacy:        restoreService,
 		migrate:              migrateService,
 		options:              defaultGlobalOptions(),
 	}

@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	domainfailure "github.com/lazuale/espocrm-ops/internal/domain/failure"
 	"github.com/lazuale/espocrm-ops/internal/model"
 )
 
@@ -357,6 +358,10 @@ func restoreFailureFromError(err error) model.BackupFailure {
 	var failure model.BackupFailure
 	if errors.As(err, &failure) {
 		return model.NewRestoreFailure(failure.Kind, failure.Message, err)
+	}
+	var domainFailure domainfailure.Failure
+	if errors.As(err, &domainFailure) {
+		return model.NewRestoreFailure(modelKindFromDomain(domainFailure.Kind), "restore завершился ошибкой", err)
 	}
 	var manifestErr model.BackupVerifyManifestError
 	if errors.As(err, &manifestErr) {

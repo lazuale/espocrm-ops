@@ -81,9 +81,11 @@ type RestoreArtifacts struct {
 	ComposeFile           string `json:"compose_file,omitempty"`
 	EnvFile               string `json:"env_file,omitempty"`
 	BackupRoot            string `json:"backup_root,omitempty"`
+	ManifestTXT           string `json:"manifest_txt,omitempty"`
 	ManifestJSON          string `json:"manifest_json,omitempty"`
 	DBBackup              string `json:"db_backup,omitempty"`
 	FilesBackup           string `json:"files_backup,omitempty"`
+	SnapshotManifestTXT   string `json:"snapshot_manifest_txt,omitempty"`
 	SnapshotManifestJSON  string `json:"snapshot_manifest_json,omitempty"`
 	SnapshotDBBackup      string `json:"snapshot_db_backup,omitempty"`
 	SnapshotFilesBackup   string `json:"snapshot_files_backup,omitempty"`
@@ -155,6 +157,7 @@ func (r *RestoreResult) AddWarning(message string) {
 func (r *RestoreResult) ApplySource(source RestoreSource) {
 	r.Details.SelectionMode = source.SelectionMode
 	r.Details.SourceKind = source.SourceKind
+	r.Artifacts.ManifestTXT = matchingRestoreManifestTXT(source.ManifestPath)
 	r.Artifacts.ManifestJSON = source.ManifestPath
 	if source.DBBackup.Path != "" {
 		r.Artifacts.DBBackup = source.DBBackup.Path
@@ -165,6 +168,7 @@ func (r *RestoreResult) ApplySource(source RestoreSource) {
 }
 
 func (r *RestoreResult) ApplySnapshot(snapshot BackupResult) {
+	r.Artifacts.SnapshotManifestTXT = snapshot.Artifacts.ManifestText
 	r.Artifacts.SnapshotManifestJSON = snapshot.Artifacts.ManifestJSON
 	r.Artifacts.SnapshotDBBackup = snapshot.Artifacts.DBBackup
 	r.Artifacts.SnapshotFilesBackup = snapshot.Artifacts.FilesBackup
@@ -212,4 +216,11 @@ func (r *RestoreResult) recount() {
 
 func NewRestoreFailure(kind ErrorKind, message string, cause error) BackupFailure {
 	return NewCommandFailure(kind, RestoreFailedCode, message, cause)
+}
+
+func matchingRestoreManifestTXT(path string) string {
+	if !strings.HasSuffix(path, ".manifest.json") {
+		return ""
+	}
+	return strings.TrimSuffix(path, ".manifest.json") + ".manifest.txt"
 }

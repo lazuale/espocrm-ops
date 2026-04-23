@@ -6,6 +6,7 @@
     "env_file": "REPLACE_ENV_FILE",
     "files_backup": "REPLACE_FILES_BACKUP",
     "manifest_json": "REPLACE_MANIFEST_JSON",
+    "manifest_txt": "REPLACE_MANIFEST_TXT",
     "project_dir": "REPLACE_PROJECT_DIR"
   },
   "command": "restore",
@@ -23,6 +24,7 @@
     "skip_files": false,
     "snapshot_enabled": true,
     "source_kind": "manifest",
+    "started_db_temporarily": false,
     "steps": 8
   },
   "error": {

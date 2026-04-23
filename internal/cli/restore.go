@@ -1,8 +1,10 @@
 package cli
 
 import (
+	"context"
 	"fmt"
 
+	v2app "github.com/lazuale/espocrm-ops/internal/app"
 	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
 	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
@@ -169,24 +171,56 @@ func runRestore(cmd *cobra.Command, in restoreInput) error {
 		ExitCode:   exitcode.InternalError,
 		RenderText: resultbridge.RenderRestoreText,
 	}, func() (result.Result, error) {
-		info, err := app.restore.Execute(restoreusecase.ExecuteRequest{
-			Scope:           in.scope,
-			ProjectDir:      in.projectDir,
-			ComposeFile:     in.composeFile,
-			EnvFileOverride: in.envFile,
-			ManifestPath:    in.manifestPath,
-			DBBackup:        in.dbBackup,
-			FilesBackup:     in.filesBackup,
-			SkipDB:          in.skipDB,
-			SkipFiles:       in.skipFiles,
-			NoSnapshot:      in.noSnapshot,
-			NoStop:          in.noStop,
-			NoStart:         in.noStart,
-			DryRun:          in.dryRun,
-			LogWriter:       cmd.ErrOrStderr(),
-			Now:             app.runtime.Now,
-		})
+		if app.forceLegacyRestore || useLegacyRestoreCompatibilityShim(in) {
+			info, err := app.restoreLegacy.Execute(restoreusecase.ExecuteRequest{
+				Scope:           in.scope,
+				ProjectDir:      in.projectDir,
+				ComposeFile:     in.composeFile,
+				EnvFileOverride: in.envFile,
+				ManifestPath:    in.manifestPath,
+				DBBackup:        in.dbBackup,
+				FilesBackup:     in.filesBackup,
+				SkipDB:          in.skipDB,
+				SkipFiles:       in.skipFiles,
+				NoSnapshot:      in.noSnapshot,
+				NoStop:          in.noStop,
+				NoStart:         in.noStart,
+				DryRun:          in.dryRun,
+				LogWriter:       cmd.ErrOrStderr(),
+				Now:             app.runtime.Now,
+			})
+			return resultbridge.RestoreResult(info), err
+		}
 
+		info, err := app.restore.Execute(context.Background(), v2RestoreCommandRequest(in, app))
 		return resultbridge.RestoreResult(info), err
 	})
+}
+
+func useLegacyRestoreCompatibilityShim(in restoreInput) bool {
+	// Временный cutover shim: пока v2 не покрывает dry-run planning и сознательно
+	// не поднимает partial-manifest semantics в invariant, эти два legacy-only
+	// случая остаются на старом command-specific path.
+	if in.dryRun {
+		return true
+	}
+	return in.manifestPath != "" && (in.skipDB || in.skipFiles)
+}
+
+func v2RestoreCommandRequest(in restoreInput, app *App) v2app.RestoreCommandRequest {
+	return v2app.RestoreCommandRequest{
+		Scope:           in.scope,
+		ProjectDir:      in.projectDir,
+		ComposeFile:     in.composeFile,
+		EnvFileOverride: in.envFile,
+		ManifestPath:    in.manifestPath,
+		DBBackup:        in.dbBackup,
+		FilesBackup:     in.filesBackup,
+		SkipDB:          in.skipDB,
+		SkipFiles:       in.skipFiles,
+		NoSnapshot:      in.noSnapshot,
+		NoStop:          in.noStop,
+		NoStart:         in.noStart,
+		Now:             app.runtime.Now,
+	}
 }

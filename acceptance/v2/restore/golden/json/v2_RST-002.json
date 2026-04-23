@@ -10,7 +10,8 @@
     "snapshot_db_checksum": "REPLACE_SNAPSHOT_DB_CHECKSUM",
     "snapshot_files_backup": "REPLACE_SNAPSHOT_FILES_BACKUP",
     "snapshot_files_checksum": "REPLACE_SNAPSHOT_FILES_CHECKSUM",
-    "snapshot_manifest_json": "REPLACE_SNAPSHOT_MANIFEST_JSON"
+    "snapshot_manifest_json": "REPLACE_SNAPSHOT_MANIFEST_JSON",
+    "snapshot_manifest_txt": "REPLACE_SNAPSHOT_MANIFEST_TXT"
   },
   "command": "restore",
   "details": {
@@ -25,6 +26,7 @@
     "skip_files": false,
     "snapshot_enabled": true,
     "source_kind": "direct",
+    "started_db_temporarily": false,
     "steps": 8
   },
   "items": [

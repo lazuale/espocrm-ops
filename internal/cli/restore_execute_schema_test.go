@@ -56,7 +56,7 @@ func TestSchema_Restore_JSON_Success_FullManifest(t *testing.T) {
 	if !requireJSONBool(t, obj, "details", "snapshot_enabled") {
 		t.Fatalf("expected snapshot_enabled=true")
 	}
-	if completed := requireJSONInt(t, obj, "details", "completed"); completed != 7 {
+	if completed := requireJSONInt(t, obj, "details", "completed"); completed != 8 {
 		t.Fatalf("unexpected completed count: %v", completed)
 	}
 
@@ -129,7 +129,7 @@ func TestSchema_Restore_JSON_Failure_InconsistentManifest(t *testing.T) {
 		"--confirm-prod", "prod",
 	)
 
-	assertCLIErrorOutput(t, outcome, exitcode.ValidationError, "restore_failed", "manifest backup set is inconsistent")
+	assertCLIErrorOutput(t, outcome, exitcode.ManifestError, "manifest_invalid", "manifest restore source не прошёл проверку")
 }
 
 func TestSchema_Restore_JSON_Failure_PostRestoreHealthValidation(t *testing.T) {
