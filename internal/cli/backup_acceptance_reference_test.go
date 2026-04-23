@@ -9,12 +9,15 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
 )
 
 const updateBackupAcceptanceReferenceEnv = "UPDATE_ACCEPTANCE_BACKUP_REFERENCE"
+
+var backupHelperTmpNamePattern = regexp.MustCompile(`espops-backup-v2-files-helper-[^ /\t]+\.tar\.gz`)
 
 func TestAcceptanceReference_BackupCLI_JSONAndDisk(t *testing.T) {
 	cases := []struct {
@@ -122,6 +125,14 @@ func TestAcceptanceReference_BackupCLI_JSONAndDisk(t *testing.T) {
 				fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetFailOnMatch(t, "up -d espocrm espocrm-daemon espocrm-websocket")
 				fixture.docker.EnableLog(t)
+			},
+		},
+		{
+			id:        "BKP-505",
+			extraArgs: []string{"--skip-db", "--no-stop"},
+			setup: func(t *testing.T, fixture *backupCommandFixture) {
+				fixture.docker.EnableLog(t)
+				prependFailingTar(t, "local tar failed")
 			},
 		},
 	}
@@ -237,7 +248,7 @@ func normalizeBackupAcceptanceJSON(t *testing.T, outcome execOutcome) []byte {
 
 func backupWarningSemantic(warning string) string {
 	switch {
-	case strings.Contains(warning, "Docker helper fallback"):
+	case strings.Contains(warning, "Docker helper fallback"), strings.Contains(warning, "helper fallback"):
 		return "docker_helper_fallback"
 	case strings.Contains(warning, "runtime was returned to its prior state"):
 		return "runtime_return_after_failure"
@@ -385,6 +396,7 @@ func normalizeDockerLogLines(t *testing.T, fixture backupCommandFixture, raw str
 		filepath.Join(fixture.projectDir, "backups", "dev"): "REPLACE_BACKUP_ROOT",
 		fixture.storageDir:               "REPLACE_STORAGE_DIR",
 		filepath.Dir(fixture.storageDir): "REPLACE_STORAGE_PARENT",
+		os.TempDir():                     "REPLACE_HELPER_TMP_DIR",
 	}
 
 	lines := strings.Split(strings.ReplaceAll(raw, "\r", ""), "\n")
@@ -394,7 +406,9 @@ func normalizeDockerLogLines(t *testing.T, fixture backupCommandFixture, raw str
 		if line == "" {
 			continue
 		}
-		out = append(out, replaceKnownPaths(line, replacements))
+		line = replaceKnownPaths(line, replacements)
+		line = backupHelperTmpNamePattern.ReplaceAllString(line, "espops-backup-v2-files-helper-REPLACE.tar.gz")
+		out = append(out, line)
 	}
 	return out
 }

@@ -7,6 +7,9 @@
     "manifests/"
   ],
   "backup_root_tmp_files": [],
+  "docker_log": [
+    "image inspect alpine:3.20"
+  ],
   "process_exit_code": 5,
   "running_services_after": null
 }

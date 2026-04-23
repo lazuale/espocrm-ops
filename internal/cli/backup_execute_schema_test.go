@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
@@ -58,6 +59,63 @@ func TestSchema_BackupExecute_JSON_FilesOnlyNoStop(t *testing.T) {
 	}
 	if manifest := requireJSONString(t, obj, "artifacts", "manifest_json"); manifest != "" {
 		t.Fatalf("partial backup must not expose json manifest, got %s", manifest)
+	}
+}
+
+func TestSchema_BackupExecute_JSON_HelperFallback_FilesOnlyNoStop(t *testing.T) {
+	fixture := prepareBackupCommandFixture(t)
+	fixture.docker.EnableLog(t)
+	prependFailingTar(t, "local tar failed")
+
+	out, err := runRootCommandWithOptions(
+		t,
+		[]testAppOption{
+			withFixedTestRuntime(fixture.fixedNow, "op-backup-helper"),
+		},
+		"--journal-dir", fixture.journalDir,
+		"--json",
+		"backup",
+		"--scope", "dev",
+		"--project-dir", fixture.projectDir,
+		"--compose-file", fixture.composeFile,
+		"--env-file", fixture.envFile,
+		"--skip-db",
+		"--no-stop",
+	)
+	if err != nil {
+		t.Fatalf("command failed: %v\noutput=%s", err, out)
+	}
+
+	obj := decodeCLIJSON(t, out)
+	if !requireJSONBool(t, obj, "ok") {
+		t.Fatalf("expected ok=true")
+	}
+	if warnings := requireJSONInt(t, obj, "details", "warnings"); warnings != 1 {
+		t.Fatalf("expected one helper warning, got %d", warnings)
+	}
+	rawWarnings := requireJSONArray(t, obj, "warnings")
+	if len(rawWarnings) != 1 {
+		t.Fatalf("expected one warning, got %v", rawWarnings)
+	}
+	warning, _ := rawWarnings[0].(string)
+	if !strings.Contains(warning, "helper fallback") {
+		t.Fatalf("unexpected warning: %v", rawWarnings)
+	}
+
+	filesBackup := requireJSONString(t, obj, "artifacts", "files_backup")
+	if err := platformfs.VerifyTarGzReadable(filesBackup, nil); err != nil {
+		t.Fatalf("expected readable files backup: %v", err)
+	}
+	if manifest := requireJSONString(t, obj, "artifacts", "manifest_txt"); manifest != "" {
+		t.Fatalf("partial backup must not expose text manifest, got %s", manifest)
+	}
+	if manifest := requireJSONString(t, obj, "artifacts", "manifest_json"); manifest != "" {
+		t.Fatalf("partial backup must not expose json manifest, got %s", manifest)
+	}
+
+	log := fixture.docker.ReadLog(t)
+	if !containsAll(log, "image inspect alpine:3.20", "run --pull=never --rm --entrypoint tar") {
+		t.Fatalf("expected explicit helper archive path, got log:\n%s", log)
 	}
 }
 

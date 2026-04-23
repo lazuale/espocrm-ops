@@ -14,11 +14,13 @@ type Static struct {
 	Running            []string
 	DBDump             []byte
 	FilesArchive       []byte
+	HelperFilesArchive []byte
 	InspectErr         error
 	StopErr            error
 	StartErr           error
 	DumpErr            error
 	ArchiveErr         error
+	HelperArchiveErr   error
 	Calls              []string
 }
 
@@ -81,6 +83,20 @@ func (r *Static) ArchiveFiles(ctx context.Context, target model.RuntimeTarget) (
 	}
 	if r.ArchiveErr != nil {
 		return nil, r.ArchiveErr
+	}
+	return io.NopCloser(bytes.NewReader(r.FilesArchive)), nil
+}
+
+func (r *Static) ArchiveFilesWithHelper(ctx context.Context, target model.RuntimeTarget, contract model.HelperArchiveContract) (io.ReadCloser, error) {
+	r.Calls = append(r.Calls, "archive_files_helper")
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	if r.HelperArchiveErr != nil {
+		return nil, r.HelperArchiveErr
+	}
+	if r.HelperFilesArchive != nil {
+		return io.NopCloser(bytes.NewReader(r.HelperFilesArchive)), nil
 	}
 	return io.NopCloser(bytes.NewReader(r.FilesArchive)), nil
 }

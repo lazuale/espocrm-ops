@@ -173,15 +173,17 @@ func (s BackupService) ExecuteBackup(ctx context.Context, req model.BackupReques
 	if req.SkipFiles {
 		result.AddStep(model.StepFilesBackup, model.StatusSkipped)
 	} else {
-		filesArtifact, err = s.writeRuntimeArtifact(ctx, layout.FilesArtifact, func() (io.ReadCloser, error) {
-			return s.runtime.ArchiveFiles(ctx, target)
-		})
+		var usedHelper bool
+		filesArtifact, usedHelper, err = s.writeFilesArtifact(ctx, layout.FilesArtifact, target, req.HelperArchive)
 		if err != nil {
 			result.AddStep(model.StepFilesBackup, model.StatusFailed)
 			blockAfter(&result, model.StepFilesBackup)
 			failure := model.NewBackupFailure(model.KindExternal, "files backup завершился ошибкой", err)
 			result.Fail(failure)
 			return result, failure
+		}
+		if usedHelper {
+			result.AddWarning("Backup файлов завершён через helper fallback после отказа локального пути архивирования.")
 		}
 		result.AddStep(model.StepFilesBackup, model.StatusCompleted)
 	}
@@ -314,6 +316,28 @@ func (s BackupService) writeRuntimeArtifact(ctx context.Context, path string, op
 		return model.Artifact{}, closeErr
 	}
 	return artifact, nil
+}
+
+func (s BackupService) writeFilesArtifact(ctx context.Context, path string, target model.RuntimeTarget, contract model.HelperArchiveContract) (model.Artifact, bool, error) {
+	artifact, err := s.writeRuntimeArtifact(ctx, path, func() (io.ReadCloser, error) {
+		return s.runtime.ArchiveFiles(ctx, target)
+	})
+	if err == nil {
+		return artifact, false, nil
+	}
+
+	if strings.TrimSpace(contract.Image) == "" {
+		return model.Artifact{}, false, fmt.Errorf("локальное архивирование файлов завершилось ошибкой, контракт helper fallback не задан: %w", err)
+	}
+
+	artifact, helperErr := s.writeRuntimeArtifact(ctx, path, func() (io.ReadCloser, error) {
+		return s.runtime.ArchiveFilesWithHelper(ctx, target, contract)
+	})
+	if helperErr != nil {
+		return model.Artifact{}, false, fmt.Errorf("локальное архивирование файлов завершилось ошибкой, helper fallback тоже завершился ошибкой: %w", errors.Join(err, helperErr))
+	}
+
+	return artifact, true, nil
 }
 
 func (s BackupService) cleanupRetention(ctx context.Context, root string, retentionDays int, now time.Time) error {

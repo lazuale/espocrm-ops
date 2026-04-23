@@ -123,6 +123,9 @@ func backupCoreRequest(opCtx operationapp.OperationContext, req BackupCommandReq
 		SkipDB:        req.SkipDB,
 		SkipFiles:     req.SkipFiles,
 		NoStop:        req.NoStop,
+		HelperArchive: model.HelperArchiveContract{
+			Image: strings.TrimSpace(opCtx.Env.Value("ESPO_HELPER_IMAGE")),
+		},
 		Metadata: model.BackupMetadata{
 			ComposeProject: strings.TrimSpace(opCtx.ComposeProject),
 			EnvFileName:    filepath.Base(opCtx.Env.FilePath),

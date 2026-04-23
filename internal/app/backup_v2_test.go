@@ -307,6 +307,74 @@ func TestBackupV2FilesFailureRemovesIncompleteFullSet(t *testing.T) {
 	if result.OK {
 		t.Fatalf("backup reported success: %+v", result)
 	}
+	if !strings.Contains(err.Error(), "контракт helper fallback не задан") {
+		t.Fatalf("expected explicit missing helper contract error, got %v", err)
+	}
+	if err := rt.RequireCallOrder([]string{"dump_database", "archive_files"}); err != nil {
+		t.Fatal(err)
+	}
+	layout := model.NewBackupLayout(req.BackupRoot, req.NamePrefix, req.CreatedAt)
+	for _, path := range layout.CompleteSetPaths() {
+		assertFileMissing(t, path)
+	}
+	assertNoTmpFiles(t, req.BackupRoot)
+}
+
+func TestBackupV2FilesArchiveFallsBackToExplicitHelperContract(t *testing.T) {
+	req := testBackupRequest(t)
+	req.NoStop = true
+	req.HelperArchive = model.HelperArchiveContract{Image: "registry.example.com/espops-helper:1.0"}
+	rt := testRuntime(true)
+	rt.ArchiveErr = errors.New("local archive failed")
+	rt.HelperFilesArchive = tarGzBytes(map[string]string{"espo/helper.txt": "helper\n"})
+
+	result, err := testService(rt, store.FileStore{}).ExecuteBackup(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ExecuteBackup returned error: %v", err)
+	}
+	if !result.OK || !result.Details.Ready {
+		t.Fatalf("backup failed: %+v", result)
+	}
+	if err := rt.RequireCallOrder([]string{"dump_database", "archive_files", "archive_files_helper"}); err != nil {
+		t.Fatal(err)
+	}
+	if result.Details.Warnings != 1 || len(result.Warnings) != 1 {
+		t.Fatalf("expected one helper warning, got details=%+v warnings=%v", result.Details, result.Warnings)
+	}
+	if !strings.Contains(result.Warnings[0], "helper fallback") {
+		t.Fatalf("unexpected warning: %v", result.Warnings)
+	}
+
+	layout := model.NewBackupLayout(req.BackupRoot, req.NamePrefix, req.CreatedAt)
+	assertFileExists(t, layout.DBArtifact)
+	assertFileExists(t, layout.DBChecksum)
+	assertFileExists(t, layout.FilesArtifact)
+	assertFileExists(t, layout.FilesChecksum)
+	assertFileExists(t, layout.ManifestJSON)
+	assertFileExists(t, layout.ManifestText)
+	assertTarEntries(t, layout.FilesArtifact, []string{"espo/", "espo/helper.txt"})
+	assertChecksumSidecar(t, layout.FilesArtifact, layout.FilesChecksum)
+	assertManifestJSON(t, layout.ManifestJSON, req, layout)
+}
+
+func TestBackupV2FilesArchiveFailsClosedWhenHelperPathFails(t *testing.T) {
+	req := testBackupRequest(t)
+	req.NoStop = true
+	req.HelperArchive = model.HelperArchiveContract{Image: "registry.example.com/espops-helper:1.0"}
+	rt := testRuntime(true)
+	rt.ArchiveErr = errors.New("local archive failed")
+	rt.HelperArchiveErr = errors.New("helper archive failed")
+
+	result, err := testService(rt, store.FileStore{}).ExecuteBackup(context.Background(), req)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if result.OK {
+		t.Fatalf("backup reported success: %+v", result)
+	}
+	if err := rt.RequireCallOrder([]string{"dump_database", "archive_files", "archive_files_helper"}); err != nil {
+		t.Fatal(err)
+	}
 	layout := model.NewBackupLayout(req.BackupRoot, req.NamePrefix, req.CreatedAt)
 	for _, path := range layout.CompleteSetPaths() {
 		assertFileMissing(t, path)

@@ -101,6 +101,7 @@ type Runtime interface {
 	StartServices(ctx context.Context, target RuntimeTarget, services ...string) error
 	DumpDatabase(ctx context.Context, target RuntimeTarget) (io.ReadCloser, error)
 	ArchiveFiles(ctx context.Context, target RuntimeTarget) (io.ReadCloser, error)
+	ArchiveFilesWithHelper(ctx context.Context, target RuntimeTarget, contract HelperArchiveContract) (io.ReadCloser, error)
 }
 
 type RuntimeTarget struct {
@@ -143,7 +144,12 @@ type BackupRequest struct {
 	SkipDB        bool
 	SkipFiles     bool
 	NoStop        bool
+	HelperArchive HelperArchiveContract
 	Metadata      BackupMetadata
+}
+
+type HelperArchiveContract struct {
+	Image string
 }
 
 type BackupMetadata struct {
@@ -407,6 +413,7 @@ type BackupDetails struct {
 	Skipped                int    `json:"skipped,omitempty"`
 	Blocked                int    `json:"blocked,omitempty"`
 	Failed                 int    `json:"failed,omitempty"`
+	Warnings               int    `json:"warnings,omitempty"`
 }
 
 type Step struct {
@@ -418,6 +425,7 @@ type BackupResult struct {
 	Command         string          `json:"command"`
 	OK              bool            `json:"ok"`
 	ProcessExitCode int             `json:"process_exit_code"`
+	Warnings        []string        `json:"warnings,omitempty"`
 	Details         BackupDetails   `json:"details"`
 	Artifacts       BackupArtifacts `json:"artifacts,omitempty"`
 	Items           []Step          `json:"items"`
@@ -466,6 +474,15 @@ func (r *BackupResult) AddStep(code, status string) {
 	r.recount()
 }
 
+func (r *BackupResult) AddWarning(message string) {
+	message = strings.TrimSpace(message)
+	if message == "" {
+		return
+	}
+	r.Warnings = append(r.Warnings, message)
+	r.Details.Warnings = len(r.Warnings)
+}
+
 func (r *BackupResult) Succeed() {
 	r.OK = true
 	r.ProcessExitCode = ExitOK
@@ -500,6 +517,7 @@ func (r *BackupResult) recount() {
 	r.Details.Skipped = skipped
 	r.Details.Blocked = blocked
 	r.Details.Failed = failed
+	r.Details.Warnings = len(r.Warnings)
 	r.Details.Ready = failed == 0 && blocked == 0 && len(r.Items) > 0
 }
 

@@ -45,6 +45,7 @@ func BackupResult(info model.BackupResult) result.Result {
 			ConsistentSnapshot:     info.Details.ConsistentSnapshot,
 			AppServicesWereRunning: info.Details.AppServicesWereRunning,
 			RetentionDays:          info.Details.RetentionDays,
+			Warnings:               len(info.Warnings),
 		},
 		Artifacts: result.BackupArtifacts{
 			ProjectDir:    info.Artifacts.ProjectDir,
@@ -58,7 +59,8 @@ func BackupResult(info model.BackupResult) result.Result {
 			DBChecksum:    info.Artifacts.DBChecksum,
 			FilesChecksum: info.Artifacts.FilesChecksum,
 		},
-		Items: items,
+		Warnings: append([]string(nil), info.Warnings...),
+		Items:    items,
 	}
 }
 

@@ -80,6 +80,26 @@ func (Docker) ArchiveFiles(ctx context.Context, target model.RuntimeTarget) (io.
 	return openRemoveOnClose(tmpPath)
 }
 
+func (Docker) ArchiveFilesWithHelper(ctx context.Context, target model.RuntimeTarget, contract model.HelperArchiveContract) (io.ReadCloser, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	tmp, err := os.CreateTemp("", "espops-backup-v2-files-helper-*.tar.gz")
+	if err != nil {
+		return nil, fmt.Errorf("создать временный files artifact для helper: %w", err)
+	}
+	tmpPath := tmp.Name()
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, fmt.Errorf("закрыть временный files artifact для helper: %w", err)
+	}
+	if err := platformdocker.CreateTarArchiveViaHelper(target.StorageDir, tmpPath, contract.Image); err != nil {
+		_ = os.Remove(tmpPath)
+		return nil, err
+	}
+	return openRemoveOnClose(tmpPath)
+}
+
 func composeConfig(target model.RuntimeTarget) platformdocker.ComposeConfig {
 	return platformdocker.ComposeConfig{
 		ProjectDir:  target.ProjectDir,
