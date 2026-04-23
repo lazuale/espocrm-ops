@@ -1,0 +1,42 @@
+{
+  "docker_log": [
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps --status running --services",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps --status running --services",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE stop espocrm espocrm-daemon espocrm-websocket",
+    "version --format {{.Server.Version}}",
+    "inspect --format {{.State.Running}} mock-db",
+    "exec mock-db mariadb --version",
+    "exec -i -e MYSQL_PWD mock-db mariadb -u root",
+    "exec -i -e MYSQL_PWD mock-db mariadb -u root espocrm",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE up -d espocrm espocrm-daemon espocrm-websocket",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q espocrm",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-espocrm",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q espocrm-daemon",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-espocrm-daemon",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q espocrm-websocket",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-espocrm-websocket",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db"
+  ],
+  "process_exit_code": 0,
+  "running_services_after": [
+    "db",
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ],
+  "running_services_before": [
+    "db",
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ]
+}

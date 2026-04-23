@@ -1,50 +1,80 @@
-# Black-Box Reference Для `restore v1`
+# `v1` Reference Bundles для `restore`
 
-Этот файл фиксирует, как `v1` используется для `restore v2`.
+Этот файл связывает `RST-*` с воспроизводимыми black-box reference bundles из `v1`.
 
-`v1` является только:
+Источник генерации:
 
-- spec harness
-- regression oracle
-- emergency patch lane
+- [internal/cli/restore_acceptance_reference_test.go](/home/febinet/code/docker/internal/cli/restore_acceptance_reference_test.go)
 
-`v1` не является шаблоном архитектуры для `v2`.
+Обновление конкретного bundle:
 
-## Что Сравнивается
+```bash
+UPDATE_ACCEPTANCE_RESTORE_REFERENCE=1 go test ./internal/cli -run 'TestAcceptanceReference_RestoreV1_JSONDiskAndRuntime/RST-402$' -count=1
+```
 
-- CLI usage behavior текущей surface `restore`
-- `--manifest`
-- `--db-backup`
-- `--files-backup`
-- `--skip-db`
-- `--skip-files`
-- `--no-snapshot`
-- `--snapshot-before-restore`
-- `--no-stop`
-- `--no-start`
-- `--force`
-- `--confirm-prod`
-- JSON envelope на success и failure paths
-- exit codes
-- наблюдаемые side effects аварийного snapshot
-- runtime stop/return/no-stop/no-start post-conditions
-- disk post-conditions после files restore
+Проверка без перегенерации:
 
-## Что Не Переносится Как Инвариант
+```bash
+go test ./internal/cli -run 'TestAcceptanceReference_RestoreV1_JSONDiskAndRuntime/RST-402$' -count=1
+```
+
+## Что Фиксируется
+
+- полный CLI JSON/error envelope текущего `restore` path
+- `process exit code`
+- disk post-conditions по `storage` и `backup_root`
+- runtime post-conditions по running services и docker log
+- observable snapshot artifacts там, где они реально появились
+- legacy transport quirks и step layout только как reference facts
+
+## Что Не Становится Инвариантом `v2`
 
 - exact English UI strings
-- internal package boundaries
+- exact `summary` / `details` / `action` phrasing
+- legacy item grouping внутри `v1` envelope
 - legacy partial-manifest semantics
-- transport quirks root-level failure envelope
-- dry-run internals вне отдельного `restore v2` slice
+- transport quirks, если они не входят в machine contract и observable semantics из `ACCEPTANCE.md`
 
-## Reference Bundles
+## Bundles
 
-`v1` bundles для `restore` будут храниться рядом с `v2` internal bundles:
+- `RST-205`
+  Подтверждает: `RST-205`
+  JSON: [v1_RST-205.json](/home/febinet/code/docker/acceptance/v2/restore/golden/json/v1_RST-205.json)
+  Disk: [v1_RST-205.json](/home/febinet/code/docker/acceptance/v2/restore/golden/disk/v1_RST-205.json)
+  Runtime: [v1_RST-205.json](/home/febinet/code/docker/acceptance/v2/restore/golden/runtime/v1_RST-205.json)
+  Примечание: `v1` принимает partial manifest + `--skip-files` как `manifest_db_only` success. Это legacy divergence reference и не становится нормальным `v2` contract.
 
-- `acceptance/v2/restore/golden/json/v1_RST-*.json`
-- `acceptance/v2/restore/golden/disk/v1_RST-*.json`
-- `acceptance/v2/restore/golden/runtime/v1_RST-*.json`
+- `RST-303`
+  Подтверждает: `RST-303`
+  JSON: [v1_RST-303.json](/home/febinet/code/docker/acceptance/v2/restore/golden/json/v1_RST-303.json)
+  Disk: [v1_RST-303.json](/home/febinet/code/docker/acceptance/v2/restore/golden/disk/v1_RST-303.json)
+  Runtime: [v1_RST-303.json](/home/febinet/code/docker/acceptance/v2/restore/golden/runtime/v1_RST-303.json)
+  Примечание: при failure аварийного snapshot `v1` блокирует DB/files restore и не выполняет runtime return; после команды запущенным остаётся только `db`.
 
-Первый internal slice фиксирует `v2_RST-*` bundles.
-CLI cutover допускается только после отдельного parity review по этому corpus.
+- `RST-402`
+  Подтверждает: `RST-402`
+  JSON: [v1_RST-402.json](/home/febinet/code/docker/acceptance/v2/restore/golden/json/v1_RST-402.json)
+  Disk: [v1_RST-402.json](/home/febinet/code/docker/acceptance/v2/restore/golden/disk/v1_RST-402.json)
+  Runtime: [v1_RST-402.json](/home/febinet/code/docker/acceptance/v2/restore/golden/runtime/v1_RST-402.json)
+  Примечание: `v1` не останавливает app services перед restore, но success envelope всё равно проходит через runtime-return path и `compose up -d`.
+
+- `RST-403`
+  Подтверждает: `RST-403`
+  JSON: [v1_RST-403.json](/home/febinet/code/docker/acceptance/v2/restore/golden/json/v1_RST-403.json)
+  Disk: [v1_RST-403.json](/home/febinet/code/docker/acceptance/v2/restore/golden/disk/v1_RST-403.json)
+  Runtime: [v1_RST-403.json](/home/febinet/code/docker/acceptance/v2/restore/golden/runtime/v1_RST-403.json)
+  Примечание: `v1` оставляет application services остановленными и подтверждает health только для `db`, но транспортно всё ещё показывает completed runtime-return item.
+
+- `RST-404`
+  Подтверждает: `RST-404`
+  JSON: [v1_RST-404.json](/home/febinet/code/docker/acceptance/v2/restore/golden/json/v1_RST-404.json)
+  Disk: [v1_RST-404.json](/home/febinet/code/docker/acceptance/v2/restore/golden/disk/v1_RST-404.json)
+  Runtime: [v1_RST-404.json](/home/febinet/code/docker/acceptance/v2/restore/golden/runtime/v1_RST-404.json)
+  Примечание: DB/files side effects уже на диске, но overall result failure; app services после failed runtime return остаются остановленными.
+
+- `RST-503`
+  Подтверждает: `RST-503`
+  JSON: [v1_RST-503.json](/home/febinet/code/docker/acceptance/v2/restore/golden/json/v1_RST-503.json)
+  Disk: [v1_RST-503.json](/home/febinet/code/docker/acceptance/v2/restore/golden/disk/v1_RST-503.json)
+  Runtime: [v1_RST-503.json](/home/febinet/code/docker/acceptance/v2/restore/golden/runtime/v1_RST-503.json)
+  Примечание: files уже восстановлены, но permission reconcile ломается внутри failure envelope; runtime return блокируется; observed file modes остаются unreconciled (`0755/0644` вместо `0775/0664` под `data/custom/client/custom/upload`).

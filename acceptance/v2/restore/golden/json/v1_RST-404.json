@@ -1,0 +1,88 @@
+{
+  "artifacts": {
+    "backup_root": "REPLACE_BACKUP_ROOT",
+    "compose_file": "REPLACE_COMPOSE_FILE",
+    "db_backup": "REPLACE_DB_BACKUP",
+    "env_file": "REPLACE_ENV_FILE",
+    "files_backup": "REPLACE_FILES_BACKUP",
+    "manifest_json": "REPLACE_MANIFEST_JSON",
+    "manifest_txt": "REPLACE_MANIFEST_TXT",
+    "project_dir": "REPLACE_PROJECT_DIR"
+  },
+  "command": "restore",
+  "details": {
+    "app_services_were_running": true,
+    "completed": 5,
+    "failed": 1,
+    "no_start": false,
+    "no_stop": false,
+    "ready": false,
+    "scope": "prod",
+    "selection_mode": "manifest_full",
+    "skip_db": false,
+    "skip_files": false,
+    "skipped": 1,
+    "snapshot_enabled": false,
+    "source_kind": "manifest",
+    "started_db_temporarily": false,
+    "steps": 7,
+    "warnings": 1
+  },
+  "error": {
+    "code": "restore_failed",
+    "exit_code": 97,
+    "kind": "external",
+    "message": "compose up -d: docker [compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE up -d espocrm espocrm-daemon espocrm-websocket] failed: exit status 97: forced docker failure on match 'up -d espocrm espocrm-daemon espocrm-websocket': compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE up -d espocrm espocrm-daemon espocrm-websocket"
+  },
+  "items": [
+    {
+      "code": "operation_preflight",
+      "details": "Using REPLACE_ENV_FILE for contour prod.",
+      "status": "completed",
+      "summary": "Restore preflight completed"
+    },
+    {
+      "code": "source_resolution",
+      "details": "Using manifest REPLACE_MANIFEST_JSON with database backup REPLACE_DB_BACKUP and files backup REPLACE_FILES_BACKUP.",
+      "status": "completed",
+      "summary": "Restore source resolution completed from manifest"
+    },
+    {
+      "code": "runtime_prepare",
+      "details": "Using database container mock-db. Stopped application services before restore: espocrm, espocrm-daemon, espocrm-websocket.",
+      "status": "completed",
+      "summary": "Runtime preparation completed"
+    },
+    {
+      "code": "snapshot_recovery_point",
+      "details": "The pre-restore emergency recovery point was skipped because of --no-snapshot.",
+      "status": "skipped",
+      "summary": "Emergency recovery point skipped"
+    },
+    {
+      "code": "db_restore",
+      "details": "Restored database espocrm in container mock-db from REPLACE_DB_BACKUP. The manifest REPLACE_MANIFEST_JSON anchored the selected backup set.",
+      "status": "completed",
+      "summary": "Database restore completed"
+    },
+    {
+      "code": "files_restore",
+      "details": "Replaced REPLACE_PROJECT_DIR/runtime/prod/espo from REPLACE_FILES_BACKUP and reconciled the storage permissions to the runtime image contract. The manifest REPLACE_MANIFEST_JSON anchored the selected backup set.",
+      "status": "completed",
+      "summary": "Files restore completed"
+    },
+    {
+      "action": "Resolve the contour return failure before relying on the restored state.",
+      "code": "runtime_return",
+      "details": "compose up -d: docker [compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE up -d espocrm espocrm-daemon espocrm-websocket] failed: exit status 97: forced docker failure on match 'up -d espocrm espocrm-daemon espocrm-websocket': compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE up -d espocrm espocrm-daemon espocrm-websocket",
+      "status": "failed",
+      "summary": "Runtime return failed"
+    }
+  ],
+  "message": "restore failed",
+  "ok": false,
+  "process_exit_code": 97,
+  "warnings": [
+    "Restore will skip the emergency recovery point because of --no-snapshot."
+  ]
+}

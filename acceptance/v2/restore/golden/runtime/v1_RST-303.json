@@ -1,0 +1,30 @@
+{
+  "docker_log": [
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps --status running --services",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps --status running --services",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE stop espocrm espocrm-daemon espocrm-websocket",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "inspect --format {{if .State.Health}}{{.State.Health.Status}}{{else}}{{.State.Status}}{{end}} mock-db",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps --status running --services",
+    "compose --project-directory REPLACE_PROJECT_DIR -f REPLACE_COMPOSE_FILE --env-file REPLACE_ENV_FILE ps -q db",
+    "exec mock-db mariadb-dump --version"
+  ],
+  "process_exit_code": 97,
+  "running_services_after": [
+    "db"
+  ],
+  "running_services_before": [
+    "db",
+    "espocrm",
+    "espocrm-daemon",
+    "espocrm-websocket"
+  ]
+}

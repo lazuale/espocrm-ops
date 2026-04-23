@@ -1,0 +1,85 @@
+{
+  "artifacts": {
+    "backup_root": "REPLACE_BACKUP_ROOT",
+    "compose_file": "REPLACE_COMPOSE_FILE",
+    "db_backup": "REPLACE_DB_BACKUP",
+    "env_file": "REPLACE_ENV_FILE",
+    "files_backup": "REPLACE_FILES_BACKUP",
+    "manifest_json": "REPLACE_MANIFEST_JSON",
+    "manifest_txt": "REPLACE_MANIFEST_TXT",
+    "project_dir": "REPLACE_PROJECT_DIR"
+  },
+  "command": "restore",
+  "details": {
+    "app_services_were_running": true,
+    "completed": 6,
+    "no_start": true,
+    "no_stop": false,
+    "ready": true,
+    "scope": "prod",
+    "selection_mode": "manifest_full",
+    "skip_db": false,
+    "skip_files": false,
+    "skipped": 1,
+    "snapshot_enabled": false,
+    "source_kind": "manifest",
+    "started_db_temporarily": false,
+    "steps": 7,
+    "warnings": 2
+  },
+  "items": [
+    {
+      "code": "operation_preflight",
+      "details": "Using REPLACE_ENV_FILE for contour prod.",
+      "status": "completed",
+      "summary": "Restore preflight completed"
+    },
+    {
+      "code": "source_resolution",
+      "details": "Using manifest REPLACE_MANIFEST_JSON with database backup REPLACE_DB_BACKUP and files backup REPLACE_FILES_BACKUP.",
+      "status": "completed",
+      "summary": "Restore source resolution completed from manifest"
+    },
+    {
+      "code": "runtime_prepare",
+      "details": "Using database container mock-db. Stopped application services before restore: espocrm, espocrm-daemon, espocrm-websocket.",
+      "status": "completed",
+      "summary": "Runtime preparation completed"
+    },
+    {
+      "code": "snapshot_recovery_point",
+      "details": "The pre-restore emergency recovery point was skipped because of --no-snapshot.",
+      "status": "skipped",
+      "summary": "Emergency recovery point skipped"
+    },
+    {
+      "code": "db_restore",
+      "details": "Restored database espocrm in container mock-db from REPLACE_DB_BACKUP. The manifest REPLACE_MANIFEST_JSON anchored the selected backup set.",
+      "status": "completed",
+      "summary": "Database restore completed"
+    },
+    {
+      "code": "files_restore",
+      "details": "Replaced REPLACE_PROJECT_DIR/runtime/prod/espo from REPLACE_FILES_BACKUP and reconciled the storage permissions to the runtime image contract. The manifest REPLACE_MANIFEST_JSON anchored the selected backup set.",
+      "status": "completed",
+      "summary": "Files restore completed"
+    },
+    {
+      "code": "runtime_return",
+      "details": "Application services were left stopped because of --no-start. Post-restore health validation passed for: db.",
+      "status": "completed",
+      "summary": "Runtime return completed"
+    }
+  ],
+  "message": "restore completed",
+  "ok": true,
+  "process_exit_code": 0,
+  "timing": {
+    "finished_at": "2026-04-19T09:00:00Z",
+    "started_at": "2026-04-19T09:00:00Z"
+  },
+  "warnings": [
+    "Restore will skip the emergency recovery point because of --no-snapshot.",
+    "Restore will leave application services stopped after completion because of --no-start."
+  ]
+}

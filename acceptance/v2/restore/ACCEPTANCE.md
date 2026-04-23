@@ -100,6 +100,7 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - `подтверждено v1`: black-box reference доступен через текущий CLI path
 - `internal v2`: покрывается первым internal implementation slice без CLI cutover
+- `нужна parity correction`: `v1` reference уже снят, но текущее internal `v2` behavior ещё надо довести до этого reference
 - `legacy divergence`: `v1` behavior зафиксирован, но не переносится в `v2`
 - `нужно доснять v1`: требуется отдельный black-box reference перед cutover
 
@@ -149,8 +150,9 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - `RST-205` Partial restore через manifest.
   Ожидается:
-  fail closed; partial manifest/manifest+skip не является нормальным `v2` contract.
-  Статус: `legacy divergence`, `internal v2`.
+  `v1` reference: partial manifest + `--skip-files` проходит как `manifest_db_only` success и восстанавливает только DB.
+  Для `v2` это остаётся только legacy divergence reference; partial manifest/manifest+skip не становится нормальным product contract.
+  Статус: `legacy divergence`, `подтверждено v1`, `internal v2`.
 
 ### 3. Snapshot Semantics
 
@@ -166,8 +168,8 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - `RST-303` Snapshot failure.
   Ожидается:
-  DB/files restore не выполняются; runtime return выполняется, если runtime уже менялся; success не сообщается.
-  Статус: `подтверждено v1`, `internal v2`.
+  DB/files restore не выполняются; после `runtime_prepare` restore остаётся в fail-closed состоянии; application services не возвращаются автоматически; success не сообщается.
+  Статус: `подтверждено v1`, `нужна parity correction`.
 
 ### 4. Runtime Semantics
 
@@ -183,12 +185,12 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - `RST-403` `--no-start`.
   Ожидается:
-  application services остаются остановленными после restore; success требует явного post-check для оставшихся expected services или явного skipped post-check.
+  application services остаются остановленными после restore; `v1` success envelope при этом всё ещё показывает completed runtime-return path и health validation только для `db`.
   Статус: `подтверждено v1`, `internal v2`.
 
 - `RST-404` Runtime return failure.
   Ожидается:
-  restore не сообщает success, даже если DB/files уже восстановлены.
+  restore не сообщает success, даже если DB/files уже восстановлены; runtime post-condition остаётся fail-closed.
   Статус: `подтверждено v1`, `internal v2`.
 
 ### 5. Ошибки Restore
@@ -205,8 +207,8 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - `RST-503` Permission reconciliation failure.
   Ожидается:
-  files уже могли быть восстановлены, но overall restore failed; runtime return не теряется.
-  Статус: `подтверждено v1`, `internal v2`.
+  files уже восстановлены на disk, но runtime permission reconciliation ломается; runtime return блокируется; application services остаются остановленными; success не сообщается.
+  Статус: `подтверждено v1`, `нужна parity correction`.
 
 - `RST-504` Invalid manifest.
   Ожидается:
@@ -228,14 +230,23 @@ Legacy facts, которые фиксируются как reference, но не 
   fail closed до runtime mutation.
   Статус: `подтверждено v1`, `internal v2`.
 
-### 6. Нужно Доснять Из `v1` Перед Cutover
+### 6. Доснято Из `v1` Перед Cutover
 
-- полный CLI JSON/error envelope для `--no-stop`
-- полный CLI JSON/error envelope для `--no-start`
-- runtime return failure envelope
-- согласование прав failure envelope
-- snapshot failure disk/runtime post-conditions
-- partial manifest behavior как legacy divergence reference
+- `RST-402`: снят полный CLI JSON/error envelope для `--no-stop`.
+- `RST-403`: снят полный CLI JSON/error envelope для `--no-start`.
+- `RST-404`: снят runtime-return failure envelope.
+- `RST-503`: сняты failure envelope и disk/runtime post-conditions для согласования прав.
+- `RST-303`: сняты disk/runtime post-conditions для snapshot failure.
+- `RST-205`: partial manifest behavior зафиксирован как legacy divergence reference.
+
+Подробные bundles и ссылки лежат в [acceptance/v2/restore/cases/REFERENCE_V1.md](/home/febinet/code/docker/acceptance/v2/restore/cases/REFERENCE_V1.md).
+
+### 7. Оставшиеся Пробелы Перед Cutover Wiring
+
+- Недоснятых `v1` reference prerequisites для `restore` больше нет.
+- `RST-205` закрыт как `legacy divergence`, а не как `v2` contract gap.
+- `RST-303`: reference теперь подтверждён, но current internal `v2` slice ещё должен перейти к fail-closed post-condition без runtime return.
+- `RST-503`: reference теперь подтверждён, но current internal `v2` slice ещё должен блокировать runtime return и сохранять observed permission-failure post-condition как у `v1`.
 
 ## Первый Internal Slice
 
@@ -249,18 +260,17 @@ Legacy facts, которые фиксируются как reference, но не 
 - `RST-205`
 - `RST-301`
 - `RST-302`
-- `RST-303`
 - `RST-401`
 - `RST-402`
 - `RST-403`
 - `RST-404`
 - `RST-501`
 - `RST-502`
-- `RST-503`
 - `RST-504`
 - `RST-505`
 - `RST-506`
 - `RST-507`
 
 `RST-201`, `RST-202`, `RST-203` остаются CLI usage reference до cutover wiring.
+После досъёмки `v1` reference выяснилось, что `RST-303` и `RST-503` остаются parity follow-up для internal `v2`.
 На этом шаге real CLI `restore` не переключается на `v2`.
