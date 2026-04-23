@@ -293,18 +293,16 @@ func normalizeMigrateAcceptanceReferenceJSON(t *testing.T, fixture migrateComman
 		fixture.sourceBackup.FilesBackup:  "REPLACE_FILES_BACKUP",
 	}
 	normalizeArtifactPlaceholders(obj, map[string]string{
-		"project_dir":            "REPLACE_PROJECT_DIR",
-		"compose_file":           "REPLACE_COMPOSE_FILE",
-		"source_env_file":        "REPLACE_SOURCE_ENV_FILE",
-		"target_env_file":        "REPLACE_TARGET_ENV_FILE",
-		"source_backup_root":     "REPLACE_SOURCE_BACKUP_ROOT",
-		"target_backup_root":     "REPLACE_TARGET_BACKUP_ROOT",
-		"manifest_txt":           "REPLACE_MANIFEST_TXT",
-		"manifest_json":          "REPLACE_MANIFEST_JSON",
-		"db_backup":              "REPLACE_DB_BACKUP",
-		"files_backup":           "REPLACE_FILES_BACKUP",
-		"requested_db_backup":    "REPLACE_REQUESTED_DB_BACKUP",
-		"requested_files_backup": "REPLACE_REQUESTED_FILES_BACKUP",
+		"project_dir":        "REPLACE_PROJECT_DIR",
+		"compose_file":       "REPLACE_COMPOSE_FILE",
+		"source_env_file":    "REPLACE_SOURCE_ENV_FILE",
+		"target_env_file":    "REPLACE_TARGET_ENV_FILE",
+		"source_backup_root": "REPLACE_SOURCE_BACKUP_ROOT",
+		"target_backup_root": "REPLACE_TARGET_BACKUP_ROOT",
+		"manifest_txt":       "REPLACE_MANIFEST_TXT",
+		"manifest_json":      "REPLACE_MANIFEST_JSON",
+		"db_backup":          "REPLACE_DB_BACKUP",
+		"files_backup":       "REPLACE_FILES_BACKUP",
 	})
 	replacements[filepath.Join(fixture.projectDir, "compose.yaml")] = "REPLACE_COMPOSE_FILE"
 	replacements[fixture.sourceBackup.DBBackup] = "REPLACE_DB_BACKUP"

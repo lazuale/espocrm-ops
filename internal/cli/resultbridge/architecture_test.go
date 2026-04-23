@@ -122,23 +122,37 @@ func TestResultBridgeExportedSurfaceStaysIntentional(t *testing.T) {
 
 func TestMigrateResultBridgeDoesNotExposeLegacySelectionFields(t *testing.T) {
 	root := testutil.RepoRoot(t)
-	path := filepath.Join(root, "internal", "cli", "resultbridge", "migrate.go")
-	raw, err := os.ReadFile(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	text := string(raw)
-
-	for _, forbidden := range []string{
+	dir := filepath.Join(root, "internal", "cli", "resultbridge")
+	forbiddenFields := []string{
 		"RequestedSelectionMode",
 		"RequestedDBBackup",
 		"RequestedFilesBackup",
 		"SelectedPrefix",
 		"SelectedStamp",
-	} {
-		if strings.Contains(text, forbidden) {
-			t.Fatalf("production migrate result bridge must not expose legacy selection field %q", forbidden)
+	}
+
+	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
 		}
+		if entry.IsDir() || !strings.HasSuffix(path, ".go") || strings.HasSuffix(path, "_test.go") {
+			return nil
+		}
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(raw)
+		for _, forbidden := range forbiddenFields {
+			if strings.Contains(text, forbidden) {
+				t.Fatalf("production migrate result bridge must not expose legacy selection field %q in %s", forbidden, path)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

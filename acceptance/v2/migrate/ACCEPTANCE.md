@@ -90,6 +90,16 @@ Legacy facts, которые фиксируются только как referenc
 
 Точная phrasing полей `message`, `summary`, `details`, `action` не фиксируется как invariant.
 
+`details.source_kind` является канонической source truth surface для product output.
+`details.selection_mode` остаётся только bounded diagnostic subtype внутри retained source policy:
+
+- `auto_latest_complete`
+- `explicit_pair`
+- `explicit_db_only`
+- `explicit_files_only`
+
+Legacy selection metadata (`requested_selection_mode`, `requested_db_backup`, `requested_files_backup`, `selected_prefix`, `selected_stamp`) не входит в retained `migrate` product contract.
+
 ## Каталог Сценариев
 
 Статусы источника:
@@ -271,6 +281,7 @@ Real CLI cutover lane дополнительно закрывает:
 Black-box reference bundles из test-only legacy `migrate` harness описаны в [acceptance/v2/migrate/cases/REFERENCE_V1.md](/home/febinet/code/docker/acceptance/v2/migrate/cases/REFERENCE_V1.md).
 
 Real CLI cutover bundles живут в `acceptance/v2/migrate/cutover/golden/`.
+Operator-facing product JSON bundles живут в `acceptance/v2/migrate/cutover/product_json/` и пинят `message`, `error.message`, `timing` и полные `items[*]` для representative сценариев без сужения до `code/status`.
 
 ## Статус После Real CLI Cutover
 
@@ -342,6 +353,12 @@ Real CLI cutover bundles живут в `acceptance/v2/migrate/cutover/golden/`.
 - `MIG-507`
 
 Real CLI cutover corpus теперь закрывает все сценарии, которые раньше были доказаны только internal acceptance в текущем retained `migrate` наборе.
+
+Product JSON corpus дополнительно покрывает:
+
+- `MIG-001` happy path
+- `MIG-205` validation/source-selection failure
+- `MIG-503` destructive failure after partial progress
 
 ## Статус Slice
 

@@ -292,11 +292,39 @@ func TestAcceptance_MigrateCLI_V2_JSONDiskAndRuntime(t *testing.T) {
 			if tc.expectNoJournal {
 				assertNoJournalFiles(t, fixture.journalDir)
 			}
+			assertMigrateCLISelectionSurface(t, outcome)
 
 			assertOrWriteMigrateCLIAcceptanceGoldenJSON(t, normalizeMigrateCLIAcceptanceJSON(t, outcome), filepath.Join("golden", "json", "v2_"+tc.id+".json"))
 			assertOrWriteMigrateCLIAcceptanceGoldenJSON(t, captureMigrateCLIAcceptanceDiskSnapshot(t, fixture, outcome), filepath.Join("golden", "disk", "v2_"+tc.id+".json"))
 			assertOrWriteMigrateCLIAcceptanceGoldenJSON(t, captureMigrateCLIAcceptanceRuntimeSnapshot(t, fixture, outcome), filepath.Join("golden", "runtime", "v2_"+tc.id+".json"))
 		})
+	}
+}
+
+func assertMigrateCLISelectionSurface(t *testing.T, outcome execOutcome) {
+	t.Helper()
+
+	obj := parseCLIJSONBytes(t, []byte(outcome.Stdout))
+	details, ok := obj["details"].(map[string]any)
+	if !ok {
+		return
+	}
+	selectionMode := strings.TrimSpace(stringValueFromJSON(details["selection_mode"]))
+	if selectionMode == "" {
+		return
+	}
+	sourceKind := strings.TrimSpace(stringValueFromJSON(details["source_kind"]))
+	switch selectionMode {
+	case "auto_latest_complete":
+		if sourceKind != "backup_root" {
+			t.Fatalf("auto latest migrate selection must expose source_kind=backup_root, got %q", sourceKind)
+		}
+	case "explicit_pair", "explicit_db_only", "explicit_files_only":
+		if sourceKind != "direct" {
+			t.Fatalf("explicit migrate selection %q must expose source_kind=direct, got %q", selectionMode, sourceKind)
+		}
+	default:
+		t.Fatalf("migrate selection_mode %q is outside retained product vocabulary", selectionMode)
 	}
 }
 

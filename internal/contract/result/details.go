@@ -129,13 +129,14 @@ type RestoreItem struct {
 func (RestoreItem) isResultItem() {}
 
 type MigrateDetails struct {
-	SourceScope            string `json:"source_scope"`
-	TargetScope            string `json:"target_scope"`
-	Ready                  bool   `json:"ready"`
+	SourceScope string `json:"source_scope"`
+	TargetScope string `json:"target_scope"`
+	Ready       bool   `json:"ready"`
+	// SourceKind is the canonical source truth surface. SelectionMode is only a
+	// bounded diagnostic subtype for the retained migrate source policy.
 	SelectionMode          string `json:"selection_mode,omitempty"`
 	SourceKind             string `json:"source_kind,omitempty"`
 	SnapshotEnabled        bool   `json:"snapshot_enabled"`
-	RequestedSelectionMode string `json:"requested_selection_mode,omitempty"`
 	Steps                  int    `json:"steps"`
 	Planned                int    `json:"planned,omitempty"`
 	Completed              int    `json:"completed"`
@@ -159,10 +160,6 @@ type MigrateArtifacts struct {
 	TargetEnvFile         string `json:"target_env_file"`
 	SourceBackupRoot      string `json:"source_backup_root,omitempty"`
 	TargetBackupRoot      string `json:"target_backup_root,omitempty"`
-	RequestedDBBackup     string `json:"requested_db_backup,omitempty"`
-	RequestedFilesBackup  string `json:"requested_files_backup,omitempty"`
-	SelectedPrefix        string `json:"selected_prefix,omitempty"`
-	SelectedStamp         string `json:"selected_stamp,omitempty"`
 	ManifestTXT           string `json:"manifest_txt,omitempty"`
 	ManifestJSON          string `json:"manifest_json,omitempty"`
 	DBBackup              string `json:"db_backup,omitempty"`

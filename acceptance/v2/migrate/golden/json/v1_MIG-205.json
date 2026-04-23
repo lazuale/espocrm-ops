@@ -14,7 +14,6 @@
     "failed": 1,
     "no_start": false,
     "ready": false,
-    "requested_selection_mode": "auto_latest_complete",
     "skip_db": false,
     "skip_files": false,
     "skipped": 0,
