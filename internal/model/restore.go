@@ -53,6 +53,7 @@ type RestoreRequest struct {
 	NoSnapshot  bool
 	NoStop      bool
 	NoStart     bool
+	DryRun      bool
 	Target      RuntimeTarget
 	Snapshot    BackupRequest
 }
@@ -63,6 +64,7 @@ type RestoreDetails struct {
 	SelectionMode          string `json:"selection_mode,omitempty"`
 	SourceKind             string `json:"source_kind,omitempty"`
 	Steps                  int    `json:"steps"`
+	Planned                int    `json:"planned,omitempty"`
 	Completed              int    `json:"completed,omitempty"`
 	Skipped                int    `json:"skipped,omitempty"`
 	Blocked                int    `json:"blocked,omitempty"`
@@ -74,6 +76,7 @@ type RestoreDetails struct {
 	NoStop                 bool   `json:"no_stop"`
 	NoStart                bool   `json:"no_start"`
 	AppServicesWereRunning bool   `json:"app_services_were_running"`
+	StartedDBTemporarily   bool   `json:"started_db_temporarily"`
 }
 
 type RestoreArtifacts struct {
@@ -102,6 +105,7 @@ type RestoreResult struct {
 	Artifacts       RestoreArtifacts `json:"artifacts,omitempty"`
 	Items           []Step           `json:"items"`
 	Error           *BackupError     `json:"error,omitempty"`
+	DryRun          bool             `json:"-"`
 }
 
 type RestoreSource struct {
@@ -134,6 +138,7 @@ func NewRestoreResult(req RestoreRequest) RestoreResult {
 			DBBackup:     strings.TrimSpace(req.DBBackup),
 			FilesBackup:  strings.TrimSpace(req.FilesBackup),
 		},
+		DryRun: req.DryRun,
 	}
 }
 
@@ -192,9 +197,11 @@ func (r *RestoreResult) Fail(f BackupFailure) {
 }
 
 func (r *RestoreResult) recount() {
-	var completed, skipped, blocked, failed int
+	var planned, completed, skipped, blocked, failed int
 	for _, step := range r.Items {
 		switch step.Status {
+		case StatusPlanned:
+			planned++
 		case StatusCompleted:
 			completed++
 		case StatusSkipped:
@@ -206,6 +213,7 @@ func (r *RestoreResult) recount() {
 		}
 	}
 	r.Details.Steps = len(r.Items)
+	r.Details.Planned = planned
 	r.Details.Completed = completed
 	r.Details.Skipped = skipped
 	r.Details.Blocked = blocked

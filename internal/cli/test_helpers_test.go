@@ -38,7 +38,6 @@ type testAppConfig struct {
 	journalWriterFactory JournalWriterFactory
 	locks                lockport.Locks
 	options              GlobalOptions
-	forceLegacyRestore   bool
 }
 
 type testAppOption func(*testAppConfig)
@@ -84,12 +83,6 @@ func withRestoreLockDir(dir string) testAppOption {
 	}
 }
 
-func withLegacyRestoreCLIPath() testAppOption {
-	return func(cfg *testAppConfig) {
-		cfg.forceLegacyRestore = true
-	}
-}
-
 func runRootCommand(t *testing.T, args ...string) (string, error) {
 	return runRootCommandWithOptions(t, nil, args...)
 }
@@ -121,7 +114,6 @@ func newTestApp(opts ...testAppOption) *App {
 		Locks:                cfg.locks,
 	})
 	app.options = cfg.options
-	app.forceLegacyRestore = cfg.forceLegacyRestore
 	return app
 }
 

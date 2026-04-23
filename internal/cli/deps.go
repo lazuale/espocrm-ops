@@ -35,10 +35,10 @@ type App struct {
 	backupVerify         v2app.BackupVerifyService
 	doctor               doctorapp.Service
 	restore              v2app.RestoreCommandService
-	restoreLegacy        restoreapp.Service
-	migrate              migrateapp.Service
-	options              GlobalOptions
-	forceLegacyRestore   bool
+	// Нужен только для v1 oracle/reference harness и аварийной lane до controlled deletion.
+	restoreLegacy restoreapp.Service
+	migrate       migrateapp.Service
+	options       GlobalOptions
 }
 
 func NewApp(deps Dependencies) *App {

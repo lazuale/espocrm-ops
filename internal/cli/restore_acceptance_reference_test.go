@@ -7,6 +7,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	restoreusecase "github.com/lazuale/espocrm-ops/internal/app/restore"
+	resultbridge "github.com/lazuale/espocrm-ops/internal/cli/resultbridge"
+	"github.com/lazuale/espocrm-ops/internal/contract/exitcode"
+	"github.com/lazuale/espocrm-ops/internal/contract/result"
+	"github.com/spf13/cobra"
 )
 
 const updateRestoreAcceptanceReferenceEnv = "UPDATE_ACCEPTANCE_RESTORE_REFERENCE"
@@ -14,75 +20,77 @@ const updateRestoreAcceptanceReferenceEnv = "UPDATE_ACCEPTANCE_RESTORE_REFERENCE
 func TestAcceptanceReference_RestoreV1_JSONDiskAndRuntime(t *testing.T) {
 	cases := []struct {
 		id    string
-		setup func(*testing.T, *restoreCommandFixture) []string
+		setup func(*testing.T, *restoreCommandFixture) restoreusecase.ExecuteRequest
 	}{
 		{
 			id: "RST-205",
-			setup: func(t *testing.T, fixture *restoreCommandFixture) []string {
+			setup: func(t *testing.T, fixture *restoreCommandFixture) restoreusecase.ExecuteRequest {
 				fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.EnableLog(t)
-				return []string{
-					"--manifest", writeRestoreReferencePartialManifest(t, *fixture),
-					"--skip-files",
-					"--no-snapshot",
-				}
+				req := restoreLegacyReferenceRequest(*fixture)
+				req.ManifestPath = writeRestoreReferencePartialManifest(t, *fixture)
+				req.SkipFiles = true
+				req.NoSnapshot = true
+				return req
 			},
 		},
 		{
 			id: "RST-303",
-			setup: func(t *testing.T, fixture *restoreCommandFixture) []string {
+			setup: func(t *testing.T, fixture *restoreCommandFixture) restoreusecase.ExecuteRequest {
 				fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetFailOnMatch(t, "mariadb-dump -u espocrm espocrm --single-transaction --quick --routines --triggers --events")
 				fixture.docker.EnableLog(t)
-				return []string{"--manifest", fixture.backupSet.ManifestJSON}
+				req := restoreLegacyReferenceRequest(*fixture)
+				req.ManifestPath = fixture.backupSet.ManifestJSON
+				return req
 			},
 		},
 		{
 			id: "RST-402",
-			setup: func(t *testing.T, fixture *restoreCommandFixture) []string {
+			setup: func(t *testing.T, fixture *restoreCommandFixture) restoreusecase.ExecuteRequest {
 				fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.EnableLog(t)
-				return []string{
-					"--manifest", fixture.backupSet.ManifestJSON,
-					"--no-snapshot",
-					"--no-stop",
-				}
+				req := restoreLegacyReferenceRequest(*fixture)
+				req.ManifestPath = fixture.backupSet.ManifestJSON
+				req.NoSnapshot = true
+				req.NoStop = true
+				return req
 			},
 		},
 		{
 			id: "RST-403",
-			setup: func(t *testing.T, fixture *restoreCommandFixture) []string {
+			setup: func(t *testing.T, fixture *restoreCommandFixture) restoreusecase.ExecuteRequest {
 				fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.EnableLog(t)
-				return []string{
-					"--manifest", fixture.backupSet.ManifestJSON,
-					"--no-snapshot",
-					"--no-start",
-				}
+				req := restoreLegacyReferenceRequest(*fixture)
+				req.ManifestPath = fixture.backupSet.ManifestJSON
+				req.NoSnapshot = true
+				req.NoStart = true
+				return req
 			},
 		},
 		{
 			id: "RST-404",
-			setup: func(t *testing.T, fixture *restoreCommandFixture) []string {
+			setup: func(t *testing.T, fixture *restoreCommandFixture) restoreusecase.ExecuteRequest {
 				fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetFailOnMatch(t, "up -d espocrm espocrm-daemon espocrm-websocket")
 				fixture.docker.EnableLog(t)
-				return []string{
-					"--manifest", fixture.backupSet.ManifestJSON,
-					"--no-snapshot",
-				}
+				req := restoreLegacyReferenceRequest(*fixture)
+				req.ManifestPath = fixture.backupSet.ManifestJSON
+				req.NoSnapshot = true
+				return req
 			},
 		},
 		{
 			id: "RST-503",
-			setup: func(t *testing.T, fixture *restoreCommandFixture) []string {
+			setup: func(t *testing.T, fixture *restoreCommandFixture) restoreusecase.ExecuteRequest {
 				fixture.docker.SetRunningServices(t, "db", "espocrm", "espocrm-daemon", "espocrm-websocket")
 				fixture.docker.SetFailOnMatch(t, ":/espo-storage")
 				fixture.docker.EnableLog(t)
-				return []string{
-					"--manifest", fixture.backupSet.ManifestJSON,
-					"--no-snapshot",
-				}
+				req := restoreLegacyReferenceRequest(*fixture)
+				req.ManifestPath = fixture.backupSet.ManifestJSON
+				req.NoSnapshot = true
+				return req
 			},
 		},
 	}
@@ -98,18 +106,18 @@ func TestAcceptanceReference_RestoreV1_JSONDiskAndRuntime(t *testing.T) {
 				"espo/upload/blob.txt":           "upload",
 			})
 
-			extraArgs := tc.setup(t, &fixture)
+			request := tc.setup(t, &fixture)
 			beforeStorage := collectRelativeTreeEntries(t, fixture.storageDir)
 			beforeBackupRoot := collectRelativeTreeEntries(t, fixture.backupRoot)
 			beforeRunning := readRunningServicesSnapshot(t, fixture.docker.stateDir)
 
-			outcome := executeCLIWithOptions(
+			outcome := executeRestoreLegacyReferenceCLI(
 				[]testAppOption{
 					lockOpt,
-					withLegacyRestoreCLIPath(),
 					withFixedTestRuntime(fixture.fixedNow, "op-"+strings.ToLower(tc.id)),
 				},
-				restoreAcceptanceReferenceArgs(fixture, extraArgs...)...,
+				fixture.journalDir,
+				request,
 			)
 
 			normalizedJSON := normalizeRestoreAcceptanceReferenceJSON(t, outcome)
@@ -121,6 +129,14 @@ func TestAcceptanceReference_RestoreV1_JSONDiskAndRuntime(t *testing.T) {
 			runtime := captureRestoreAcceptanceReferenceRuntimeSnapshot(t, fixture, outcome, beforeRunning)
 			assertOrWriteRestoreAcceptanceReferenceGoldenJSON(t, runtime, filepath.Join("golden", "runtime", "v1_"+tc.id+".json"))
 		})
+	}
+}
+
+func restoreLegacyReferenceRequest(fixture restoreCommandFixture) restoreusecase.ExecuteRequest {
+	return restoreusecase.ExecuteRequest{
+		Scope:       "prod",
+		ProjectDir:  fixture.projectDir,
+		ComposeFile: filepath.Join(fixture.projectDir, "compose.yaml"),
 	}
 }
 
@@ -136,6 +152,63 @@ func restoreAcceptanceReferenceArgs(fixture restoreCommandFixture, extraArgs ...
 	}
 	args = append(args, extraArgs...)
 	return args
+}
+
+func executeRestoreLegacyReferenceCLI(opts []testAppOption, journalDir string, request restoreusecase.ExecuteRequest) execOutcome {
+	root := newLegacyRestoreReferenceRoot(newTestApp(opts...), request)
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+
+	root.SetOut(stdout)
+	root.SetErr(stderr)
+	root.SetArgs([]string{
+		"--journal-dir", journalDir,
+		"--json",
+		"restore",
+	})
+
+	exitCode := ExecuteRoot(root)
+	return execOutcome{
+		Stdout:   stdout.String(),
+		Stderr:   stderr.String(),
+		ExitCode: exitCode,
+	}
+}
+
+func newLegacyRestoreReferenceRoot(app *App, request restoreusecase.ExecuteRequest) *cobra.Command {
+	root := &cobra.Command{
+		Use:           "espops",
+		SilenceUsage:  true,
+		SilenceErrors: true,
+		PersistentPreRunE: func(cmd *cobra.Command, args []string) error {
+			return validateGlobalOptions(app.options)
+		},
+	}
+	bindApp(root, app)
+	root.PersistentFlags().BoolVar(&app.options.JSON, "json", false, "output result as JSON")
+	root.PersistentFlags().StringVar(&app.options.JournalDir, "journal-dir", app.options.JournalDir, "directory for operation journal entries")
+
+	restoreReq := request
+	restoreCmd := &cobra.Command{
+		Use:   "restore",
+		Short: "Run the legacy restore oracle flow",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			return RunCommandWithResult(cmd, CommandSpec{
+				Name:       "restore",
+				ErrorCode:  "restore_failed",
+				ExitCode:   exitcode.InternalError,
+				RenderText: resultbridge.RenderRestoreText,
+			}, func() (result.Result, error) {
+				req := restoreReq
+				req.LogWriter = cmd.ErrOrStderr()
+				req.Now = app.runtime.Now
+				info, err := app.restoreLegacy.Execute(req)
+				return resultbridge.RestoreResult(info), err
+			})
+		},
+	}
+	root.AddCommand(bindApp(restoreCmd, app))
+	return root
 }
 
 func writeRestoreReferencePartialManifest(t *testing.T, fixture restoreCommandFixture) string {

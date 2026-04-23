@@ -360,6 +360,64 @@ func TestRestoreV2Acceptance_JSONDiskAndRuntime(t *testing.T) {
 	}
 }
 
+func TestRestoreV2_DryRun_PlansWithoutMutation(t *testing.T) {
+	fx := newRestoreAcceptanceFixture(t)
+	req := fx.request()
+	req.Manifest = fx.backupSet.Layout.ManifestJSON
+	req.DryRun = true
+	req = finalizeRestoreRequest(req)
+
+	beforeStorage := collectRestoreTreeEntries(t, fx.storageDir)
+
+	result, err := fx.service.ExecuteRestore(context.Background(), req)
+	if err != nil {
+		t.Fatalf("ExecuteRestore dry-run returned error: %v", err)
+	}
+	if !result.OK {
+		t.Fatalf("expected dry-run ok result, got %+v", result)
+	}
+	if !result.DryRun {
+		t.Fatal("expected dry-run flag in result")
+	}
+	if result.Details.Planned != 5 {
+		t.Fatalf("expected five planned steps, got %d", result.Details.Planned)
+	}
+	if result.Details.Completed != 2 {
+		t.Fatalf("expected two completed steps, got %d", result.Details.Completed)
+	}
+	if len(result.Items) != 7 {
+		t.Fatalf("expected seven dry-run steps, got %d", len(result.Items))
+	}
+
+	wantStatuses := map[string]string{
+		model.RestoreStepSourceResolution: model.StatusCompleted,
+		model.StepRuntimePrepare:          model.StatusCompleted,
+		model.RestoreStepSnapshot:         model.StatusPlanned,
+		model.RestoreStepDBRestore:        model.StatusPlanned,
+		model.RestoreStepFilesRestore:     model.StatusPlanned,
+		model.RestoreStepPermission:       model.StatusPlanned,
+		model.StepRuntimeReturn:           model.StatusPlanned,
+	}
+	for _, step := range result.Items {
+		if want, ok := wantStatuses[step.Code]; !ok {
+			t.Fatalf("unexpected dry-run step %q", step.Code)
+		} else if step.Status != want {
+			t.Fatalf("unexpected status for %s: got %s want %s", step.Code, step.Status, want)
+		}
+	}
+
+	afterStorage := collectRestoreTreeEntries(t, fx.storageDir)
+	if strings.Join(beforeStorage, "\n") != strings.Join(afterStorage, "\n") {
+		t.Fatalf("dry-run mutated storage\nbefore=%v\nafter=%v", beforeStorage, afterStorage)
+	}
+	if err := fx.restoreRuntime.RequireCallOrder([]string{"running_services"}); err != nil {
+		t.Fatalf("unexpected runtime calls: %v", err)
+	}
+	if len(fx.snapshotRuntime.Calls) != 0 {
+		t.Fatalf("snapshot runtime should stay idle during dry-run, got %v", fx.snapshotRuntime.Calls)
+	}
+}
+
 type failingRestoreStore struct {
 	store.FileStore
 	failRestoreFiles bool

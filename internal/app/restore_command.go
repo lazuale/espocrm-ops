@@ -41,6 +41,7 @@ type RestoreCommandRequest struct {
 	NoSnapshot      bool
 	NoStop          bool
 	NoStart         bool
+	DryRun          bool
 	Now             func() time.Time
 }
 
@@ -74,6 +75,7 @@ func (s RestoreCommandService) Execute(ctx context.Context, req RestoreCommandRe
 		NoSnapshot:  req.NoSnapshot,
 		NoStop:      req.NoStop,
 		NoStart:     req.NoStart,
+		DryRun:      req.DryRun,
 	})
 
 	opCtx, prepareErr := s.operations.PrepareOperation(operationapp.OperationContextRequest{
@@ -143,6 +145,7 @@ func (s RestoreCommandService) restoreCoreRequest(opCtx operationapp.OperationCo
 		NoSnapshot:  req.NoSnapshot,
 		NoStop:      req.NoStop,
 		NoStart:     req.NoStart,
+		DryRun:      req.DryRun,
 		Target: model.RuntimeTarget{
 			ProjectDir:       opCtx.ProjectDir,
 			ComposeFile:      filepath.Clean(req.ComposeFile),
@@ -185,7 +188,7 @@ func (s RestoreCommandService) restoreCoreRequest(opCtx operationapp.OperationCo
 		},
 	}
 
-	if prepared.SkipDB {
+	if prepared.SkipDB || req.DryRun {
 		return prepared, nil
 	}
 

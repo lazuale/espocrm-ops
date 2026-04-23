@@ -21,6 +21,7 @@ const (
 	ExitValidationError    = 4
 	ExitExternalError      = 5
 	ExitIOError            = 6
+	StatusPlanned          = "planned"
 	StatusCompleted        = "completed"
 	StatusSkipped          = "skipped"
 	StatusBlocked          = "blocked"

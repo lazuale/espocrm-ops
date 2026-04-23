@@ -152,7 +152,8 @@ Legacy facts, которые фиксируются как reference, но не 
   Ожидается:
   `v1` reference: partial manifest + `--skip-files` проходит как `manifest_db_only` success и восстанавливает только DB.
   Для `v2` это остаётся только legacy divergence reference; partial manifest/manifest+skip не становится нормальным product contract.
-  Статус: `legacy divergence`, `подтверждено v1`, `internal v2`.
+  В active CLI path после cleanup это поведение явно запрещено на validation layer как unsupported legacy behavior.
+  Статус: `legacy divergence`, `подтверждено v1`, `unsupported active CLI path`.
 
 ### 3. Snapshot Semantics
 
@@ -245,14 +246,13 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - Реальный CLI path `restore` теперь идёт через `restore v2` для:
   `RST-001`, `RST-002`, `RST-101`, `RST-102`, `RST-204`, `RST-301`, `RST-302`, `RST-303`, `RST-401`, `RST-402`, `RST-403`, `RST-404`, `RST-501`, `RST-502`, `RST-503`, `RST-504`, `RST-505`, `RST-506`, `RST-507`.
+- `restore --dry-run` после cleanup тоже идёт через `restore v2`; CLI schema/golden фиксируют machine contract dry-run planning без runtime/disk mutation.
 - `RST-201`, `RST-202`, `RST-203` по-прежнему закрываются на CLI validation layer до mutating path и не требуют legacy restore engine.
-- `RST-205` остаётся `legacy divergence`: partial-manifest semantics не становятся `v2` contract и не поднимаются в общий parity invariant.
+- `RST-205` остаётся `legacy divergence`: partial-manifest semantics не становятся `v2` contract и не поднимаются в общий parity invariant. В active CLI path `--manifest + --skip-*` теперь режется как unsupported legacy behavior до mutating path.
 - `v1_RST-*` bundles после cutover остаются только oracle/reference material.
 - Exact English strings и transport quirks `v1`, если они конфликтуют с `V2_SCOPE.md`, остаются legacy reference, а не обязательным `v2` contract.
-- Временный compatibility shim после cutover ограничен двумя случаями:
-  `restore --dry-run`
-  partial-manifest path `manifest + --skip-*`
-  Это не новый product surface и не долгоживущий dual-stack; после отдельного решения по dry-run/legacy cleanup старый command-specific restore path должен быть удалён.
+- Behavior-based compatibility shim после cutover удалён из active CLI path.
+- `v1` больше не участвует в real `restore` wiring; он остаётся только как spec harness / regression oracle / emergency patch lane.
 
 ## Первый Internal Slice
 

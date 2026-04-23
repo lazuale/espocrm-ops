@@ -34,6 +34,7 @@ func NewRestoreService(deps RestoreDependencies) RestoreService {
 type restoreRuntimeState struct {
 	appServicesWereRunning bool
 	stoppedAppServices     []string
+	startedDBTemporarily   bool
 }
 
 func (s RestoreService) ExecuteRestore(ctx context.Context, req model.RestoreRequest) (result model.RestoreResult, err error) {
@@ -66,6 +67,10 @@ func (s RestoreService) ExecuteRestore(ctx context.Context, req model.RestoreReq
 		return result, failure
 	}
 	result.AddStep(model.StepRuntimePrepare, model.StatusCompleted)
+	if req.DryRun {
+		result.Details.StartedDBTemporarily = runtimeState.startedDBTemporarily
+		return s.buildRestoreDryRun(req, runtimeState, &result), nil
+	}
 
 	if req.NoSnapshot {
 		result.AddStep(model.RestoreStepSnapshot, model.StatusSkipped)
@@ -269,15 +274,43 @@ func (s RestoreService) prepareRestoreRuntime(ctx context.Context, req model.Res
 		stoppedAppServices: model.RunningApplicationServices(running),
 	}
 	state.appServicesWereRunning = len(state.stoppedAppServices) != 0
+	state.startedDBTemporarily = !req.SkipDB && !restoreServiceRunning(running, "db")
 	result.Details.AppServicesWereRunning = state.appServicesWereRunning
+	result.Details.StartedDBTemporarily = state.startedDBTemporarily
 
-	if req.NoStop || len(state.stoppedAppServices) == 0 {
+	if req.DryRun || req.NoStop || len(state.stoppedAppServices) == 0 {
 		return state, nil
 	}
 	if err := s.runtime.StopServices(ctx, req.Target, state.stoppedAppServices...); err != nil {
 		return state, err
 	}
 	return state, nil
+}
+
+func (s RestoreService) buildRestoreDryRun(req model.RestoreRequest, state restoreRuntimeState, result *model.RestoreResult) model.RestoreResult {
+	if req.NoSnapshot {
+		result.AddStep(model.RestoreStepSnapshot, model.StatusSkipped)
+	} else {
+		result.AddStep(model.RestoreStepSnapshot, model.StatusPlanned)
+	}
+
+	if req.SkipDB {
+		result.AddStep(model.RestoreStepDBRestore, model.StatusSkipped)
+	} else {
+		result.AddStep(model.RestoreStepDBRestore, model.StatusPlanned)
+	}
+
+	if req.SkipFiles {
+		result.AddStep(model.RestoreStepFilesRestore, model.StatusSkipped)
+		result.AddStep(model.RestoreStepPermission, model.StatusSkipped)
+	} else {
+		result.AddStep(model.RestoreStepFilesRestore, model.StatusPlanned)
+		result.AddStep(model.RestoreStepPermission, model.StatusPlanned)
+	}
+
+	result.AddStep(model.StepRuntimeReturn, dryRunRestoreRuntimeReturnStatus(req, state))
+	result.Succeed()
+	return *result
 }
 
 func (s RestoreService) returnRestoreRuntime(ctx context.Context, req model.RestoreRequest, state restoreRuntimeState, result *model.RestoreResult) error {
@@ -337,6 +370,32 @@ func expectedRestoreServices(req model.RestoreRequest, state restoreRuntimeState
 		out = append(out, service)
 	}
 	return out
+}
+
+func dryRunRestoreRuntimeReturnStatus(req model.RestoreRequest, state restoreRuntimeState) string {
+	switch {
+	case req.NoStop && len(state.stoppedAppServices) != 0:
+		return model.StatusSkipped
+	case len(state.stoppedAppServices) == 0 && !state.startedDBTemporarily:
+		return model.StatusSkipped
+	case len(state.stoppedAppServices) != 0 && req.NoStart:
+		return model.StatusSkipped
+	default:
+		return model.StatusPlanned
+	}
+}
+
+func restoreServiceRunning(running []string, want string) bool {
+	want = strings.TrimSpace(want)
+	if want == "" {
+		return false
+	}
+	for _, service := range running {
+		if strings.TrimSpace(service) == want {
+			return true
+		}
+	}
+	return false
 }
 
 func validateRestoreDirectPair(dbPath, filesPath string) error {

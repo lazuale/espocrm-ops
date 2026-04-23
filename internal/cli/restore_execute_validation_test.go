@@ -37,3 +37,19 @@ func TestRestore_Validation_RequiresProdConfirmation(t *testing.T) {
 
 	assertUsageErrorOutput(t, outcome, "prod restore also requires --confirm-prod prod")
 }
+
+func TestRestore_Validation_RejectsPartialManifestPath(t *testing.T) {
+	tmp := t.TempDir()
+	journalDir := filepath.Join(tmp, "journal")
+
+	outcome := executeCLI(
+		"--journal-dir", journalDir,
+		"--json",
+		"restore",
+		"--scope", "dev",
+		"--manifest", filepath.Join(tmp, "backup.manifest.json"),
+		"--skip-files",
+	)
+
+	assertUsageErrorOutput(t, outcome, "--manifest нельзя комбинировать с --skip-db или --skip-files")
+}

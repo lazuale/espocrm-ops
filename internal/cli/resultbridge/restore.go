@@ -43,7 +43,8 @@ func restoreV2Result(info model.RestoreResult) result.Result {
 	return result.Result{
 		Command:  "restore",
 		OK:       info.OK,
-		Message:  restoreMessage(info.OK),
+		Message:  restoreMessage(info.OK, info.DryRun),
+		DryRun:   info.DryRun,
 		Warnings: append([]string(nil), info.Warnings...),
 		Details: result.RestoreDetails{
 			Scope:                  info.Details.Scope,
@@ -51,6 +52,7 @@ func restoreV2Result(info model.RestoreResult) result.Result {
 			SelectionMode:          info.Details.SelectionMode,
 			SourceKind:             info.Details.SourceKind,
 			Steps:                  info.Details.Steps,
+			Planned:                info.Details.Planned,
 			Completed:              info.Details.Completed,
 			Skipped:                info.Details.Skipped,
 			Blocked:                info.Details.Blocked,
@@ -62,7 +64,7 @@ func restoreV2Result(info model.RestoreResult) result.Result {
 			NoStop:                 info.Details.NoStop,
 			NoStart:                info.Details.NoStart,
 			AppServicesWereRunning: info.Details.AppServicesWereRunning,
-			StartedDBTemporarily:   false,
+			StartedDBTemporarily:   info.Details.StartedDBTemporarily,
 		},
 		Artifacts: result.RestoreArtifacts{
 			ProjectDir:            info.Artifacts.ProjectDir,
@@ -144,7 +146,13 @@ func restoreLegacyResult(info restoreusecase.ExecuteInfo) result.Result {
 	}
 }
 
-func restoreMessage(ok bool) string {
+func restoreMessage(ok bool, dryRun bool) string {
+	if dryRun {
+		if ok {
+			return "restore dry-run plan completed"
+		}
+		return "restore dry-run plan found blocking conditions"
+	}
 	if ok {
 		return "restore completed"
 	}
@@ -152,6 +160,20 @@ func restoreMessage(ok bool) string {
 }
 
 func restoreStepSummary(code, status string) string {
+	if status == model.StatusPlanned {
+		switch code {
+		case model.RestoreStepSnapshot:
+			return "Аварийный snapshot запланирован"
+		case model.RestoreStepDBRestore:
+			return "Восстановление базы данных запланировано"
+		case model.RestoreStepFilesRestore:
+			return "Восстановление файлов запланировано"
+		case model.RestoreStepPermission:
+			return "Согласование прав запланировано"
+		case model.StepRuntimeReturn:
+			return "Возврат runtime запланирован"
+		}
+	}
 	if status == model.StatusBlocked {
 		switch code {
 		case model.StepRuntimePrepare:
