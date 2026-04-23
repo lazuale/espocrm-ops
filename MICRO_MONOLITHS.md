@@ -739,16 +739,16 @@ Own cross-contour migration of a verified backup set from a source contour into 
 
 На текущем acceptance-first этапе:
 
-- active CLI path всё ещё использует retained legacy owner `internal/app/migrate/`
-- internal parity foundation для `migrate v2` живёт в `internal/app/migrate_v2.go` и `internal/model/migrate.go`
-- target snapshot и fail-closed migrate semantics собираются в `v2` без CLI cutover
+- production CLI path входит через `internal/app/migrate_command.go` `MigrateCommandService`
+- retained destructive core живёт в `internal/app/migrate_v2.go` и `internal/model/migrate.go`
+- legacy `internal/app/migrate/` выведен из production graph и остаётся только test-only oracle
 
 #### C. Contour
 Inside this unit:
 
+- `internal/app/migrate_command.go`
 - `internal/app/migrate_v2.go`
 - `internal/model/migrate.go`
-- `internal/app/migrate/`
 
 Allowed internal mechanisms:
 
@@ -759,12 +759,12 @@ Allowed internal mechanisms:
 - target snapshot before destructive apply
 - target runtime preparation
 - restore-kernel reuse for DB/files apply
-- target runtime start
+- target runtime return and explicit post-check
 
 #### D. External Inputs
 This unit may accept:
 
-- `migrate.ExecuteRequest`
+- `app.MigrateCommandRequest`
 - source scope
 - target scope
 - explicit or automatic source backup selectors
@@ -773,7 +773,7 @@ This unit may accept:
 #### E. External Outputs
 This unit may emit:
 
-- `migrate.ExecuteInfo`
+- `model.MigrateResult`
 - selected source artifacts
 - workflow steps and warnings
 - typed migration failures
@@ -1622,7 +1622,7 @@ Inside this unit:
   - `internal/app/backup_command.go` and `internal/model/backup.go` для `backup v2`
   - `internal/app/backupverify/errors.go`
   - `internal/app/restore/errors.go`
-  - `internal/app/migrate/compatibility.go`
+  - `internal/app/migrate_command.go`, `internal/app/migrate_v2.go`, and `internal/model/migrate.go` для retained `migrate`
 - CLI error transport files:
   - `internal/cli/errortransport/`
   - the root transport mapping in `internal/cli/execute.go`
@@ -1901,9 +1901,11 @@ Proof mode follows Section `1A`: some phases are machine-enforced, while others 
 - target operation preflight
 - source selection
 - compatibility verification
+- target snapshot before destructive apply
 - target runtime preparation
 - target DB/files apply
-- target runtime start verification
+- target runtime return
+- explicit post-check
 - error/result classification
 - journal
 - output
