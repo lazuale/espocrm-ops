@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -244,7 +245,12 @@ func TestRestoreV2Acceptance_JSONDiskAndRuntime(t *testing.T) {
 		{
 			id: "RST-503",
 			setup: func(t *testing.T) (restoreAcceptanceFixture, model.RestoreRequest) {
-				fx := newRestoreAcceptanceFixture(t)
+				fx := newRestoreAcceptanceFixtureWithFiles(t, map[string]string{
+					"espo/data/nested/file.txt":      "hello\n",
+					"espo/custom/modules/module.txt": "custom\n",
+					"espo/client/custom/app.js":      "client\n",
+					"espo/upload/blob.txt":           "upload\n",
+				})
 				fx.restoreRuntime.PermissionErr = errors.New("permission reconciliation failed")
 				req := fx.request()
 				req.Manifest = fx.backupSet.Layout.ManifestJSON
@@ -339,12 +345,16 @@ func TestRestoreV2Acceptance_JSONDiskAndRuntime(t *testing.T) {
 			}
 
 			assertOrWriteRestoreAcceptanceGoldenJSON(t, normalizeRestoreAcceptanceJSON(t, result), filepath.Join("golden", "json", "v2_"+tc.id+".json"))
-			assertOrWriteRestoreAcceptanceGoldenJSON(t, marshalRestoreAcceptanceJSON(t, map[string]any{
+			diskSnapshot := map[string]any{
 				"process_exit_code": result.ProcessExitCode,
 				"before_storage":    beforeStorage,
 				"after_storage":     collectRestoreTreeEntries(t, fx.storageDir),
 				"snapshot_entries":  collectRestoreTreeEntries(t, fx.snapshotRoot),
-			}), filepath.Join("golden", "disk", "v2_"+tc.id+".json"))
+			}
+			if tc.id == "RST-503" {
+				diskSnapshot["storage_modes_after"] = collectRestoreTreeModes(t, fx.storageDir)
+			}
+			assertOrWriteRestoreAcceptanceGoldenJSON(t, marshalRestoreAcceptanceJSON(t, diskSnapshot), filepath.Join("golden", "disk", "v2_"+tc.id+".json"))
 			assertOrWriteRestoreAcceptanceGoldenJSON(t, normalizeRestoreRuntimeGolden(t, fx, result), filepath.Join("golden", "runtime", "v2_"+tc.id+".json"))
 		})
 	}
@@ -364,10 +374,24 @@ func (s failingRestoreStore) RestoreFilesArtifact(ctx context.Context, filesBack
 
 func newRestoreAcceptanceFixture(t *testing.T) restoreAcceptanceFixture {
 	t.Helper()
-	return newRestoreAcceptanceFixtureWithStore(t, store.FileStore{})
+	return newRestoreAcceptanceFixtureWithStoreAndFiles(t, store.FileStore{}, map[string]string{
+		"espo/file.txt": "restored\n",
+	})
+}
+
+func newRestoreAcceptanceFixtureWithFiles(t *testing.T, files map[string]string) restoreAcceptanceFixture {
+	t.Helper()
+	return newRestoreAcceptanceFixtureWithStoreAndFiles(t, store.FileStore{}, files)
 }
 
 func newRestoreAcceptanceFixtureWithStore(t *testing.T, restoreStore model.RestoreStore) restoreAcceptanceFixture {
+	t.Helper()
+	return newRestoreAcceptanceFixtureWithStoreAndFiles(t, restoreStore, map[string]string{
+		"espo/file.txt": "restored\n",
+	})
+}
+
+func newRestoreAcceptanceFixtureWithStoreAndFiles(t *testing.T, restoreStore model.RestoreStore, files map[string]string) restoreAcceptanceFixture {
 	t.Helper()
 
 	root := t.TempDir()
@@ -378,9 +402,7 @@ func newRestoreAcceptanceFixtureWithStore(t *testing.T, restoreStore model.Resto
 	mustMkdirAll(t, storageDir)
 	mustWriteFile(t, filepath.Join(storageDir, "stale.txt"), "stale\n")
 
-	backupSet := writeRestoreBackupSet(t, backupRoot, "espocrm-prod", "2026-04-19_08-00-00", "prod", map[string]string{
-		"espo/file.txt": "restored\n",
-	})
+	backupSet := writeRestoreBackupSet(t, backupRoot, "espocrm-prod", "2026-04-19_08-00-00", "prod", files)
 	restoreRuntime := &v2runtime.Static{AppServicesRunning: true}
 	snapshotRuntime := &v2runtime.Static{
 		AppServicesRunning: false,
@@ -636,6 +658,23 @@ func collectRestoreTreeEntries(t *testing.T, root string) []string {
 	}
 	sort.Strings(entries)
 	return entries
+}
+
+func collectRestoreTreeModes(t *testing.T, root string) map[string]string {
+	t.Helper()
+
+	entries := collectRestoreTreeEntries(t, root)
+	modes := make(map[string]string, len(entries))
+	for _, entry := range entries {
+		rel := strings.TrimSuffix(entry, "/")
+		path := filepath.Join(root, filepath.FromSlash(rel))
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		modes[entry] = fmt.Sprintf("%03o", info.Mode().Perm())
+	}
+	return modes
 }
 
 func marshalRestoreAcceptanceJSON(t *testing.T, value any) []byte {

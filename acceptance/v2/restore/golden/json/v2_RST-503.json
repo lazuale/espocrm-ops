@@ -11,8 +11,8 @@
   "command": "restore",
   "details": {
     "app_services_were_running": true,
-    "blocked": 1,
-    "completed": 5,
+    "blocked": 2,
+    "completed": 4,
     "failed": 1,
     "no_start": false,
     "no_stop": false,
@@ -58,12 +58,12 @@
       "status": "failed"
     },
     {
-      "code": "post_restore_check",
+      "code": "runtime_return",
       "status": "blocked"
     },
     {
-      "code": "runtime_return",
-      "status": "completed"
+      "code": "post_restore_check",
+      "status": "blocked"
     }
   ],
   "ok": false,

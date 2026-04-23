@@ -100,7 +100,6 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - `подтверждено v1`: black-box reference доступен через текущий CLI path
 - `internal v2`: покрывается первым internal implementation slice без CLI cutover
-- `нужна parity correction`: `v1` reference уже снят, но текущее internal `v2` behavior ещё надо довести до этого reference
 - `legacy divergence`: `v1` behavior зафиксирован, но не переносится в `v2`
 - `нужно доснять v1`: требуется отдельный black-box reference перед cutover
 
@@ -169,7 +168,7 @@ Legacy facts, которые фиксируются как reference, но не 
 - `RST-303` Snapshot failure.
   Ожидается:
   DB/files restore не выполняются; после `runtime_prepare` restore остаётся в fail-closed состоянии; application services не возвращаются автоматически; success не сообщается.
-  Статус: `подтверждено v1`, `нужна parity correction`.
+  Статус: `подтверждено v1`, `internal v2`.
 
 ### 4. Runtime Semantics
 
@@ -208,7 +207,7 @@ Legacy facts, которые фиксируются как reference, но не 
 - `RST-503` Permission reconciliation failure.
   Ожидается:
   files уже восстановлены на disk, но runtime permission reconciliation ломается; runtime return блокируется; application services остаются остановленными; success не сообщается.
-  Статус: `подтверждено v1`, `нужна parity correction`.
+  Статус: `подтверждено v1`, `internal v2`.
 
 - `RST-504` Invalid manifest.
   Ожидается:
@@ -245,8 +244,8 @@ Legacy facts, которые фиксируются как reference, но не 
 
 - Недоснятых `v1` reference prerequisites для `restore` больше нет.
 - `RST-205` закрыт как `legacy divergence`, а не как `v2` contract gap.
-- `RST-303`: reference теперь подтверждён, но current internal `v2` slice ещё должен перейти к fail-closed post-condition без runtime return.
-- `RST-503`: reference теперь подтверждён, но current internal `v2` slice ещё должен блокировать runtime return и сохранять observed permission-failure post-condition как у `v1`.
+- Parity blockers `RST-303` и `RST-503` закрыты в internal `v2`.
+- После этого `restore v2` готов к отдельному шагу `cutover-safe wiring restore`.
 
 ## Первый Internal Slice
 
@@ -260,17 +259,18 @@ Legacy facts, которые фиксируются как reference, но не 
 - `RST-205`
 - `RST-301`
 - `RST-302`
+- `RST-303`
 - `RST-401`
 - `RST-402`
 - `RST-403`
 - `RST-404`
 - `RST-501`
 - `RST-502`
+- `RST-503`
 - `RST-504`
 - `RST-505`
 - `RST-506`
 - `RST-507`
 
 `RST-201`, `RST-202`, `RST-203` остаются CLI usage reference до cutover wiring.
-После досъёмки `v1` reference выяснилось, что `RST-303` и `RST-503` остаются parity follow-up для internal `v2`.
 На этом шаге real CLI `restore` не переключается на `v2`.

@@ -5,8 +5,7 @@
     "running_services",
     "stop_services",
     "restore_database",
-    "reconcile_files_permissions",
-    "start_services"
+    "reconcile_files_permissions"
   ],
   "restored_db_path": "REPLACE_DB_BACKUP",
   "snapshot_calls": null

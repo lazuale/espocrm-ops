@@ -72,9 +72,9 @@ func (s RestoreService) ExecuteRestore(ctx context.Context, req model.RestoreReq
 		snapshotResult, snapshotErr := s.snapshot.ExecuteBackup(ctx, req.Snapshot)
 		if snapshotErr != nil {
 			result.AddStep(model.RestoreStepSnapshot, model.StatusFailed)
-			blockRestoreAfter(&result, model.RestoreStepSnapshot, true)
+			blockRestoreAfter(&result, model.RestoreStepSnapshot, false)
 			failure := restoreFailureFromError(snapshotErr)
-			return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure)
+			return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure, false)
 		}
 		result.ApplySnapshot(snapshotResult)
 		result.AddStep(model.RestoreStepSnapshot, model.StatusCompleted)
@@ -86,7 +86,7 @@ func (s RestoreService) ExecuteRestore(ctx context.Context, req model.RestoreReq
 		result.AddStep(model.RestoreStepDBRestore, model.StatusFailed)
 		blockRestoreAfter(&result, model.RestoreStepDBRestore, true)
 		failure := model.NewRestoreFailure(model.KindExternal, "database restore завершился ошибкой", err)
-		return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure)
+		return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure, true)
 	} else {
 		result.AddStep(model.RestoreStepDBRestore, model.StatusCompleted)
 	}
@@ -98,14 +98,14 @@ func (s RestoreService) ExecuteRestore(ctx context.Context, req model.RestoreReq
 		result.AddStep(model.RestoreStepFilesRestore, model.StatusFailed)
 		blockRestoreAfter(&result, model.RestoreStepFilesRestore, true)
 		failure := model.NewRestoreFailure(model.KindIO, "files restore завершился ошибкой", err)
-		return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure)
+		return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure, true)
 	} else {
 		result.AddStep(model.RestoreStepFilesRestore, model.StatusCompleted)
 		if err := s.runtime.ReconcileFilesPermissions(ctx, req.Target); err != nil {
 			result.AddStep(model.RestoreStepPermission, model.StatusFailed)
-			blockRestoreAfter(&result, model.RestoreStepPermission, true)
+			blockRestoreAfter(&result, model.RestoreStepPermission, false)
 			failure := model.NewRestoreFailure(model.KindExternal, "permission reconciliation завершился ошибкой", err)
-			return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure)
+			return s.failRestoreAfterRuntimeChange(ctx, req, runtimeState, &result, failure, false)
 		}
 		result.AddStep(model.RestoreStepPermission, model.StatusCompleted)
 	}
@@ -295,10 +295,12 @@ func (s RestoreService) returnRestoreRuntime(ctx context.Context, req model.Rest
 	return nil
 }
 
-func (s RestoreService) failRestoreAfterRuntimeChange(ctx context.Context, req model.RestoreRequest, state restoreRuntimeState, result *model.RestoreResult, failure model.BackupFailure) (model.RestoreResult, error) {
-	if returnErr := s.returnRestoreRuntime(ctx, req, state, result); returnErr != nil {
-		result.AddStep(model.StepRuntimeReturn, model.StatusFailed)
-		failure = model.NewRestoreFailure(model.KindExternal, "runtime return после ошибки restore завершился ошибкой", errors.Join(failure, returnErr))
+func (s RestoreService) failRestoreAfterRuntimeChange(ctx context.Context, req model.RestoreRequest, state restoreRuntimeState, result *model.RestoreResult, failure model.BackupFailure, allowRuntimeReturn bool) (model.RestoreResult, error) {
+	if allowRuntimeReturn {
+		if returnErr := s.returnRestoreRuntime(ctx, req, state, result); returnErr != nil {
+			result.AddStep(model.StepRuntimeReturn, model.StatusFailed)
+			failure = model.NewRestoreFailure(model.KindExternal, "runtime return после ошибки restore завершился ошибкой", errors.Join(failure, returnErr))
+		}
 	}
 	result.Fail(failure)
 	return *result, failure
