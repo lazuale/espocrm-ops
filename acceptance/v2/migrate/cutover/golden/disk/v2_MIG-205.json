@@ -1,0 +1,30 @@
+{
+  "process_exit_code": 4,
+  "source_backup_root_after": [
+    "db/",
+    "db/espocrm-dev_2026-04-19_07-30-00.sql.gz",
+    "db/espocrm-dev_2026-04-19_07-30-00.sql.gz.sha256",
+    "db/espocrm-dev_2026-04-19_08-00-00.sql.gz",
+    "db/espocrm-dev_2026-04-19_08-00-00.sql.gz.sha256",
+    "files/",
+    "files/espocrm-dev_files_2026-04-19_07-30-00.tar.gz",
+    "files/espocrm-dev_files_2026-04-19_07-30-00.tar.gz.sha256",
+    "files/espocrm-dev_files_2026-04-19_08-00-00.tar.gz",
+    "files/espocrm-dev_files_2026-04-19_08-00-00.tar.gz.sha256",
+    "manifests/",
+    "manifests/espocrm-dev_2026-04-19_07-30-00.manifest.json",
+    "manifests/espocrm-dev_2026-04-19_07-30-00.manifest.txt",
+    "manifests/espocrm-dev_2026-04-19_08-00-00.manifest.json",
+    "manifests/espocrm-dev_2026-04-19_08-00-00.manifest.txt"
+  ],
+  "storage_entries_after": [
+    "before.txt"
+  ],
+  "storage_modes_after": {
+    "before.txt": "644"
+  },
+  "target_backup_root_after": [
+    "locks/",
+    "locks/.maintenance.lock.flock"
+  ]
+}

@@ -1,0 +1,8 @@
+{
+  "migrate_calls": null,
+  "post_check_services": null,
+  "process_exit_code": 4,
+  "restored_db_path": "",
+  "running_after": null,
+  "snapshot_calls": null
+}

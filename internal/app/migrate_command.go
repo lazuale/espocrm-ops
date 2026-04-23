@@ -49,7 +49,7 @@ func NewMigrateCommandService(deps MigrateCommandDependencies) MigrateCommandSer
 	}
 }
 
-// Переходный CLI boundary: migrate должен входить в retained core через один
+// Production CLI boundary: migrate входит в retained core через один
 // internal/app owner. CLI не собирает nested request руками и не держит
 // собственную destructive semantics.
 func (s MigrateCommandService) Execute(ctx context.Context, req MigrateCommandRequest) (result model.MigrateResult, err error) {

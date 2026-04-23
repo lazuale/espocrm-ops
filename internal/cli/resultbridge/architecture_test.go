@@ -120,6 +120,28 @@ func TestResultBridgeExportedSurfaceStaysIntentional(t *testing.T) {
 	}
 }
 
+func TestMigrateResultBridgeDoesNotExposeLegacySelectionFields(t *testing.T) {
+	root := testutil.RepoRoot(t)
+	path := filepath.Join(root, "internal", "cli", "resultbridge", "migrate.go")
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	text := string(raw)
+
+	for _, forbidden := range []string{
+		"RequestedSelectionMode",
+		"RequestedDBBackup",
+		"RequestedFilesBackup",
+		"SelectedPrefix",
+		"SelectedStamp",
+	} {
+		if strings.Contains(text, forbidden) {
+			t.Fatalf("production migrate result bridge must not expose legacy selection field %q", forbidden)
+		}
+	}
+}
+
 func resultBridgeSortedKeys(set map[string]struct{}) []string {
 	keys := make([]string, 0, len(set))
 	for key := range set {

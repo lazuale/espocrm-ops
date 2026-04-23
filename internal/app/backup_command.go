@@ -42,9 +42,9 @@ func NewBackupCommandService(deps BackupCommandDependencies) BackupCommandServic
 	}
 }
 
-// Переходный CLI boundary: команда backup исполняется только через v2 core,
-// а существующий operation/env/lock-контур остаётся до отдельного переноса.
-// Этот слой не должен становиться вторым implementation path.
+// Production CLI boundary: команда backup исполняется только через retained core.
+// Operation/env/lock-контур остаётся общим command boundary, а не вторым
+// implementation path.
 func (s BackupCommandService) Execute(ctx context.Context, req BackupCommandRequest) (result model.BackupResult, err error) {
 	createdAt := time.Now().UTC()
 	if req.Now != nil {

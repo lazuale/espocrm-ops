@@ -100,6 +100,44 @@ func TestAcceptance_MigrateCLI_V2_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
+			id:              "MIG-205",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				otherSet := writeBackupSet(t, fixture.sourceRoot, "espocrm-dev", "2026-04-19_07-30-00", "dev", map[string]string{
+					"espo/other.txt": "other\n",
+				})
+				writeJSON(t, fixture.sourceBackup.ManifestJSON, map[string]any{
+					"version":    1,
+					"scope":      "dev",
+					"created_at": "2026-04-19T08:00:00Z",
+					"artifacts": map[string]any{
+						"db_backup":    filepath.Base(fixture.sourceBackup.DBBackup),
+						"files_backup": filepath.Base(otherSet.FilesBackup),
+					},
+					"checksums": map[string]any{
+						"db_backup":    sha256OfFile(t, fixture.sourceBackup.DBBackup),
+						"files_backup": sha256OfFile(t, otherSet.FilesBackup),
+					},
+				})
+				return nil
+			},
+		},
+		{
+			id:              "MIG-206",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				otherSet := writeBackupSet(t, fixture.sourceRoot, "espocrm-dev", "2026-04-19_08-30-00", "dev", map[string]string{
+					"espo/other.txt": "other\n",
+				})
+				return []string{
+					"--db-backup", fixture.sourceBackup.DBBackup,
+					"--files-backup", otherSet.FilesBackup,
+				}
+			},
+		},
+		{
 			id:              "MIG-207",
 			withForce:       true,
 			withConfirmProd: true,
@@ -133,6 +171,15 @@ func TestAcceptance_MigrateCLI_V2_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
+			id:              "MIG-401",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				migrateCLISetHealthyRuntime(t, fixture)
+				return nil
+			},
+		},
+		{
 			id:              "MIG-402",
 			withForce:       true,
 			withConfirmProd: true,
@@ -153,6 +200,36 @@ func TestAcceptance_MigrateCLI_V2_JSONDiskAndRuntime(t *testing.T) {
 			},
 		},
 		{
+			id:              "MIG-501",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				migrateCLISetHealthyRuntime(t, fixture)
+				fixture.docker.SetFailOnMatch(t, "mariadb-dump -u espocrm espocrm --single-transaction --quick --routines --triggers --events")
+				return nil
+			},
+		},
+		{
+			id:              "MIG-502",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				migrateCLISetHealthyRuntime(t, fixture)
+				fixture.docker.SetFailOnMatch(t, "exec -i -e MYSQL_PWD mock-db mariadb -u root")
+				return nil
+			},
+		},
+		{
+			id:              "MIG-503",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				migrateCLISetHealthyRuntime(t, fixture)
+				mustMkdirAll(t, filepath.Join(filepath.Dir(fixture.storageDir), ".espo.new"))
+				return nil
+			},
+		},
+		{
 			id:              "MIG-504",
 			withForce:       true,
 			withConfirmProd: true,
@@ -160,6 +237,39 @@ func TestAcceptance_MigrateCLI_V2_JSONDiskAndRuntime(t *testing.T) {
 				migrateCLISetHealthyRuntime(t, fixture)
 				fixture.docker.SetFailOnMatch(t, ":/espo-storage")
 				return nil
+			},
+		},
+		{
+			id:              "MIG-505",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				return []string{
+					"--db-backup", filepath.Join(fixture.sourceRoot, "db", "missing.sql.gz"),
+					"--skip-files",
+				}
+			},
+		},
+		{
+			id:              "MIG-506",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				mustWriteFile(t, fixture.sourceBackup.FilesBackup, "broken")
+				mustWriteFile(t, fixture.sourceBackup.FilesBackup+".sha256", sha256OfFile(t, fixture.sourceBackup.FilesBackup)+"  "+filepath.Base(fixture.sourceBackup.FilesBackup)+"\n")
+				return nil
+			},
+		},
+		{
+			id:              "MIG-507",
+			withForce:       true,
+			withConfirmProd: true,
+			setup: func(t *testing.T, fixture *migrateCommandFixture) []string {
+				mustWriteFile(t, fixture.sourceBackup.DBBackup+".sha256", strings.Repeat("0", 64)+"  "+filepath.Base(fixture.sourceBackup.DBBackup)+"\n")
+				return []string{
+					"--db-backup", fixture.sourceBackup.DBBackup,
+					"--skip-files",
+				}
 			},
 		},
 	}

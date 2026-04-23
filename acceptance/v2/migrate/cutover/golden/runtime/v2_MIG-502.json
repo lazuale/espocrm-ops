@@ -1,0 +1,20 @@
+{
+  "migrate_calls": [
+    "running_services",
+    "stop_services",
+    "restore_database"
+  ],
+  "post_check_services": null,
+  "process_exit_code": 5,
+  "restored_db_path": "",
+  "running_after": [
+    "db"
+  ],
+  "snapshot_calls": [
+    "running_services",
+    "stop_services",
+    "dump_database",
+    "archive_files",
+    "start_services"
+  ]
+}

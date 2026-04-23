@@ -53,9 +53,9 @@ func NewRestoreCommandService(deps RestoreCommandDependencies) RestoreCommandSer
 	}
 }
 
-// Переходный CLI boundary: destructive restore command surface идёт через v2 core,
-// а общий operation/env/lock-контур остаётся до удаления старого command-specific path.
-// Этот слой только собирает request и не должен становиться вторым restore engine.
+// Production CLI boundary: destructive restore command surface идёт через retained core.
+// Общий operation/env/lock-контур остаётся command boundary, а не вторым
+// restore engine.
 func (s RestoreCommandService) Execute(ctx context.Context, req RestoreCommandRequest) (result model.RestoreResult, err error) {
 	createdAt := time.Now().UTC()
 	if req.Now != nil {

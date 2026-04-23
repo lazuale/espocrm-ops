@@ -2,13 +2,13 @@
 
 ## Назначение
 
-Этот документ фиксирует первый acceptance-first slice для `migrate v2`.
+Этот документ фиксирует acceptance-first corpus для `migrate v2`.
 
 Он следует [V2_SCOPE.md](/home/febinet/code/docker/V2_SCOPE.md):
 
 - `v1` используется только как spec harness, regression oracle и emergency patch lane
 - `v2` не повторяет внутреннюю форму legacy `migrate`
-- real CLI path `migrate` на этом шаге не переключается
+- real CLI path `migrate` переключён на retained core через `internal/app`
 - manifest остаётся только complete backup-set contract
 
 Корпус проверяет:
@@ -22,7 +22,7 @@
 
 ## Источник Истины
 
-Источник истины для первого `migrate v2` slice:
+Источник истины для retained `migrate v2` corpus:
 
 - текущий CLI `migrate` path как black-box reference там, где legacy surface уже что-то наблюдаемо фиксирует
 - internal `migrate v2` machine contract для нового execution core
@@ -50,12 +50,12 @@ Legacy facts, которые фиксируются только как referenc
 
 - exact English strings
 - legacy step phrasing и envelope quirks
-- implicit pairing из одного explicit artifact, если оно не нужно для первого internal slice
+- implicit pairing из одного explicit artifact, если оно не входит в retained `v2` contract
 - отсутствие target snapshot в test-only legacy `migrate` harness
 
 ## Минимальный Машинный Contract
 
-Для первого internal `migrate v2` slice закрепляется:
+Для retained `migrate v2` corpus закрепляется:
 
 - `command == "migrate"`
 - `ok == true|false`
@@ -95,31 +95,31 @@ Legacy facts, которые фиксируются только как referenc
 Статусы источника:
 
 - `подтверждено v1`: black-box reference bundle снят с test-only legacy `migrate` harness
-- `internal v2`: покрывается первым internal implementation slice
+- `internal v2`: покрывается internal implementation corpus
 - `legacy divergence`: зафиксировано как legacy fact и не поднимается в `v2` invariant
-- `отложено`: не входит в первый internal slice и остаётся на отдельный parity/cutover шаг
+- `отложено`: не входит в retained corpus и остаётся на отдельный parity/cutover шаг
 
 ### 1. Успешные Сценарии
 
 - `MIG-001` Полный migrate из latest complete backup-set.
   Ожидается:
   source автоматически выбирается как latest complete verified set; target snapshot выполняется до destructive apply; затем идут runtime prepare, DB/files apply, permission reconcile, runtime return и post-check.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 - `MIG-002` Полный migrate по direct pair.
   Ожидается:
   explicit DB/files artifacts проверяются напрямую; artifacts принадлежат одному backup-set; migrate завершается только после post-check.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 - `MIG-101` DB-only migrate.
   Ожидается:
   источник только direct DB artifact; `--skip-files=true`; files apply и permission reconcile не выполняются; target snapshot берётся только по DB-части destructive path.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 - `MIG-102` Files-only migrate.
   Ожидается:
   источник только direct files artifact; `--skip-db=true`; DB apply не выполняется; files apply и permission reconcile выполняются; target snapshot берётся только по files-части destructive path.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 ### 2. Usage И Ошибки Выбора Источника
 
@@ -146,84 +146,84 @@ Legacy facts, которые фиксируются только как referenc
 - `MIG-205` Invalid matching manifest blocks latest complete selection.
   Ожидается:
   если matching manifest для выбранного complete set существует, но incoherent или invalid, automatic source selection не проходит; destructive path не стартует.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 - `MIG-206` Invalid direct pair combination.
   Ожидается:
   explicit DB/files artifacts относятся к разным backup-set; migrate fail closed до target snapshot/runtime mutation.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 - `MIG-207` Full migrate с implicit pairing от explicit DB artifact.
   Ожидается:
   legacy CLI может вывести matching files artifact из stamp explicit DB backup, но `migrate v2` не принимает такой source-selection path и блокирует его fail-closed до target snapshot/runtime mutation.
-  Статус: `подтверждено v1`, `legacy divergence`, `internal v2`.
+  Статус: `подтверждено v1`, `legacy divergence`, `internal v2`, `real CLI v2`.
 
 - `MIG-208` Full migrate с implicit pairing от explicit files artifact.
   Ожидается:
   legacy CLI может вывести matching DB artifact из stamp explicit files backup, но `migrate v2` не принимает такой source-selection path и блокирует его fail-closed до target snapshot/runtime mutation.
-  Статус: `подтверждено v1`, `legacy divergence`, `internal v2`.
+  Статус: `подтверждено v1`, `legacy divergence`, `internal v2`, `real CLI v2`.
 
 ### 3. Compatibility Failures
 
 - `MIG-301` Compatibility drift.
   Ожидается:
   governed source/target settings не совпадают; destructive path не стартует; success не сообщается.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 ### 4. Snapshot И Runtime Semantics
 
 - `MIG-401` Target snapshot before destructive path.
   Ожидается:
   `v2` делает target snapshot до runtime prepare и destructive apply; snapshot artifacts попадают в machine result.
-  Статус: `internal v2`.
+  Статус: `internal v2`, `real CLI v2`.
   Примечание: test-only legacy `migrate` harness не имеет отдельного target snapshot behavior, поэтому `v1` reference здесь отсутствует.
 
 - `MIG-402` `--no-start`.
   Ожидается:
   после успешного migrate application services остаются остановленными; success возможен только после post-check для требуемого подмножества runtime.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 - `MIG-403` Runtime return или post-check failure.
   Ожидается:
   destructive side effects уже могли произойти, но success не сообщается; runtime post-condition остаётся fail-closed.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 ### 5. Ошибки Destructive Path
 
 - `MIG-501` Target snapshot failure.
   Ожидается:
   destructive apply не стартует; runtime prepare не стартует; success не сообщается.
-  Статус: `internal v2`.
+  Статус: `internal v2`, `real CLI v2`.
 
 - `MIG-502` DB migrate failure.
   Ожидается:
   files apply не выполняется; runtime return блокируется; success не сообщается.
-  Статус: `internal v2`.
+  Статус: `internal v2`, `real CLI v2`.
 
 - `MIG-503` Files migrate failure.
   Ожидается:
   permission reconcile не выполняется; runtime return блокируется; success не сообщается.
-  Статус: `internal v2`.
+  Статус: `internal v2`, `real CLI v2`.
 
 - `MIG-504` Permission reconciliation failure.
   Ожидается:
   files уже могли быть восстановлены на disk, но runtime permission reconciliation ломается; runtime return блокируется; target app services остаются остановленными.
-  Статус: `подтверждено v1`, `internal v2`.
+  Статус: `подтверждено v1`, `internal v2`, `real CLI v2`.
 
 - `MIG-505` Missing artifact.
   Ожидается:
   fail closed до destructive runtime mutation.
-  Статус: `internal v2`.
+  Статус: `internal v2`, `real CLI v2`.
 
 - `MIG-506` Broken archive.
   Ожидается:
   fail closed; success не сообщается.
-  Статус: `internal v2`.
+  Статус: `internal v2`, `real CLI v2`.
 
 - `MIG-507` Checksum mismatch.
   Ожидается:
   fail closed до destructive runtime mutation.
-  Статус: `internal v2`.
+  Статус: `internal v2`, `real CLI v2`.
 
 ### 6. Legacy Divergences
 
@@ -237,9 +237,9 @@ Legacy facts, которые фиксируются только как referenc
   фиксируются только как reference facts и не становятся invariant.
   Статус: `legacy divergence`.
 
-## Первый Internal Slice
+## Internal Corpus
 
-Первый internal slice закрывает:
+Internal corpus закрывает:
 
 - automatic latest complete source selection
 - direct pair / db-only / files-only source selection
@@ -257,11 +257,12 @@ Legacy facts, которые фиксируются только как referenc
 
 - любые новые flags и режимы
 
-Следующий cutover lane дополнительно закрывает:
+Real CLI cutover lane дополнительно закрывает:
 
 - real CLI boundary через один `internal/app` owner
 - fail-closed запрет legacy selection routes на command surface
 - `MIG-201`, `MIG-202`, `MIG-203`, `MIG-204` на реальном command path
+- `MIG-205`, `MIG-206`, `MIG-401`, `MIG-501`, `MIG-502`, `MIG-503`, `MIG-505`, `MIG-506`, `MIG-507` на реальном command path
 - cutover acceptance lane для реального `migrate` CLI
 - удаление legacy `migrate` path из production graph; legacy остаётся только как test-only oracle
 
@@ -271,7 +272,7 @@ Black-box reference bundles из test-only legacy `migrate` harness описан
 
 Real CLI cutover bundles живут в `acceptance/v2/migrate/cutover/golden/`.
 
-## Статус После Первого Slice
+## Статус После Real CLI Cutover
 
 Уже подтверждены `v1` bundles:
 
@@ -324,29 +325,25 @@ Real CLI cutover bundles живут в `acceptance/v2/migrate/cutover/golden/`.
 - `MIG-202`
 - `MIG-203`
 - `MIG-204`
+- `MIG-205`
+- `MIG-206`
 - `MIG-207`
 - `MIG-208`
 - `MIG-301`
+- `MIG-401`
 - `MIG-402`
 - `MIG-403`
-- `MIG-504`
-
-Остальная real CLI matrix пока намеренно не дублирует весь internal corpus:
-
-- `MIG-205`
-- `MIG-206`
-- `MIG-401`
 - `MIG-501`
 - `MIG-502`
 - `MIG-503`
+- `MIG-504`
 - `MIG-505`
 - `MIG-506`
 - `MIG-507`
 
-Причина:
-этот cutover lane остаётся узким и злым: он доказывает новый boundary, запрещённые legacy routes и критические success/runtime semantics, не раздувая отдельный второй acceptance suite.
+Real CLI cutover corpus теперь закрывает все сценарии, которые раньше были доказаны только internal acceptance в текущем retained `migrate` наборе.
 
 ## Статус Slice
 
-Этот шаг уже переключает real CLI path на `migrate v2` boundary внутри `internal/app`.
+Real CLI path переключён на `migrate v2` boundary внутри `internal/app`.
 Legacy `migrate` больше не участвует в production wiring и остаётся только test-only oracle для `v1` reference bundles.
