@@ -73,13 +73,9 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	}
 }
 
-func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
+func TestLoadBackupConfigRequiresInlineDBPassword(t *testing.T) {
 	projectDir := t.TempDir()
-	passwordPath := filepath.Join(projectDir, "db.password")
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(passwordPath, []byte("file-secret\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.dev"), []byte(strings.Join([]string{
@@ -92,22 +88,21 @@ func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
-		"DB_PASSWORD_FILE=./db.password",
 		"DB_NAME=espocrm",
 		"",
 	}, "\n")), 0o644); err != nil {
 		t.Fatal(err)
 	}
 
-	cfg, err := LoadBackup(BackupRequest{
+	_, err := LoadBackup(BackupRequest{
 		Scope:      "dev",
 		ProjectDir: projectDir,
 	})
-	if err != nil {
-		t.Fatalf("LoadBackup failed: %v", err)
+	if err == nil {
+		t.Fatal("expected error")
 	}
-	if cfg.DBPassword != "file-secret" {
-		t.Fatalf("unexpected db password: %q", cfg.DBPassword)
+	if !strings.Contains(err.Error(), "DB_PASSWORD is required") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -142,18 +137,14 @@ func TestLoadRestoreConfigRequiresDBRootPassword(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	if !strings.Contains(err.Error(), "DB_ROOT_PASSWORD or DB_ROOT_PASSWORD_FILE is required") {
+	if !strings.Contains(err.Error(), "DB_ROOT_PASSWORD is required") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestLoadRestoreConfigReadsDBRootPasswordFile(t *testing.T) {
+func TestLoadRestoreConfigReadsInlineDBRootPassword(t *testing.T) {
 	projectDir := t.TempDir()
-	rootPasswordPath := filepath.Join(projectDir, "db.root.password")
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(rootPasswordPath, []byte("root-secret\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
@@ -169,7 +160,7 @@ func TestLoadRestoreConfigReadsDBRootPasswordFile(t *testing.T) {
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
-		"DB_ROOT_PASSWORD_FILE=./db.root.password",
+		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
 	}, "\n")), 0o644); err != nil {
@@ -191,48 +182,6 @@ func TestLoadRestoreConfigReadsDBRootPasswordFile(t *testing.T) {
 	}
 	if cfg.RuntimeUID != 33 || cfg.RuntimeGID != 44 {
 		t.Fatalf("unexpected runtime ownership: %d:%d", cfg.RuntimeUID, cfg.RuntimeGID)
-	}
-}
-
-func TestLoadRestoreConfigRejectsInlineAndFileDBRootPassword(t *testing.T) {
-	projectDir := t.TempDir()
-	rootPasswordPath := filepath.Join(projectDir, "db.root.password")
-	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(rootPasswordPath, []byte("root-secret\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
-		"ESPO_CONTOUR=prod",
-		"BACKUP_ROOT=./backups/prod",
-		"BACKUP_NAME_PREFIX=test-backup",
-		"BACKUP_RETENTION_DAYS=7",
-		"MIN_FREE_DISK_MB=1",
-		"ESPO_STORAGE_DIR=./runtime/prod/espo",
-		"ESPO_RUNTIME_UID=33",
-		"ESPO_RUNTIME_GID=33",
-		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
-		"DB_SERVICE=db",
-		"DB_USER=espocrm",
-		"DB_PASSWORD=db-secret",
-		"DB_ROOT_PASSWORD=root-secret",
-		"DB_ROOT_PASSWORD_FILE=./db.root.password",
-		"DB_NAME=espocrm",
-		"",
-	}, "\n")), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, err := LoadRestore(BackupRequest{
-		Scope:      "prod",
-		ProjectDir: projectDir,
-	})
-	if err == nil {
-		t.Fatal("expected error")
-	}
-	if !strings.Contains(err.Error(), "only one of DB_ROOT_PASSWORD or DB_ROOT_PASSWORD_FILE may be set") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

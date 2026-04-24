@@ -75,8 +75,11 @@ Contract:
 - `internal/manifest/` owns manifest validation and artifact path resolution.
 - Keep shell execution and `os.Environ()` confined to `internal/runtime/docker.go`.
 - Keep `DB_SERVICE` and `APP_SERVICES` explicit in the env contract; do not reintroduce guessed or defaulted service names.
-- Keep `DB_ROOT_PASSWORD` or `DB_ROOT_PASSWORD_FILE` explicit for restore-capable flows; do not fall back to `DB_USER` credentials for database reset.
+- Keep inline `DB_PASSWORD` and `DB_ROOT_PASSWORD` explicit in the shipped compose/env contract; do not claim file-based runtime secrets that `compose.yaml` does not consume.
+- Keep `DB_ROOT_PASSWORD` explicit for restore-capable flows; do not fall back to `DB_USER` credentials for database reset.
 - Keep `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID` explicit for restore-capable flows; do not guess runtime ownership from the image, container user, or current operator account.
+- Keep `compose.yaml`, `env/.env.*.example`, `README.md`, and `internal/config/` on one literal runtime contract; when one changes, update the others and the repository guards in `repository_test.go`.
+- Do not add decorative env keys to examples.
 - Prefer deletion over wrappers.
 - Fail closed when correctness is ambiguous.
 - Keep `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` in sync with the code.

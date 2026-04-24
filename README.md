@@ -67,7 +67,44 @@ make lint
 - `compose.yaml`
 - `.env.dev` and/or `.env.prod`
 
-Required env keys per scope:
+`compose.yaml` consumes these env keys directly:
+
+- `COMPOSE_PROJECT_NAME`
+- `ESPOCRM_IMAGE`
+- `MARIADB_TAG`
+- `DB_STORAGE_DIR`
+- `ESPO_STORAGE_DIR`
+- `DB_MEM_LIMIT`
+- `DB_CPUS`
+- `DB_PIDS_LIMIT`
+- `ESPO_MEM_LIMIT`
+- `ESPO_CPUS`
+- `ESPO_PIDS_LIMIT`
+- `DAEMON_MEM_LIMIT`
+- `DAEMON_CPUS`
+- `DAEMON_PIDS_LIMIT`
+- `WS_MEM_LIMIT`
+- `WS_CPUS`
+- `WS_PIDS_LIMIT`
+- `DOCKER_LOG_MAX_SIZE`
+- `DOCKER_LOG_MAX_FILE`
+- `APP_BIND_ADDRESS`
+- `APP_PORT`
+- `WS_BIND_ADDRESS`
+- `WS_PORT`
+- `SITE_URL`
+- `WS_PUBLIC_URL`
+- `DB_ROOT_PASSWORD`
+- `DB_NAME`
+- `DB_USER`
+- `DB_PASSWORD`
+- `ADMIN_USERNAME`
+- `ADMIN_PASSWORD`
+- `ESPO_DEFAULT_LANGUAGE`
+- `ESPO_TIME_ZONE`
+- `ESPO_LOGGER_LEVEL`
+
+`espops` validates these keys for every backup-capable scope:
 
 - `BACKUP_ROOT`
 - `BACKUP_NAME_PREFIX`
@@ -77,16 +114,16 @@ Required env keys per scope:
 - `APP_SERVICES`
 - `DB_SERVICE`
 - `DB_USER`
+- `DB_PASSWORD`
 - `DB_NAME`
-- one of `DB_PASSWORD` or `DB_PASSWORD_FILE`
 
 Additional required env keys for `restore`, `migrate`, and `smoke`:
 
-- one of `DB_ROOT_PASSWORD` or `DB_ROOT_PASSWORD_FILE`
+- `DB_ROOT_PASSWORD`
 - `ESPO_RUNTIME_UID`
 - `ESPO_RUNTIME_GID`
 
-Optional env keys:
+Optional `espops`-only keys:
 
 - `COMPOSE_FILE`
 - `ESPO_CONTOUR`
@@ -95,14 +132,18 @@ Example env files live under `env/`.
 
 Operator prerequisites:
 
+- Shipped examples and shipped Compose runtime use inline `DB_PASSWORD` and `DB_ROOT_PASSWORD`. File-based password env keys are not part of the runtime contract.
 - `BACKUP_ROOT` must already exist before running `doctor`, `backup`, `restore`, or `migrate`
 - `BACKUP_ROOT` must be writable by the operator account; `doctor` checks it but does not create or repair it
 - `BACKUP_NAME_PREFIX` is required for every backup-capable scope and is used directly for artifact names: `<BACKUP_NAME_PREFIX>_<YYYY-MM-DD_HH-MM-SS>.sql.gz`, `.tar.gz`, and `.manifest.json`
 - `MIN_FREE_DISK_MB` is required for every backup-capable scope, must be an integer greater than zero, and is checked before `backup` stops app services or creates backup artifacts
 - `BACKUP_RETENTION_DAYS` is required for every backup-capable scope, must be an integer greater than or equal to zero, and `0` disables retention cleanup explicitly
 - `ESPO_STORAGE_DIR` must already exist, must be the real storage directory for the selected scope, and must be clearable by the operator account before `restore` or `migrate`
+- Current MariaDB runtime target is `mariadb:11.4`; both shipped env examples set `MARIADB_TAG=11.4`, and the Docker integration fixture uses the same major/minor target
+- `APP_BIND_ADDRESS` and `WS_BIND_ADDRESS` are required. Shipped examples use `127.0.0.1` to avoid accidental publish-all. To expose on LAN or public interfaces, set an explicit host IP or `0.0.0.0` on purpose and update `SITE_URL` and `WS_PUBLIC_URL` to match
+- Current Compose runtime includes the websocket container. `APP_SERVICES` must explicitly list `espocrm,espocrm-daemon,espocrm-websocket`; there is no fallback that adds websocket automatically
+- Shared MariaDB baseline in `deploy/mariadb/z-custom.cnf` sets `innodb_buffer_pool_size=512M`. Shipped examples keep `DB_MEM_LIMIT` at or above that baseline (`768m` in dev and `1g` in prod); do not set `DB_MEM_LIMIT` below the buffer pool size
 - `smoke` does no setup, no pull, no cleanup, no retry, and no fallback; if a step fails, `smoke` fails
-- MariaDB native tooling target is `11.4 LTS`
 - Native tooling only: `docker compose`, `mariadb-dump`, `mariadb`, and Go stdlib archive/checksum handling
 - One command path only, with no service-name guessing or implicit service defaults
 - `DB_SERVICE` must name the exact Compose database service

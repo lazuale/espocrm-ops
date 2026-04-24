@@ -99,11 +99,11 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 		}
 	}
 
-	password, err := resolveEnvSecret(values, projectDir, envFile, "DB_PASSWORD", "DB_PASSWORD_FILE", true)
+	password, err := resolveRequiredInlineSecret(values, "DB_PASSWORD", envFile, true)
 	if err != nil {
 		return BackupConfig{}, err
 	}
-	rootPassword, err := resolveEnvSecret(values, projectDir, envFile, "DB_ROOT_PASSWORD", "DB_ROOT_PASSWORD_FILE", opts.requireRootPassword)
+	rootPassword, err := resolveRequiredInlineSecret(values, "DB_ROOT_PASSWORD", envFile, opts.requireRootPassword)
 	if err != nil {
 		return BackupConfig{}, err
 	}
@@ -180,32 +180,15 @@ func resolveProjectPath(projectDir, value string) string {
 	return filepath.Join(projectDir, filepath.Clean(value))
 }
 
-func resolveEnvSecret(values map[string]string, projectDir, envFile, inlineKey, fileKey string, required bool) (string, error) {
-	inline := strings.TrimSpace(values[inlineKey])
-	fileRef := strings.TrimSpace(values[fileKey])
-
-	switch {
-	case inline != "" && fileRef != "":
-		return "", fmt.Errorf("only one of %s or %s may be set in %s", inlineKey, fileKey, envFile)
-	case inline != "":
-		return inline, nil
-	case fileRef == "":
+func resolveRequiredInlineSecret(values map[string]string, key, envFile string, required bool) (string, error) {
+	value := strings.TrimSpace(values[key])
+	if value == "" {
 		if !required {
 			return "", nil
 		}
-		return "", fmt.Errorf("%s or %s is required in %s", inlineKey, fileKey, envFile)
+		return "", fmt.Errorf("%s is required in %s", key, envFile)
 	}
-
-	passwordPath := resolveProjectPath(projectDir, fileRef)
-	raw, err := os.ReadFile(passwordPath)
-	if err != nil {
-		return "", fmt.Errorf("read %s %s: %w", fileKey, passwordPath, err)
-	}
-	password := strings.TrimSpace(string(raw))
-	if password == "" {
-		return "", fmt.Errorf("%s %s is empty", fileKey, passwordPath)
-	}
-	return password, nil
+	return value, nil
 }
 
 func resolveAppServices(raw string) ([]string, error) {

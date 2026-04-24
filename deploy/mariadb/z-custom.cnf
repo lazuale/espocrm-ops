@@ -6,8 +6,8 @@ character-set-server=utf8mb4
 collation-server=utf8mb4_unicode_ci
 
 # InnoDB buffer pool size.
-# For a 1 vCPU / 4 GB RAM server this is a moderate working compromise.
-innodb_buffer_pool_size=1G
+# Shared baseline must stay below the smallest example DB_MEM_LIMIT.
+innodb_buffer_pool_size=512M
 
 # Redo log file size.
 innodb_log_file_size=256M

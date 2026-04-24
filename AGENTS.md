@@ -32,9 +32,11 @@
 - No guard theatre.
 - No fake machine-enforcement.
 - No new product surface.
+- No decorative env keys.
 - `DB_SERVICE` and `APP_SERVICES` are explicit runtime contract inputs, not inferred defaults.
 - `restore`, `migrate`, and `smoke` require an explicit MariaDB root secret for database reset; no fallback to `DB_USER`.
 - `restore`, `migrate`, and `smoke` require explicit `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`; do not guess runtime ownership from the image or current user.
+- Keep `compose.yaml`, env examples, `README.md`, and Go config validation on one literal contract.
 
 ## Core Flow
 - Resolve input.
