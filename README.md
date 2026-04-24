@@ -2,7 +2,7 @@
 
 `espops` is a small Go CLI for strict backup and recovery work around an EspoCRM Docker Compose deployment.
 
-The retained product surface is exactly:
+The product surface is exactly:
 
 - `doctor`
 - `backup`
@@ -75,7 +75,7 @@ Operator prerequisites:
 - `ESPO_STORAGE_DIR` must already exist and must be the real storage directory for the selected scope
 - MariaDB native tooling target is `11.4 LTS`
 - Native tooling only: `docker compose`, `mariadb-dump`, `mariadb`, and Go stdlib archive/checksum handling
-- No compatibility path, no fallback path, and no service-name guessing
+- One command path only, with no service-name guessing
 
 ## Minimal Safe Workflow
 
@@ -86,7 +86,7 @@ Prepare the target scope first:
 3. Ensure `ESPO_STORAGE_DIR` already exists and points at the correct scope storage.
 4. Run `espops doctor`.
 
-Then use the retained commands in this order:
+Then use the commands in this order:
 
 1. `espops backup`
    Backup stops app services while it creates a full backup set.
@@ -143,7 +143,7 @@ Migrate from one scope into another:
 - `cmd/espops/`: program entrypoint only
 - `internal/cli/`: root command surface, envelopes, and exit mapping
 - `internal/config/`: env-file loading and config validation
-- `internal/ops/`: retained operation workflows and post-checks
+- `internal/ops/`: operation workflows and post-checks
 - `internal/runtime/`: Docker Compose and MariaDB command execution
 - `internal/manifest/`: backup manifest contract and artifact resolution
 - `deploy/`: runtime tuning files used by `compose.yaml`

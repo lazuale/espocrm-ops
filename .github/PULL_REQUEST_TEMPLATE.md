@@ -1,10 +1,10 @@
-## Architecture Gate
+## PR Gate
 
-- [ ] This PR does not expand top-level `internal/app/*` production surface beyond the canonical boundary shape.
-- [ ] This PR does not introduce direct `internal/app -> internal/platform/*` imports.
-- [ ] This PR does not introduce a second owner for an existing operational semantic.
+- [ ] This PR does not add a second code path for existing product behavior.
+- [ ] This PR does not move shell execution outside `internal/runtime/docker.go`.
+- [ ] This PR does not expand the shipped command surface.
 
-If any statement above is false, the PR must be rejected or explicitly accompanied by a constitutional architecture change and a new formal compliance baseline.
+If any statement above is false, the PR must be rejected or accompanied by a direct repo-contract update in `AGENTS.md`, `README.md`, and `CONTRIBUTING.md`.
 
 ## Verification
 

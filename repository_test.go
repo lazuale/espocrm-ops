@@ -15,7 +15,7 @@ import (
 
 const modulePath = "github.com/lazuale/espocrm-ops"
 
-func TestRetainedInternalPackagesAreFlat(t *testing.T) {
+func TestInternalPackagesAreFlat(t *testing.T) {
 	got := listImportPaths(t, "list", "-f", "{{.ImportPath}}", "./internal/...")
 	want := []string{
 		modulePath + "/internal/cli",
@@ -142,15 +142,12 @@ func TestProductionShellExecutionSurfaceIsExplicit(t *testing.T) {
 	}
 }
 
-func TestAuthorityDocsDoNotDescribeRemovedLayout(t *testing.T) {
+func TestDocsUseOnlyCurrentInternalLayout(t *testing.T) {
 	root := repoRoot(t)
 	docs := []string{
+		"AGENTS.md",
 		"README.md",
 		"CONTRIBUTING.md",
-		"ARCHITECTURE.md",
-		"MICRO_MONOLITHS.md",
-		"REPO_COMPLIANCE_CHECKLIST.md",
-		"REPO_COMPLIANCE_BASELINE.md",
 	}
 	allowed := map[string]struct{}{
 		"internal/cli/":      {},
@@ -171,7 +168,7 @@ func TestAuthorityDocsDoNotDescribeRemovedLayout(t *testing.T) {
 		text := string(raw)
 		for _, match := range pattern.FindAllString(text, -1) {
 			if _, ok := allowed[match]; !ok {
-				t.Fatalf("doc %s contains unexpected internal layout reference %q", rel, match)
+				t.Fatalf("doc %s contains unexpected internal layout path %q", rel, match)
 			}
 		}
 	}

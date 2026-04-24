@@ -1,14 +1,14 @@
 # AGENTS
 
 ## Mission
-- Keep the retained core smaller, stricter, and more reliable.
+- Keep the product smaller, stricter, and more reliable.
 - Reliability first. Compactness next. Clarity after that.
-- The retained product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
+- The product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
 
 ## Authority
-- Repository authority is `AGENTS.md` -> `ARCHITECTURE.md` and `MICRO_MONOLITHS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ci.yml`.
-- `README.md` and `CONTRIBUTING.md` are practical docs. If they drift from the retained Go product, fix them.
-- If a non-authority doc conflicts with `AGENTS.md` or the retained Go product, ignore the non-authority doc.
+- Repository authority is `AGENTS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ci.yml`.
+- `README.md` and `CONTRIBUTING.md` are practical docs. If they drift from the Go product, fix them.
+- If a non-authority doc conflicts with `AGENTS.md` or the Go product, ignore the non-authority doc.
 
 ## Defaults
 - Block unless clearly safe.
@@ -18,12 +18,11 @@
 - No success before explicit post-check or health-check.
 
 ## Rules
-- `internal/` owns retained-core behavior.
+- `internal/` owns product behavior.
 - `cmd/espops/` owns the program entrypoint and command surface only.
-- No implicit micro-monolith split.
-- No implicit micro-monolith merge.
-- No cross-monolith caller edge outside `MICRO_MONOLITHS.md`.
-- No hidden fallback.
+- Keep one direct code path.
+- Keep package edges obvious and local.
+- No hidden alternate path.
 - No auto-repair.
 - No auto-normalization.
 - No silent recovery.
@@ -49,5 +48,5 @@
 
 ## Done
 - Keep authority surfaces in sync.
-- Keep `ARCHITECTURE.md`, `MICRO_MONOLITHS.md`, `CONTRIBUTING.md`, and compliance docs in sync.
+- Keep `README.md` and `CONTRIBUTING.md` in sync with the shipped tool.
 - Run `make ci` before claiming repository health after product, workflow, or contributor-path changes.

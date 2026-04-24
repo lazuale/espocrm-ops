@@ -2,7 +2,7 @@
 
 ## Core Expectation
 
-The retained Go product lives only in:
+The Go product lives only in:
 
 - `cmd/espops/`
 - `internal/cli/`
@@ -11,13 +11,11 @@ The retained Go product lives only in:
 - `internal/runtime/`
 - `internal/manifest/`
 
-Do not reintroduce a nested retained-package namespace or any deleted package family.
+Do not reintroduce a nested package namespace or any deleted package family.
 
 Do not add:
 
 - a second runtime
-- compatibility shims
-- fallback paths
 - auto-repair
 - hidden normalization
 - new product commands
@@ -27,7 +25,7 @@ Do not add:
 Recommended prerequisites:
 
 - Go `1.26.x`
-- Docker with Compose v2
+- Docker with the Compose plugin
 - `staticcheck`
 - `golangci-lint`
 
@@ -65,21 +63,20 @@ make ci
 - `cmd/espops/` owns only the process entrypoint.
 - `internal/cli/` owns command wiring, argument validation, JSON envelopes, and exit mapping.
 - `internal/config/` owns env-file parsing and config loading.
-- `internal/ops/` owns retained operational semantics and explicit post-checks.
+- `internal/ops/` owns operational semantics and explicit post-checks.
 - `internal/runtime/` owns Docker Compose and MariaDB process execution.
 - `internal/manifest/` owns manifest validation and artifact path resolution.
 - Keep shell execution and `os.Environ()` confined to `internal/runtime/docker.go`.
 - Prefer deletion over wrappers.
 - Fail closed when correctness is ambiguous.
-- Keep authority docs and compliance docs in sync with the retained code.
+- Keep `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` in sync with the code.
 - Do not claim a reliability improvement without end-to-end evidence.
 
 ## Review Gate
 
 - Reject any PR that reintroduces deleted packages or a second product root.
-- Reject any PR that expands the command surface beyond the retained five commands.
+- Reject any PR that expands the command surface beyond the five shipped commands.
 - Reject any PR that moves shell ownership outside `internal/runtime/docker.go`.
-- Reject any PR that splits retained ownership without updating [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
 - Reject any PR that leaves stale operator or contributor docs after changing product behavior.
 
 ## Typical Change Flow
@@ -87,7 +84,7 @@ make ci
 1. Make the Go change.
 2. Run the smallest relevant tests while iterating.
 3. Run `make ci` before claiming repository health.
-4. Update `ARCHITECTURE.md`, `MICRO_MONOLITHS.md`, `README.md`, `CONTRIBUTING.md`, and compliance docs when the retained graph or command behavior changes.
+4. Update `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` when the graph or command behavior changes.
 
 ## Repo Notes
 
