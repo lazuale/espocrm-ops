@@ -59,6 +59,9 @@ func TestSmokeCLIJSONSuccess(t *testing.T) {
 	manifestPath := requireJSONString(t, obj, "result", "manifest")
 	restoreSnapshot := requireJSONString(t, obj, "result", "restore_snapshot_manifest")
 	migrateSnapshot := requireJSONString(t, obj, "result", "migrate_snapshot_manifest")
+	if manifestPath == restoreSnapshot || manifestPath == migrateSnapshot || restoreSnapshot == migrateSnapshot {
+		t.Fatalf("expected distinct manifest paths, got manifest=%s restore=%s migrate=%s", manifestPath, restoreSnapshot, migrateSnapshot)
+	}
 
 	for _, path := range []string{manifestPath, restoreSnapshot, migrateSnapshot} {
 		if _, err := ops.VerifyBackup(context.Background(), path); err != nil {
@@ -90,6 +93,42 @@ func TestSmokeCLIJSONSuccess(t *testing.T) {
 	assertFileBody(t, filepath.Join(projectDir, "runtime", "prod", "espo", "source.txt"), "source\n")
 	if _, err := os.Stat(filepath.Join(projectDir, "runtime", "prod", "espo", "old.txt")); !os.IsNotExist(err) {
 		t.Fatalf("expected old target file removed, got %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestSmokeCLIJSONUsageFailure(t *testing.T) {
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{
+		"smoke",
+		"--to-scope", "prod",
+		"--project-dir", t.TempDir(),
+	}, stdout, stderr)
+	if exitCode != exitUsage {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if command := requireJSONString(t, obj, "command"); command != "smoke" {
+		t.Fatalf("unexpected command: %s", command)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if message := requireJSONString(t, obj, "message"); message != "smoke failed" {
+		t.Fatalf("unexpected message: %s", message)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); errMessage != "--from-scope is required" {
+		t.Fatalf("unexpected error message: %s", errMessage)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
@@ -153,6 +192,53 @@ func TestSmokeCLIJSONFailsClosedAtTargetDoctor(t *testing.T) {
 	}
 	if len(sourceEntries) != 0 {
 		t.Fatalf("expected no backup artifacts after target doctor failure, got %v", len(sourceEntries))
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestSmokeCLIJSONFailsClosedAtBackup(t *testing.T) {
+	projectDir := smokeProjectDir(t, true)
+
+	prependSmokeFakeDocker(t)
+	t.Setenv("TEST_SMOKE_DOCKER_PS_OUTPUT", smokeDockerPSOutput())
+	t.Setenv("TEST_SMOKE_DOCKER_FAIL_DUMP", "1")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{
+		"smoke",
+		"--from-scope", "dev",
+		"--to-scope", "prod",
+		"--project-dir", projectDir,
+	}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if step := requireJSONString(t, obj, "result", "failed_step"); step != "backup" {
+		t.Fatalf("unexpected failed_step: %s", step)
+	}
+	steps := requireJSONObjectArray(t, obj, "result", "steps")
+	if len(steps) != 3 {
+		t.Fatalf("unexpected steps: %#v", steps)
+	}
+	if got := requireJSONStringFromObject(t, steps[2], "name"); got != "backup" {
+		t.Fatalf("unexpected third step: %s", got)
+	}
+	if requireJSONBoolFromObject(t, steps[2], "ok") {
+		t.Fatal("expected backup step to fail")
+	}
+
+	devManifestDir := filepath.Join(projectDir, "backups", "dev", "manifests")
+	entries, err := os.ReadDir(devManifestDir)
+	if err == nil && len(entries) > 0 {
+		t.Fatalf("expected no completed backup manifests after backup failure, got %d", len(entries))
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
@@ -302,6 +388,10 @@ case "${1:-}" in
     shift
     case "${1:-}" in
       mariadb-dump)
+        if [[ "${TEST_SMOKE_DOCKER_FAIL_DUMP:-}" == "1" ]]; then
+          printf 'dump failed\n' >&2
+          exit 1
+        fi
         printf 'create table smoke(id int);\n'
         exit 0
         ;;
