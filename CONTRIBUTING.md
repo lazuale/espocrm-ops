@@ -18,7 +18,7 @@ Do not add:
 - a second runtime
 - auto-repair
 - hidden normalization
-- new product commands
+- product commands beyond the shipped set
 
 ## Local Setup
 
@@ -59,7 +59,7 @@ make ci
 
 ## Working Rules
 
-- Keep the product surface limited to `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
+- Keep the product surface limited to `doctor`, `backup`, `backup verify`, `restore`, `migrate`, and `smoke`.
 - `cmd/espops/` owns only the process entrypoint.
 - `internal/cli/` owns command wiring, argument validation, JSON envelopes, and exit mapping.
 - `internal/config/` owns env-file parsing and config loading.
@@ -75,7 +75,7 @@ make ci
 ## Review Gate
 
 - Reject any PR that reintroduces deleted packages or a second product root.
-- Reject any PR that expands the command surface beyond the five shipped commands.
+- Reject any PR that expands the command surface beyond the six shipped commands.
 - Reject any PR that moves shell ownership outside `internal/runtime/docker.go`.
 - Reject any PR that leaves stale operator or contributor docs after changing product behavior.
 

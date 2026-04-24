@@ -3,7 +3,7 @@
 ## Mission
 - Keep the product smaller, stricter, and more reliable.
 - Reliability first. Compactness next. Clarity after that.
-- The product is exactly `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
+- The product is exactly `doctor`, `backup`, `backup verify`, `restore`, `migrate`, and `smoke`.
 
 ## Authority
 - Repository authority is `AGENTS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ci.yml`.

@@ -9,6 +9,7 @@ The product surface is exactly:
 - `backup verify`
 - `restore`
 - `migrate`
+- `smoke`
 
 Every product command writes one structured JSON result to `stdout` on success or failure.
 
@@ -73,6 +74,7 @@ Operator prerequisites:
 - `BACKUP_ROOT` must already exist before running `doctor`, `backup`, `restore`, or `migrate`
 - `BACKUP_ROOT` must be writable by the operator account; `doctor` checks it but does not create or repair it
 - `ESPO_STORAGE_DIR` must already exist, must be the real storage directory for the selected scope, and must be clearable by the operator account before `restore` or `migrate`
+- `smoke` does no setup, no pull, no cleanup, no retry, and no fallback; if a step fails, `smoke` fails
 - MariaDB native tooling target is `11.4 LTS`
 - Native tooling only: `docker compose`, `mariadb-dump`, `mariadb`, and Go stdlib archive/checksum handling
 - One command path only, with no service-name guessing
@@ -96,6 +98,11 @@ Then use the commands in this order:
    Restore is destructive for the target scope. It verifies the source manifest first and creates a target snapshot before mutation.
 4. `espops migrate`
    Migrate is thin composition over verified restore flow, not a separate engine.
+
+For one explicit fixed-path operator check across both scopes:
+
+1. `espops smoke`
+   Smoke runs `doctor source`, `doctor target`, `backup`, `backup verify`, `restore`, and `migrate` in that order. It uses the fresh backup manifest it just created and stops on the first failure.
 
 ## Command Surface
 
@@ -136,6 +143,12 @@ Migrate from one scope into another:
 
 ```bash
 ./bin/espops migrate --from-scope dev --to-scope prod --project-dir /path/to/project --manifest /path/to/manifest.json
+```
+
+Run the fixed smoke path:
+
+```bash
+./bin/espops smoke --from-scope dev --to-scope prod --project-dir /path/to/project
 ```
 
 ## Repository Layout
