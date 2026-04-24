@@ -175,6 +175,16 @@ case "${1:-}" in
       exit 1
     fi
     shift
+    if [[ "${1:-}" != "-e" ]]; then
+      printf 'expected -e, got %s\n' "${1:-}" >&2
+      exit 1
+    fi
+    shift
+    if [[ "${1:-}" != "MYSQL_PWD=db-secret" ]]; then
+      printf 'unexpected exec env: %s\n' "${1:-}" >&2
+      exit 1
+    fi
+    shift
     if [[ "${1:-}" != "db" ]]; then
       printf 'unexpected service: %s\n' "${1:-}" >&2
       exit 1

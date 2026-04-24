@@ -70,7 +70,7 @@ func TestDockerComposeDumpDatabaseRunsMariadbDump(t *testing.T) {
 	}
 
 	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T db mariadb-dump --single-transaction --quick --routines --triggers --events -u espocrm espocrm") {
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD=db-secret db mariadb-dump --single-transaction --quick --routines --triggers --events -u espocrm espocrm") {
 		t.Fatalf("unexpected docker log:\n%s", log)
 	}
 
@@ -188,6 +188,25 @@ func TestDockerComposeServicesRunsComposePS(t *testing.T) {
 	}
 }
 
+func TestDockerComposeServicesAcceptsJSONLines(t *testing.T) {
+	projectDir := t.TempDir()
+	installFakeDocker(t)
+	t.Setenv("TEST_DOCKER_PS_OUTPUT", "{\"Service\":\"db\"}\n{\"Service\":\"espocrm\"}\n")
+
+	rt := DockerCompose{}
+	services, err := rt.Services(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	})
+	if err != nil {
+		t.Fatalf("Services failed: %v", err)
+	}
+	if len(services) != 2 || services[0].Name != "db" || services[1].Name != "espocrm" {
+		t.Fatalf("unexpected services: %#v", services)
+	}
+}
+
 func TestDockerComposeDBPingRunsMariadbSelect1(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
@@ -207,7 +226,7 @@ func TestDockerComposeDBPingRunsMariadbSelect1(t *testing.T) {
 	}
 
 	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T db mariadb -u espocrm espocrm -e SELECT 1;") {
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD=db-secret db mariadb -u espocrm espocrm -e SELECT 1;") {
 		t.Fatalf("unexpected docker log:\n%s", log)
 	}
 }
@@ -233,7 +252,7 @@ func TestDockerComposeRestoreDatabaseRunsMariadb(t *testing.T) {
 	}
 
 	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T db mariadb -u espocrm espocrm") {
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD=db-secret db mariadb -u espocrm espocrm") {
 		t.Fatalf("unexpected docker log:\n%s", log)
 	}
 	if body := mustReadFile(t, stdinLogPath); body != "create table restored(id int);\n" {
@@ -309,16 +328,18 @@ case "${1:-}" in
     shift
     [[ "${1:-}" == "-T" ]] || exit 1
     shift
+    [[ "${1:-}" == "-e" ]] || exit 1
+    shift
+    [[ "${1:-}" == "MYSQL_PWD=db-secret" ]] || exit 1
+    shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
     case "${1:-}" in
       mariadb-dump)
-        [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
         printf 'create table test(id int);\n'
         exit 0
         ;;
       mariadb)
-        [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
         for arg in "$@"; do
           if [[ "$arg" == "-e" ]]; then
             exit 0
@@ -328,7 +349,6 @@ case "${1:-}" in
         exit 0
         ;;
     esac
-    [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     exit 1
     ;;
   stop|start)

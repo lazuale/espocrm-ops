@@ -46,6 +46,9 @@ func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, 
 		return result, verifyErr
 	}
 	result.Manifest = verifyResult.Manifest
+	if err := ensureRestoreStorageClearable(cfg.StorageDir); err != nil {
+		return result, ioError("restore storage target is not clearable", err)
+	}
 
 	snapshotResult, snapshotErr := Backup(ctx, cfg, rt, now)
 	if snapshotErr != nil {
@@ -252,6 +255,35 @@ func ensureRestoreStorageDir(path string) error {
 		return fmt.Errorf("storage dir must be a directory")
 	}
 	return nil
+}
+
+func ensureRestoreStorageClearable(path string) error {
+	if err := ensureRestoreStorageDir(path); err != nil {
+		return err
+	}
+
+	return filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if !entry.IsDir() {
+			return nil
+		}
+
+		probe, err := os.CreateTemp(current, ".espops-clearable-*")
+		if err != nil {
+			return err
+		}
+		probePath := probe.Name()
+		if err := probe.Close(); err != nil {
+			_ = os.Remove(probePath)
+			return err
+		}
+		if err := os.Remove(probePath); err != nil {
+			return err
+		}
+		return nil
+	})
 }
 
 func clearDirectoryContents(path string) error {

@@ -104,7 +104,7 @@ func TestRestoreDBFailureAttemptsStart(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
-func TestRestoreFilesFailureAttemptsStart(t *testing.T) {
+func TestRestoreUnclearableStorageFailsBeforeMutation(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
 	if err := os.Chmod(storageDir, 0o555); err != nil {
@@ -120,13 +120,46 @@ func TestRestoreFilesFailureAttemptsStart(t *testing.T) {
 
 	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
 	assertVerifyErrorKind(t, err, ErrorKindIO)
-	if !strings.Contains(err.Error(), "files restore failed") {
+	if !strings.Contains(err.Error(), "restore storage target is not clearable") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if result.SnapshotManifest == "" {
-		t.Fatal("expected snapshot manifest")
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreNestedUnclearableStorageFailsBeforeMutation(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	nestedDir := filepath.Join(storageDir, "nested")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(nestedDir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		_ = os.Chmod(nestedDir, 0o755)
+	}()
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "restore storage target is not clearable") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+	if err := rt.requireCalls(); err != nil {
 		t.Fatal(err)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")

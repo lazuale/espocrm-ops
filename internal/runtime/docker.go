@@ -42,8 +42,8 @@ func (DockerCompose) Services(ctx context.Context, target Target) ([]Service, er
 		return nil, err
 	}
 
-	var services []Service
-	if err := json.Unmarshal(stdout.Bytes(), &services); err != nil {
+	services, err := decodeServices(stdout.Bytes())
+	if err != nil {
 		return nil, fmt.Errorf("decode docker compose ps output: %w", err)
 	}
 	return services, nil
@@ -90,9 +90,8 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 
 	if err := runCompose(ctx, target, runOptions{
 		stdout: gz,
-		env:    []string{"MYSQL_PWD=" + target.DBPassword},
 	},
-		"exec", "-T", service,
+		"exec", "-T", "-e", "MYSQL_PWD="+target.DBPassword, service,
 		"mariadb-dump",
 		"--single-transaction",
 		"--quick",
@@ -115,9 +114,8 @@ func (DockerCompose) DBPing(ctx context.Context, target Target) error {
 	}
 
 	return runCompose(ctx, target, runOptions{
-		env: []string{"MYSQL_PWD=" + target.DBPassword},
 	},
-		"exec", "-T", service,
+		"exec", "-T", "-e", "MYSQL_PWD="+target.DBPassword, service,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
@@ -133,9 +131,8 @@ func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, reader 
 
 	return runCompose(ctx, target, runOptions{
 		stdin: reader,
-		env:   []string{"MYSQL_PWD=" + target.DBPassword},
 	},
-		"exec", "-T", service,
+		"exec", "-T", "-e", "MYSQL_PWD="+target.DBPassword, service,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
@@ -205,4 +202,33 @@ func closeResource(closer io.Closer, errp *error) {
 	if closeErr := closer.Close(); closeErr != nil && *errp == nil {
 		*errp = closeErr
 	}
+}
+
+func decodeServices(raw []byte) ([]Service, error) {
+	raw = bytes.TrimSpace(raw)
+	if len(raw) == 0 {
+		return nil, io.ErrUnexpectedEOF
+	}
+
+	if raw[0] == '[' {
+		var services []Service
+		if err := json.Unmarshal(raw, &services); err != nil {
+			return nil, err
+		}
+		return services, nil
+	}
+
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	services := make([]Service, 0, 4)
+	for {
+		var service Service
+		if err := decoder.Decode(&service); err != nil {
+			if err == io.EOF {
+				break
+			}
+			return nil, err
+		}
+		services = append(services, service)
+	}
+	return services, nil
 }

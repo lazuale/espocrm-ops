@@ -243,6 +243,10 @@ case "${1:-}" in
     shift
     [[ "${1:-}" == "-T" ]] || exit 1
     shift
+    [[ "${1:-}" == "-e" ]] || exit 1
+    shift
+    [[ "${1:-}" == "MYSQL_PWD=db-secret" ]] || exit 1
+    shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
     case "${1:-}" in
