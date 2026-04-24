@@ -10,7 +10,9 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"syscall"
 	"time"
 
 	config "github.com/lazuale/espocrm-ops/internal/config"
@@ -41,6 +43,23 @@ type backupLayout struct {
 
 const serviceReturnTimeout = 30 * time.Second
 
+const backupSetTimestampFormat = "2006-01-02_15-04-05"
+
+var (
+	backupDiskFreeBytes = defaultBackupDiskFreeBytes
+	backupRemovePath    = os.Remove
+)
+
+type retentionTarget struct {
+	base          string
+	createdAt     time.Time
+	manifestPath  string
+	dbPath        string
+	dbSidecarPath string
+	filesPath     string
+	filesSidecar  string
+}
+
 func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
 	if rt == nil {
 		return BackupResult{}, runtimeError("backup runtime is required", nil)
@@ -53,7 +72,7 @@ func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now 
 	}
 	now = now.UTC()
 
-	layout := newBackupLayout(cfg.BackupRoot, cfg.Scope, now)
+	layout := newBackupLayout(cfg.BackupRoot, cfg.BackupNamePrefix, now)
 	result = BackupResult{
 		Manifest:    layout.ManifestJSON,
 		DBBackup:    layout.DBArtifact,
@@ -112,6 +131,9 @@ func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now 
 	}
 	if err := ensureTargetsAbsent(layout); err != nil {
 		return result, artifactError("backup target already exists", err)
+	}
+	if err := ensureBackupFreeDisk(cfg.BackupRoot, cfg.MinFreeDiskMB); err != nil {
+		return result, ioError("backup free disk preflight failed", err)
 	}
 	if err := rt.StopServices(ctx, target, cfg.AppServices); err != nil {
 		return result, runtimeError("failed to stop app services", err)
@@ -212,11 +234,15 @@ func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now 
 	}
 
 	verified = true
-	return BackupResult{
+	result = BackupResult{
 		Manifest:    verifyResult.Manifest,
 		DBBackup:    verifyResult.DBBackup,
 		FilesBackup: verifyResult.FilesBackup,
-	}, nil
+	}
+	if err := runBackupRetention(ctx, cfg, layout, now); err != nil {
+		return result, err
+	}
+	return result, nil
 }
 
 func validateBackupConfig(cfg config.BackupConfig) error {
@@ -229,6 +255,7 @@ func validateBackupConfig(cfg config.BackupConfig) error {
 		{name: "compose file", value: cfg.ComposeFile},
 		{name: "env file", value: cfg.EnvFile},
 		{name: "BACKUP_ROOT", value: cfg.BackupRoot},
+		{name: "BACKUP_NAME_PREFIX", value: cfg.BackupNamePrefix},
 		{name: "ESPO_STORAGE_DIR", value: cfg.StorageDir},
 		{name: "DB_SERVICE", value: cfg.DBService},
 		{name: "DB_USER", value: cfg.DBUser},
@@ -247,11 +274,17 @@ func validateBackupConfig(cfg config.BackupConfig) error {
 			return fmt.Errorf("APP_SERVICES contains empty service name")
 		}
 	}
+	if cfg.MinFreeDiskMB <= 0 {
+		return fmt.Errorf("MIN_FREE_DISK_MB must be > 0")
+	}
+	if cfg.BackupRetentionDays < 0 {
+		return fmt.Errorf("BACKUP_RETENTION_DAYS must be >= 0")
+	}
 	return nil
 }
 
-func newBackupLayout(root, scope string, createdAt time.Time) backupLayout {
-	base := fmt.Sprintf("%s_%s", strings.TrimSpace(scope), createdAt.UTC().Format("2006-01-02_15-04-05"))
+func newBackupLayout(root, prefix string, createdAt time.Time) backupLayout {
+	base := fmt.Sprintf("%s_%s", prefix, createdAt.UTC().Format(backupSetTimestampFormat))
 	dbArtifact := filepath.Join(root, "db", base+".sql.gz")
 	filesArtifact := filepath.Join(root, "files", base+".tar.gz")
 	return backupLayout{
@@ -295,10 +328,36 @@ func ensureTargetsAbsent(layout backupLayout) error {
 	return nil
 }
 
+func ensureBackupFreeDisk(path string, minFreeDiskMB int) error {
+	freeBytes, err := backupDiskFreeBytes(path)
+	if err != nil {
+		return err
+	}
+
+	requiredBytes := uint64(minFreeDiskMB) * 1024 * 1024
+	if freeBytes < requiredBytes {
+		return fmt.Errorf(
+			"backup root free space %d MiB is below MIN_FREE_DISK_MB=%d",
+			freeBytes/(1024*1024),
+			minFreeDiskMB,
+		)
+	}
+
+	return nil
+}
+
+func defaultBackupDiskFreeBytes(path string) (uint64, error) {
+	var stat syscall.Statfs_t
+	if err := syscall.Statfs(path, &stat); err != nil {
+		return 0, err
+	}
+	return stat.Bavail * uint64(stat.Bsize), nil
+}
+
 func removePaths(paths []string) error {
 	var cleanupErr error
 	for _, path := range paths {
-		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
+		if err := backupRemovePath(path); err != nil && !os.IsNotExist(err) {
 			cleanupErr = errors.Join(cleanupErr, err)
 		}
 	}
@@ -418,6 +477,145 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 
 func runtimeError(message string, err error) error {
 	return &VerifyError{Kind: ErrorKindRuntime, Message: message, Err: err}
+}
+
+func runBackupRetention(ctx context.Context, cfg config.BackupConfig, current backupLayout, now time.Time) error {
+	if cfg.BackupRetentionDays == 0 {
+		return nil
+	}
+	if err := ctx.Err(); err != nil {
+		return ioError("backup retention interrupted", err)
+	}
+
+	cutoff := now.UTC().AddDate(0, 0, -cfg.BackupRetentionDays)
+	targets, err := planBackupRetention(cfg.BackupRoot, cfg.BackupNamePrefix, current, cutoff)
+	if err != nil {
+		return err
+	}
+	for _, target := range targets {
+		if err := ctx.Err(); err != nil {
+			return ioError("backup retention interrupted", err)
+		}
+		if err := removeRetentionTarget(target); err != nil {
+			return ioError("backup retention cleanup failed", err)
+		}
+	}
+	return nil
+}
+
+func planBackupRetention(root, prefix string, current backupLayout, cutoff time.Time) ([]retentionTarget, error) {
+	entries, err := os.ReadDir(filepath.Join(root, "manifests"))
+	if err != nil {
+		return nil, ioError("backup retention scan failed", err)
+	}
+
+	currentBase := strings.TrimSuffix(filepath.Base(current.ManifestJSON), ".manifest.json")
+	targets := make([]retentionTarget, 0)
+	for _, entry := range entries {
+		if entry.IsDir() {
+			continue
+		}
+
+		name := entry.Name()
+		if !strings.HasSuffix(name, ".manifest.json") {
+			continue
+		}
+
+		base := strings.TrimSuffix(name, ".manifest.json")
+		createdAt, matchedPrefix, err := parseBackupSetTimestamp(prefix, base)
+		if err != nil {
+			return nil, artifactError("backup retention cleanup blocked", fmt.Errorf("manifest %q is suspicious: %w", name, err))
+		}
+		if !matchedPrefix || base == currentBase || !createdAt.Before(cutoff) {
+			continue
+		}
+
+		target, err := validateRetentionTarget(root, filepath.Join(root, "manifests", name), base, createdAt)
+		if err != nil {
+			return nil, err
+		}
+		targets = append(targets, target)
+	}
+
+	sort.Slice(targets, func(i, j int) bool {
+		if targets[i].createdAt.Equal(targets[j].createdAt) {
+			return targets[i].base < targets[j].base
+		}
+		return targets[i].createdAt.Before(targets[j].createdAt)
+	})
+	return targets, nil
+}
+
+func parseBackupSetTimestamp(prefix, base string) (time.Time, bool, error) {
+	prefix = strings.TrimSpace(prefix)
+	switch {
+	case !strings.HasPrefix(base, prefix+"_"):
+		return time.Time{}, false, nil
+	case base == prefix+"_":
+		return time.Time{}, true, fmt.Errorf("missing timestamp")
+	}
+
+	createdAt, err := time.Parse(backupSetTimestampFormat, strings.TrimPrefix(base, prefix+"_"))
+	if err != nil {
+		return time.Time{}, true, fmt.Errorf("invalid timestamp")
+	}
+	return createdAt.UTC(), true, nil
+}
+
+func validateRetentionTarget(root, manifestPath, base string, createdAt time.Time) (retentionTarget, error) {
+	target := retentionTarget{
+		base:          base,
+		createdAt:     createdAt,
+		manifestPath:  manifestPath,
+		dbPath:        filepath.Join(root, "db", base+".sql.gz"),
+		dbSidecarPath: filepath.Join(root, "db", base+".sql.gz.sha256"),
+		filesPath:     filepath.Join(root, "files", base+".tar.gz"),
+		filesSidecar:  filepath.Join(root, "files", base+".tar.gz.sha256"),
+	}
+
+	for _, path := range []string{
+		target.manifestPath,
+		target.dbPath,
+		target.dbSidecarPath,
+		target.filesPath,
+		target.filesSidecar,
+	} {
+		if err := ensureNonEmptyFile(path); err != nil {
+			return retentionTarget{}, artifactError("backup retention cleanup blocked", fmt.Errorf("backup set %q is incomplete: %w", base, err))
+		}
+	}
+
+	loadedManifest, err := manifest.Load(target.manifestPath)
+	if err != nil {
+		return retentionTarget{}, manifestError("backup retention cleanup blocked", err)
+	}
+	if err := manifest.Validate(target.manifestPath, loadedManifest); err != nil {
+		return retentionTarget{}, manifestError("backup retention cleanup blocked", err)
+	}
+	paths, err := manifest.ResolveArtifacts(target.manifestPath, loadedManifest)
+	if err != nil {
+		return retentionTarget{}, manifestError("backup retention cleanup blocked", err)
+	}
+	if paths.DBPath != target.dbPath || paths.DBSidecarPath != target.dbSidecarPath || paths.FilesPath != target.filesPath || paths.FilesSidecarPath != target.filesSidecar {
+		return retentionTarget{}, artifactError("backup retention cleanup blocked", fmt.Errorf("backup set %q manifest does not match current layout", base))
+	}
+
+	return target, nil
+}
+
+func removeRetentionTarget(target retentionTarget) error {
+	for _, path := range []string{
+		target.dbSidecarPath,
+		target.dbPath,
+		target.filesSidecar,
+		target.filesPath,
+		target.manifestPath,
+	} {
+		if err := backupRemovePath(path); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func combineServiceReturnError(primary error, startErr error) error {

@@ -30,6 +30,9 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
 		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
@@ -114,6 +117,9 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
 		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
@@ -177,6 +183,9 @@ func TestRestoreCLIJSONRejectsManifestFromDifferentScope(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
 		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
@@ -230,6 +239,9 @@ func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
 		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
@@ -288,6 +300,9 @@ func TestRestoreCLIJSONUsageFailureWhenRuntimeOwnershipMissing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
@@ -343,6 +358,9 @@ func TestRestoreCLIJSONOwnershipFailureDoesNotRevealSecrets(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=" + strconv.Itoa(os.Geteuid()+1),
 		"ESPO_RUNTIME_GID=" + strconv.Itoa(os.Getegid()+1),

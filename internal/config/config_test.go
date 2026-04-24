@@ -17,6 +17,9 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
@@ -43,6 +46,15 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	}
 	if cfg.BackupRoot != filepath.Join(projectDir, "backups", "prod") {
 		t.Fatalf("unexpected backup root: %s", cfg.BackupRoot)
+	}
+	if cfg.BackupNamePrefix != "test-backup" {
+		t.Fatalf("unexpected backup name prefix: %s", cfg.BackupNamePrefix)
+	}
+	if cfg.BackupRetentionDays != 7 {
+		t.Fatalf("unexpected backup retention: %d", cfg.BackupRetentionDays)
+	}
+	if cfg.MinFreeDiskMB != 1 {
+		t.Fatalf("unexpected min free disk: %d", cfg.MinFreeDiskMB)
 	}
 	if cfg.StorageDir != filepath.Join(projectDir, "runtime", "prod", "espo") {
 		t.Fatalf("unexpected storage dir: %s", cfg.StorageDir)
@@ -73,6 +85,9 @@ func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.dev"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=dev",
 		"BACKUP_ROOT=./backups/dev",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/dev/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
@@ -104,6 +119,9 @@ func TestLoadRestoreConfigRequiresDBRootPassword(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=33",
 		"ESPO_RUNTIME_GID=33",
@@ -141,6 +159,9 @@ func TestLoadRestoreConfigReadsDBRootPasswordFile(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=33",
 		"ESPO_RUNTIME_GID=44",
@@ -185,6 +206,9 @@ func TestLoadRestoreConfigRejectsInlineAndFileDBRootPassword(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=33",
 		"ESPO_RUNTIME_GID=33",
@@ -220,6 +244,9 @@ func TestLoadRestoreConfigRequiresRuntimeOwnership(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
@@ -252,6 +279,9 @@ func TestLoadRestoreConfigRejectsNegativeRuntimeUID(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=-1",
 		"ESPO_RUNTIME_GID=33",
@@ -286,6 +316,9 @@ func TestLoadRestoreConfigRejectsNonNumericRuntimeGID(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=33",
 		"ESPO_RUNTIME_GID=group",
@@ -322,6 +355,9 @@ func TestLoadBackupConfigUsesComposeFileFromEnv(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"COMPOSE_FILE=./compose.prod.yaml",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
@@ -353,6 +389,9 @@ func TestLoadBackupConfigUsesAppServicesFromEnv(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=web,worker",
 		"DB_SERVICE=database",
@@ -388,6 +427,9 @@ func TestLoadBackupConfigMissingDBServiceFails(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=web,worker",
 		"DB_USER=espocrm",
@@ -419,6 +461,9 @@ func TestLoadBackupConfigMissingAppServicesFails(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -469,5 +514,260 @@ func TestLoadBackupConfigMissingRequiredEnvValue(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "BACKUP_ROOT is required") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadBackupConfigParsesBackupNamePrefix(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=prod.snapshot-01",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=128",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=web,worker",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+
+	cfg, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	if cfg.BackupNamePrefix != "prod.snapshot-01" {
+		t.Fatalf("unexpected backup name prefix: %s", cfg.BackupNamePrefix)
+	}
+}
+
+func TestLoadBackupConfigMissingBackupNamePrefixFails(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=128",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=web,worker",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+
+	_, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "BACKUP_NAME_PREFIX is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadBackupConfigRejectsUnsafeBackupNamePrefix(t *testing.T) {
+	testCases := []struct {
+		name    string
+		envLine string
+	}{
+		{name: "path_traversal", envLine: "BACKUP_NAME_PREFIX=../prod"},
+		{name: "slash", envLine: "BACKUP_NAME_PREFIX=bad/name"},
+		{name: "space", envLine: "BACKUP_NAME_PREFIX=\"bad name\""},
+		{name: "dot", envLine: "BACKUP_NAME_PREFIX=."},
+		{name: "dotdot", envLine: "BACKUP_NAME_PREFIX=.."},
+		{name: "too_long", envLine: "BACKUP_NAME_PREFIX=" + strings.Repeat("a", 81)},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			projectDir := t.TempDir()
+			writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+				"ESPO_CONTOUR=prod",
+				"BACKUP_ROOT=./backups/prod",
+				tc.envLine,
+				"BACKUP_RETENTION_DAYS=7",
+				"MIN_FREE_DISK_MB=128",
+				"ESPO_STORAGE_DIR=./runtime/prod/espo",
+				"APP_SERVICES=web,worker",
+				"DB_SERVICE=db",
+				"DB_USER=espocrm",
+				"DB_PASSWORD=db-secret",
+				"DB_NAME=espocrm",
+			})
+
+			_, err := LoadBackup(BackupRequest{
+				Scope:      "prod",
+				ProjectDir: projectDir,
+			})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "BACKUP_NAME_PREFIX") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadBackupConfigMissingMinFreeDiskFails(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=web,worker",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+
+	_, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "MIN_FREE_DISK_MB is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadBackupConfigRejectsInvalidMinFreeDisk(t *testing.T) {
+	for _, value := range []string{"0", "-1", "abc"} {
+		t.Run(value, func(t *testing.T) {
+			projectDir := t.TempDir()
+			writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+				"ESPO_CONTOUR=prod",
+				"BACKUP_ROOT=./backups/prod",
+				"BACKUP_NAME_PREFIX=test-backup",
+				"BACKUP_RETENTION_DAYS=7",
+				"MIN_FREE_DISK_MB=" + value,
+				"ESPO_STORAGE_DIR=./runtime/prod/espo",
+				"APP_SERVICES=web,worker",
+				"DB_SERVICE=db",
+				"DB_USER=espocrm",
+				"DB_PASSWORD=db-secret",
+				"DB_NAME=espocrm",
+			})
+
+			_, err := LoadBackup(BackupRequest{
+				Scope:      "prod",
+				ProjectDir: projectDir,
+			})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "MIN_FREE_DISK_MB") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadBackupConfigMissingBackupRetentionDaysFails(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"MIN_FREE_DISK_MB=128",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=web,worker",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+
+	_, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "BACKUP_RETENTION_DAYS is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadBackupConfigRejectsInvalidBackupRetentionDays(t *testing.T) {
+	for _, value := range []string{"-1", "abc"} {
+		t.Run(value, func(t *testing.T) {
+			projectDir := t.TempDir()
+			writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+				"ESPO_CONTOUR=prod",
+				"BACKUP_ROOT=./backups/prod",
+				"BACKUP_NAME_PREFIX=test-backup",
+				"BACKUP_RETENTION_DAYS=" + value,
+				"MIN_FREE_DISK_MB=128",
+				"ESPO_STORAGE_DIR=./runtime/prod/espo",
+				"APP_SERVICES=web,worker",
+				"DB_SERVICE=db",
+				"DB_USER=espocrm",
+				"DB_PASSWORD=db-secret",
+				"DB_NAME=espocrm",
+			})
+
+			_, err := LoadBackup(BackupRequest{
+				Scope:      "prod",
+				ProjectDir: projectDir,
+			})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), "BACKUP_RETENTION_DAYS") {
+				t.Fatalf("unexpected error: %v", err)
+			}
+		})
+	}
+}
+
+func TestLoadBackupConfigAllowsZeroBackupRetentionDays(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=0",
+		"MIN_FREE_DISK_MB=128",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=web,worker",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+
+	cfg, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	if cfg.BackupRetentionDays != 0 {
+		t.Fatalf("unexpected backup retention: %d", cfg.BackupRetentionDays)
+	}
+}
+
+func writeBackupConfigEnv(t *testing.T, projectDir, envName string, lines []string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, envName), []byte(strings.Join(append(lines, ""), "\n")), 0o644); err != nil {
+		t.Fatal(err)
 	}
 }

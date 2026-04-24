@@ -55,6 +55,9 @@ make lint
 Required env keys per scope:
 
 - `BACKUP_ROOT`
+- `BACKUP_NAME_PREFIX`
+- `BACKUP_RETENTION_DAYS`
+- `MIN_FREE_DISK_MB`
 - `ESPO_STORAGE_DIR`
 - `APP_SERVICES`
 - `DB_SERVICE`
@@ -79,6 +82,9 @@ Operator prerequisites:
 
 - `BACKUP_ROOT` must already exist before running `doctor`, `backup`, `restore`, or `migrate`
 - `BACKUP_ROOT` must be writable by the operator account; `doctor` checks it but does not create or repair it
+- `BACKUP_NAME_PREFIX` is required for every backup-capable scope and is used directly for artifact names: `<BACKUP_NAME_PREFIX>_<YYYY-MM-DD_HH-MM-SS>.sql.gz`, `.tar.gz`, and `.manifest.json`
+- `MIN_FREE_DISK_MB` is required for every backup-capable scope, must be an integer greater than zero, and is checked before `backup` stops app services or creates backup artifacts
+- `BACKUP_RETENTION_DAYS` is required for every backup-capable scope, must be an integer greater than or equal to zero, and `0` disables retention cleanup explicitly
 - `ESPO_STORAGE_DIR` must already exist, must be the real storage directory for the selected scope, and must be clearable by the operator account before `restore` or `migrate`
 - `smoke` does no setup, no pull, no cleanup, no retry, and no fallback; if a step fails, `smoke` fails
 - MariaDB native tooling target is `11.4 LTS`
@@ -86,6 +92,7 @@ Operator prerequisites:
 - One command path only, with no service-name guessing or implicit service defaults
 - `DB_SERVICE` must name the exact Compose database service
 - `APP_SERVICES` must list the exact Compose application services as a comma-separated contract
+- Retention cleanup runs only after the freshly created backup set passes self-verify, deletes only complete same-prefix sets from the current `BACKUP_ROOT` layout, and refuses incomplete or suspicious sets instead of deleting them automatically
 - `restore` fails closed unless `manifest.scope` matches `--scope`; use `migrate` for intentional cross-scope restore
 - `restore`, `migrate`, and `smoke` reset the target database as MariaDB root before importing the dump
 - `restore` and `migrate` restore files through staged extraction: the archive is validated, extracted into staging, the staged tree is validated, and target storage is cleared only after staging succeeds
@@ -104,7 +111,7 @@ Prepare the target scope first:
 Then use the commands in this order:
 
 1. `espops backup`
-   Backup stops app services while it creates a full backup set.
+   Backup checks `MIN_FREE_DISK_MB`, stops app services only after that guard passes, writes prefix-based artifacts under `BACKUP_ROOT`, self-verifies the new set, then applies strict same-prefix retention if `BACKUP_RETENTION_DAYS` is greater than zero.
 2. `espops backup verify`
    Verify the manifest you plan to trust.
 3. `espops restore`

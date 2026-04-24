@@ -21,6 +21,9 @@ type BackupConfig struct {
 	ComposeFile                string
 	EnvFile                    string
 	BackupRoot                 string
+	BackupNamePrefix           string
+	BackupRetentionDays        int
+	MinFreeDiskMB              int
 	StorageDir                 string
 	AppServices                []string
 	DBService                  string
@@ -48,6 +51,8 @@ type loadOptions struct {
 	requireRootPassword     bool
 	requireRuntimeOwnership bool
 }
+
+const maxBackupNamePrefixLen = 80
 
 func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	scope := strings.TrimSpace(req.Scope)
@@ -110,6 +115,18 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	if err != nil {
 		return BackupConfig{}, fmt.Errorf("APP_SERVICES in %s: %w", envFile, err)
 	}
+	backupNamePrefix, err := resolveBackupNamePrefix(values, envFile)
+	if err != nil {
+		return BackupConfig{}, err
+	}
+	backupRetentionDays, err := resolveRequiredNonNegativeEnvInt(values, "BACKUP_RETENTION_DAYS", envFile)
+	if err != nil {
+		return BackupConfig{}, err
+	}
+	minFreeDiskMB, err := resolveRequiredPositiveEnvInt(values, "MIN_FREE_DISK_MB", envFile)
+	if err != nil {
+		return BackupConfig{}, err
+	}
 
 	return BackupConfig{
 		Scope:                      scope,
@@ -117,6 +134,9 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 		ComposeFile:                composeFile,
 		EnvFile:                    envFile,
 		BackupRoot:                 resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
+		BackupNamePrefix:           backupNamePrefix,
+		BackupRetentionDays:        backupRetentionDays,
+		MinFreeDiskMB:              minFreeDiskMB,
 		StorageDir:                 resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
 		AppServices:                appServices,
 		DBService:                  strings.TrimSpace(values["DB_SERVICE"]),
@@ -204,6 +224,53 @@ func resolveAppServices(raw string) ([]string, error) {
 		services = append(services, service)
 	}
 	return services, nil
+}
+
+func resolveBackupNamePrefix(values map[string]string, envFile string) (string, error) {
+	raw, ok := values["BACKUP_NAME_PREFIX"]
+	if !ok || raw == "" {
+		return "", fmt.Errorf("BACKUP_NAME_PREFIX is required in %s", envFile)
+	}
+	if strings.TrimSpace(raw) == "" {
+		return "", fmt.Errorf("BACKUP_NAME_PREFIX in %s must not be empty or whitespace", envFile)
+	}
+	if raw == "." || raw == ".." {
+		return "", fmt.Errorf("BACKUP_NAME_PREFIX in %s must not be single-dot or double-dot", envFile)
+	}
+	if len(raw) > maxBackupNamePrefixLen {
+		return "", fmt.Errorf("BACKUP_NAME_PREFIX in %s must be at most %d characters", envFile, maxBackupNamePrefixLen)
+	}
+	for _, ch := range raw {
+		if ('a' <= ch && ch <= 'z') || ('A' <= ch && ch <= 'Z') || ('0' <= ch && ch <= '9') || ch == '_' || ch == '-' || ch == '.' {
+			continue
+		}
+		return "", fmt.Errorf("BACKUP_NAME_PREFIX in %s must match [A-Za-z0-9._-]+", envFile)
+	}
+	return raw, nil
+}
+
+func resolveRequiredPositiveEnvInt(values map[string]string, key, envFile string) (int, error) {
+	raw, ok := values[key]
+	if !ok || raw == "" {
+		return 0, fmt.Errorf("%s is required in %s", key, envFile)
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0, fmt.Errorf("%s in %s must be an integer > 0", key, envFile)
+	}
+	return value, nil
+}
+
+func resolveRequiredNonNegativeEnvInt(values map[string]string, key, envFile string) (int, error) {
+	raw, ok := values[key]
+	if !ok || raw == "" {
+		return 0, fmt.Errorf("%s is required in %s", key, envFile)
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value < 0 {
+		return 0, fmt.Errorf("%s in %s must be an integer >= 0", key, envFile)
+	}
+	return value, nil
 }
 
 func resolveRuntimeOwnership(values map[string]string, envFile string, required bool) (int, int, bool, error) {

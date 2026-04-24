@@ -27,6 +27,9 @@ func TestBackupCLIJSONSuccess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
@@ -66,6 +69,9 @@ func TestBackupCLIJSONSuccess(t *testing.T) {
 		t.Fatalf("unexpected message: %s", message)
 	}
 	manifestPath := requireJSONString(t, obj, "result", "manifest")
+	if got := filepath.Base(manifestPath); !strings.HasPrefix(got, "test-backup_") {
+		t.Fatalf("expected prefix-based manifest name, got %s", got)
+	}
 	if _, err := ops.VerifyBackup(context.Background(), manifestPath); err != nil {
 		t.Fatalf("produced backup did not verify: %v", err)
 	}
@@ -88,6 +94,9 @@ func TestBackupCLIJSONFailureForMissingEnv(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
@@ -129,6 +138,46 @@ func TestBackupCLIJSONFailureForMissingEnv(t *testing.T) {
 	}
 }
 
+func TestBackupCLIJSONFailureWhenBackupNamePrefixMissing(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"backup", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
+	if exitCode != exitUsage {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "BACKUP_NAME_PREFIX is required") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+}
+
 func TestBackupCLIJSONFailureWhenDBServiceMissing(t *testing.T) {
 	projectDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
@@ -137,6 +186,9 @@ func TestBackupCLIJSONFailureWhenDBServiceMissing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_USER=espocrm",
@@ -177,6 +229,9 @@ func TestBackupCLIJSONFailureWhenAppServicesMissing(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -209,6 +264,73 @@ func TestBackupCLIJSONFailureWhenAppServicesMissing(t *testing.T) {
 	}
 }
 
+func TestBackupCLIJSONLowDiskFailsClosed(t *testing.T) {
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo", "data")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=2147483647",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prependFakeDocker(t)
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"backup", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
+	if exitCode != exitIO {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitIO, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if message := requireJSONString(t, obj, "message"); message == "backup completed" {
+		t.Fatalf("backup result pretended success: %s", message)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "io" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "backup free disk preflight failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+
+	manifestPath := requireJSONString(t, obj, "result", "manifest")
+	if manifestPath == "" {
+		t.Fatal("expected manifest path in failed result")
+	}
+	if _, err := os.Stat(manifestPath); !os.IsNotExist(err) {
+		t.Fatalf("expected no manifest to be created, got %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
 func TestBackupCLIJSONRuntimeErrorRedactsPassword(t *testing.T) {
 	projectDir := t.TempDir()
 	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo", "data")
@@ -224,6 +346,9 @@ func TestBackupCLIJSONRuntimeErrorRedactsPassword(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",

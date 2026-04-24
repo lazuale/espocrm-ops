@@ -29,6 +29,9 @@ func TestMigrateCLIJSONSuccess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
 		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
@@ -113,6 +116,9 @@ func TestMigrateCLIJSONFailure(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
 		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
