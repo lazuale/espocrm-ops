@@ -2,7 +2,6 @@ package cli
 
 import (
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 
@@ -23,12 +22,18 @@ func newBackupVerifyCmd() *cobra.Command {
 				manifestPath: manifestPath,
 			}
 			if err := validateBackupVerifyInput(cmd, &in); err != nil {
-				return renderBackupVerifyFailure(cmd, in.manifestPath, ops.ErrorKindUsage, err)
+				return backupVerifyCommandError{
+					kind: ops.ErrorKindUsage,
+					err:  err,
+				}
 			}
 
 			result, err := ops.VerifyBackup(cmd.Context(), in.manifestPath)
 			if err != nil {
-				return renderBackupVerifyFailure(cmd, in.manifestPath, backupVerifyErrorKind(err), err)
+				return backupVerifyCommandError{
+					kind: backupVerifyErrorKind(err),
+					err:  err,
+				}
 			}
 
 			return renderBackupVerifySuccess(cmd, result)
@@ -100,34 +105,6 @@ func renderBackupVerifySuccess(cmd *cobra.Command, result ops.VerifyResult) erro
 	return err
 }
 
-func renderBackupVerifyFailure(cmd *cobra.Command, manifestPath, kind string, err error) error {
-	envelope := backupVerifyEnvelope{
-		Command:  "backup verify",
-		OK:       false,
-		Message:  "backup verify failed",
-		Error:    &backupVerifyErrorPayload{Kind: kind, Message: err.Error()},
-		Warnings: []string{},
-		Result: backupVerifyResultPayload{
-			Manifest: manifestPath,
-		},
-	}
-
-	if appForCommand(cmd).JSONEnabled() {
-		if writeErr := writeBackupVerifyJSON(cmd.OutOrStdout(), envelope); writeErr != nil {
-			return writeErr
-		}
-	} else {
-		if _, writeErr := fmt.Fprintf(cmd.ErrOrStderr(), "backup verify failed [%s]: %s\n", kind, err); writeErr != nil {
-			return writeErr
-		}
-	}
-
-	return backupVerifyRenderedError{
-		code: backupVerifyExitCode(kind),
-		err:  err,
-	}
-}
-
 func writeBackupVerifyJSON(w io.Writer, envelope backupVerifyEnvelope) error {
 	enc := json.NewEncoder(w)
 	enc.SetIndent("", "  ")
@@ -135,8 +112,8 @@ func writeBackupVerifyJSON(w io.Writer, envelope backupVerifyEnvelope) error {
 }
 
 func backupVerifyErrorKind(err error) string {
-	var verifyErr *ops.VerifyError
-	if errors.As(err, &verifyErr) && verifyErr.Kind != "" {
+	verifyErr, ok := err.(*ops.VerifyError)
+	if ok && verifyErr.Kind != "" {
 		return verifyErr.Kind
 	}
 
@@ -158,26 +135,37 @@ func backupVerifyExitCode(kind string) int {
 	}
 }
 
-type backupVerifyRenderedError struct {
-	code int
+type backupVerifyCommandError struct {
+	kind string
 	err  error
 }
 
-func (e backupVerifyRenderedError) Error() string {
+func (e backupVerifyCommandError) Error() string {
 	if e.err == nil {
 		return "backup verify failed"
 	}
 	return e.err.Error()
 }
 
-func (e backupVerifyRenderedError) Unwrap() error {
+func (e backupVerifyCommandError) Unwrap() error {
 	return e.err
 }
 
-func (e backupVerifyRenderedError) ExitCode() int {
-	return e.code
+func (e backupVerifyCommandError) ExitCode() int {
+	return backupVerifyExitCode(e.kind)
 }
 
-func (e backupVerifyRenderedError) AlreadyRendered() bool {
-	return true
+func (e backupVerifyCommandError) FailureCode() string {
+	switch e.kind {
+	case ops.ErrorKindUsage:
+		return "usage_error"
+	case ops.ErrorKindManifest:
+		return "manifest_invalid"
+	default:
+		return "backup_verification_failed"
+	}
+}
+
+func (e backupVerifyCommandError) ErrorKind() string {
+	return e.kind
 }

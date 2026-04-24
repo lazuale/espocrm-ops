@@ -72,17 +72,20 @@ func TestBackupVerifyCLIJSONFailure(t *testing.T) {
 	if err := json.Unmarshal([]byte(outcome.Stdout), &obj); err != nil {
 		t.Fatal(err)
 	}
-	if command := requireJSONString(t, obj, "command"); command != "backup verify" {
+	if command := requireJSONString(t, obj, "command"); command != "espops" {
 		t.Fatalf("unexpected command: %s", command)
 	}
 	if requireJSONBool(t, obj, "ok") {
 		t.Fatal("expected ok=false")
 	}
-	if message := requireJSONString(t, obj, "message"); message != "backup verify failed" {
-		t.Fatalf("unexpected message: %s", message)
+	if _, exists := obj["message"]; exists {
+		t.Fatalf("unexpected top-level message: %#v", obj["message"])
 	}
 	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
 		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if code := requireJSONString(t, obj, "error", "code"); code != "usage_error" {
+		t.Fatalf("unexpected error code: %s", code)
 	}
 	if errMessage := requireJSONString(t, obj, "error", "message"); errMessage != "--manifest is required" {
 		t.Fatalf("unexpected error message: %s", errMessage)

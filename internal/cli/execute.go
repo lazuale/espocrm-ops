@@ -29,9 +29,6 @@ func renderExecutionError(root *cobra.Command, err error) int {
 		fallbackExitCode = exitcode.UsageError
 		fallbackErrorCode = "usage_error"
 	}
-	if rendered, ok := err.(interface{ AlreadyRendered() bool }); ok && rendered.AlreadyRendered() {
-		return errortransport.CodeForError(err, fallbackExitCode)
-	}
 
 	if appForCommand(root).JSONEnabled() {
 		var carrier resultCarrier

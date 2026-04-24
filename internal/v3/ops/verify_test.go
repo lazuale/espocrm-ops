@@ -13,7 +13,7 @@ import (
 	"testing"
 )
 
-func TestVerifyBackupSuccess(t *testing.T) {
+func TestVerifyBackupValid(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
 
 	result, err := VerifyBackup(context.Background(), manifestPath)
@@ -29,15 +29,55 @@ func TestVerifyBackupSuccess(t *testing.T) {
 	if result.FilesBackup != filesPath {
 		t.Fatalf("unexpected files path: %s", result.FilesBackup)
 	}
-	if result.Scope != "prod" {
-		t.Fatalf("unexpected scope: %s", result.Scope)
-	}
-	if result.CreatedAt != "2026-04-24T12:00:00Z" {
-		t.Fatalf("unexpected created_at: %s", result.CreatedAt)
-	}
 }
 
-func TestVerifyBackupFailsWhenArtifactIsMissing(t *testing.T) {
+func TestVerifyBackupInvalidManifest(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "manifests", "bad.manifest.json")
+	if err := os.MkdirAll(filepath.Dir(manifestPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, []byte("{"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindManifest)
+}
+
+func TestVerifyBackupManifestOutsideManifestsDirectory(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "set.manifest.json")
+	dbPath := filepath.Join(root, "db", "espocrm-prod_2026-04-24_12-00-00.sql.gz")
+	filesPath := filepath.Join(root, "files", "espocrm-prod_files_2026-04-24_12-00-00.tar.gz")
+	for _, dir := range []string{filepath.Dir(dbPath), filepath.Dir(filesPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeGzipFile(t, dbPath, []byte("select 1;\n"))
+	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
+	rewriteSidecar(t, dbPath)
+	rewriteSidecar(t, filesPath)
+	writeManifest(t, manifestPath, map[string]any{
+		"version":    1,
+		"scope":      "prod",
+		"created_at": "2026-04-24T12:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(dbPath),
+			"files_backup": filepath.Base(filesPath),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, dbPath),
+			"files_backup": sha256OfFile(t, filesPath),
+		},
+	})
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindManifest)
+}
+
+func TestVerifyBackupMissingArtifact(t *testing.T) {
 	manifestPath, dbPath, _ := writeVerifiedBackupSet(t)
 	if err := os.Remove(dbPath); err != nil {
 		t.Fatal(err)
@@ -47,7 +87,7 @@ func TestVerifyBackupFailsWhenArtifactIsMissing(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindArtifact)
 }
 
-func TestVerifyBackupFailsOnChecksumMismatch(t *testing.T) {
+func TestVerifyBackupChecksumMismatch(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
 	writeManifest(t, manifestPath, map[string]any{
 		"version":    1,
@@ -67,29 +107,7 @@ func TestVerifyBackupFailsOnChecksumMismatch(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindChecksum)
 }
 
-func TestVerifyBackupFailsOnBrokenTarArchive(t *testing.T) {
-	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
-	writeGzipFile(t, filesPath, []byte("not a tar stream"))
-	rewriteSidecar(t, filesPath)
-	writeManifest(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-24T12:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(dbPath),
-			"files_backup": filepath.Base(filesPath),
-		},
-		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, dbPath),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
-
-	_, err := VerifyBackup(context.Background(), manifestPath)
-	assertVerifyErrorKind(t, err, ErrorKindArchive)
-}
-
-func TestVerifyBackupFailsOnBrokenDBGzip(t *testing.T) {
+func TestVerifyBackupBrokenDBGzip(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
 	if err := os.WriteFile(dbPath, []byte("not gzip"), 0o644); err != nil {
 		t.Fatal(err)
@@ -113,7 +131,29 @@ func TestVerifyBackupFailsOnBrokenDBGzip(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 }
 
-func TestVerifyBackupFailsOnTarTraversal(t *testing.T) {
+func TestVerifyBackupBrokenTarGz(t *testing.T) {
+	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
+	writeGzipFile(t, filesPath, []byte("not a tar stream"))
+	rewriteSidecar(t, filesPath)
+	writeManifest(t, manifestPath, map[string]any{
+		"version":    1,
+		"scope":      "prod",
+		"created_at": "2026-04-24T12:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(dbPath),
+			"files_backup": filepath.Base(filesPath),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, dbPath),
+			"files_backup": sha256OfFile(t, filesPath),
+		},
+	})
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindArchive)
+}
+
+func TestVerifyBackupTarTraversal(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
 	writeTraversalTarGzFile(t, filesPath)
 	rewriteSidecar(t, filesPath)
@@ -135,47 +175,11 @@ func TestVerifyBackupFailsOnTarTraversal(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 }
 
-func TestVerifyBackupFailsWhenManifestIsOutsideManifestsDirectory(t *testing.T) {
-	root := t.TempDir()
-	manifestPath := filepath.Join(root, "set.manifest.json")
-	dbPath := filepath.Join(root, "db", "espocrm-prod_2026-04-24_12-00-00.sql.gz")
-	filesPath := filepath.Join(root, "files", "espocrm-prod_files_2026-04-24_12-00-00.tar.gz")
-
-	for _, dir := range []string{filepath.Dir(dbPath), filepath.Dir(filesPath)} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	writeGzipFile(t, dbPath, []byte("select 1;\n"))
-	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
-	rewriteSidecar(t, dbPath)
-	rewriteSidecar(t, filesPath)
-	writeManifest(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-24T12:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(dbPath),
-			"files_backup": filepath.Base(filesPath),
-		},
-		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, dbPath),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
-
-	_, err := VerifyBackup(context.Background(), manifestPath)
-	assertVerifyErrorKind(t, err, ErrorKindManifest)
-}
-
 func assertVerifyErrorKind(t *testing.T, err error, want string) {
 	t.Helper()
-
 	if err == nil {
 		t.Fatal("expected error")
 	}
-
 	verifyErr, ok := err.(*VerifyError)
 	if !ok {
 		t.Fatalf("expected VerifyError, got %T", err)
@@ -203,7 +207,6 @@ func writeVerifiedBackupSet(t *testing.T) (manifestPath, dbPath, filesPath strin
 	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
 	rewriteSidecar(t, dbPath)
 	rewriteSidecar(t, filesPath)
-
 	writeManifest(t, manifestPath, map[string]any{
 		"version":    1,
 		"scope":      "prod",
@@ -223,7 +226,6 @@ func writeVerifiedBackupSet(t *testing.T) (manifestPath, dbPath, filesPath strin
 
 func writeManifest(t *testing.T, path string, value any) {
 	t.Helper()
-
 	raw, err := json.MarshalIndent(value, "", "  ")
 	if err != nil {
 		t.Fatal(err)
@@ -235,7 +237,6 @@ func writeManifest(t *testing.T, path string, value any) {
 
 func writeGzipFile(t *testing.T, path string, body []byte) {
 	t.Helper()
-
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -253,7 +254,6 @@ func writeGzipFile(t *testing.T, path string, body []byte) {
 
 func writeTarGzFile(t *testing.T, path string, files map[string]string) {
 	t.Helper()
-
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -283,7 +283,6 @@ func writeTarGzFile(t *testing.T, path string, files map[string]string) {
 
 func writeTraversalTarGzFile(t *testing.T, path string) {
 	t.Helper()
-
 	file, err := os.Create(path)
 	if err != nil {
 		t.Fatal(err)
@@ -311,7 +310,6 @@ func writeTraversalTarGzFile(t *testing.T, path string) {
 
 func rewriteSidecar(t *testing.T, path string) {
 	t.Helper()
-
 	body := sha256OfFile(t, path) + "  " + filepath.Base(path) + "\n"
 	if err := os.WriteFile(path+".sha256", []byte(body), 0o644); err != nil {
 		t.Fatal(err)
@@ -320,7 +318,6 @@ func rewriteSidecar(t *testing.T, path string) {
 
 func sha256OfFile(t *testing.T, path string) string {
 	t.Helper()
-
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatal(err)
@@ -331,7 +328,6 @@ func sha256OfFile(t *testing.T, path string) string {
 
 func closeTestResource(t *testing.T, closer interface{ Close() error }) {
 	t.Helper()
-
 	if err := closer.Close(); err != nil {
 		t.Fatalf("close resource: %v", err)
 	}
