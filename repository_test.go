@@ -287,6 +287,26 @@ func TestCIWorkflowRunsExplicitHealthChecks(t *testing.T) {
 	}
 }
 
+func TestCIWorkflowUsesNode24ActionVersions(t *testing.T) {
+	text := string(readRepoFile(t, ".github/workflows/ci.yml"))
+	for _, needle := range []string{
+		"actions/checkout@v5",
+		"actions/setup-go@v6",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("workflow must use node24-capable action version %q", needle)
+		}
+	}
+	for _, needle := range []string{
+		"actions/checkout@v4",
+		"actions/setup-go@v4",
+	} {
+		if strings.Contains(text, needle) {
+			t.Fatalf("workflow must not keep deprecated node20 action version %q", needle)
+		}
+	}
+}
+
 func TestComposeVariablesExistInExampleEnvFiles(t *testing.T) {
 	composeKeys := composeEnvKeys(t)
 
