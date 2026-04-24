@@ -42,7 +42,10 @@ func TestLoadValidateAndResolveArtifacts(t *testing.T) {
 		t.Fatalf("Validate failed: %v", err)
 	}
 
-	paths := ResolveArtifacts(manifestPath, manifest)
+	paths, err := ResolveArtifacts(manifestPath, manifest)
+	if err != nil {
+		t.Fatalf("ResolveArtifacts failed: %v", err)
+	}
 	if paths.DBPath != filepath.Join(root, "db", "db.sql.gz") {
 		t.Fatalf("unexpected db path: %s", paths.DBPath)
 	}
@@ -66,5 +69,23 @@ func TestValidateRejectsInvalidManifest(t *testing.T) {
 
 	if err := Validate("/tmp/set.manifest.json", manifest); err == nil {
 		t.Fatal("expected validation error")
+	}
+}
+
+func TestResolveArtifactsRejectsManifestOutsideManifestsDirectory(t *testing.T) {
+	paths, err := ResolveArtifacts("/tmp/set.manifest.json", Manifest{
+		Artifacts: Artifacts{
+			DBBackup:    "db.sql.gz",
+			FilesBackup: "files.tar.gz",
+		},
+	})
+	if err == nil {
+		t.Fatal("expected resolve error")
+	}
+	if err.Error() != "manifest must be located in manifests directory" {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if paths != (ArtifactPaths{}) {
+		t.Fatalf("expected zero paths, got %#v", paths)
 	}
 }

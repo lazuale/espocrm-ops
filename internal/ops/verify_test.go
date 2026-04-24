@@ -89,6 +89,40 @@ func TestVerifyBackupFailsOnBrokenTarArchive(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 }
 
+func TestVerifyBackupFailsWhenManifestIsOutsideManifestsDirectory(t *testing.T) {
+	root := t.TempDir()
+	manifestPath := filepath.Join(root, "set.manifest.json")
+	dbPath := filepath.Join(root, "db", "espocrm-prod_2026-04-24_12-00-00.sql.gz")
+	filesPath := filepath.Join(root, "files", "espocrm-prod_files_2026-04-24_12-00-00.tar.gz")
+
+	for _, dir := range []string{filepath.Dir(dbPath), filepath.Dir(filesPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeGzipFile(t, dbPath, []byte("select 1;\n"))
+	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
+	rewriteSidecar(t, dbPath)
+	rewriteSidecar(t, filesPath)
+	writeManifest(t, manifestPath, map[string]any{
+		"version":    1,
+		"scope":      "prod",
+		"created_at": "2026-04-24T12:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(dbPath),
+			"files_backup": filepath.Base(filesPath),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, dbPath),
+			"files_backup": sha256OfFile(t, filesPath),
+		},
+	})
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindManifest)
+}
+
 func assertVerifyErrorKind(t *testing.T, err error, want string) {
 	t.Helper()
 

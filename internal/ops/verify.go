@@ -76,7 +76,10 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 		return VerifyResult{}, manifestError("manifest is invalid", err)
 	}
 
-	paths := manifest.ResolveArtifacts(manifestPath, loadedManifest)
+	paths, err := manifest.ResolveArtifacts(manifestPath, loadedManifest)
+	if err != nil {
+		return VerifyResult{}, manifestError("manifest is invalid", err)
+	}
 	if err := verifyArtifact(ctx, "db backup", paths.DBPath, paths.DBSidecarPath, loadedManifest.Checksums.DBBackup, ".sql.gz", verifyGzipReadable); err != nil {
 		return VerifyResult{}, err
 	}

@@ -81,12 +81,12 @@ func Validate(manifestPath string, manifest Manifest) error {
 	return nil
 }
 
-func ResolveArtifacts(manifestPath string, manifest Manifest) ArtifactPaths {
+func ResolveArtifacts(manifestPath string, manifest Manifest) (ArtifactPaths, error) {
 	manifestDir := filepath.Dir(manifestPath)
-	root := manifestDir
-	if filepath.Base(manifestDir) == "manifests" {
-		root = filepath.Dir(manifestDir)
+	if filepath.Base(manifestDir) != "manifests" {
+		return ArtifactPaths{}, fmt.Errorf("manifest must be located in manifests directory")
 	}
+	root := filepath.Dir(manifestDir)
 
 	dbPath := filepath.Join(root, "db", filepath.Base(manifest.Artifacts.DBBackup))
 	filesPath := filepath.Join(root, "files", filepath.Base(manifest.Artifacts.FilesBackup))
@@ -96,7 +96,7 @@ func ResolveArtifacts(manifestPath string, manifest Manifest) ArtifactPaths {
 		FilesPath:        filesPath,
 		DBSidecarPath:    dbPath + ".sha256",
 		FilesSidecarPath: filesPath + ".sha256",
-	}
+	}, nil
 }
 
 func validateArtifactName(field, value string) error {
