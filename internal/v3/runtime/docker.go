@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -21,10 +22,31 @@ type Target struct {
 	DBName      string
 }
 
+type Service struct {
+	Name string `json:"Service"`
+}
+
 type DockerCompose struct{}
 
-func (DockerCompose) Validate(ctx context.Context, target Target) error {
+func (DockerCompose) ComposeConfig(ctx context.Context, target Target) error {
 	return runCompose(ctx, target, runOptions{}, "config")
+}
+
+func (DockerCompose) Validate(ctx context.Context, target Target) error {
+	return DockerCompose{}.ComposeConfig(ctx, target)
+}
+
+func (DockerCompose) Services(ctx context.Context, target Target) ([]Service, error) {
+	var stdout bytes.Buffer
+	if err := runCompose(ctx, target, runOptions{stdout: &stdout}, "ps", "--format", "json"); err != nil {
+		return nil, err
+	}
+
+	var services []Service
+	if err := json.Unmarshal(stdout.Bytes(), &services); err != nil {
+		return nil, fmt.Errorf("decode docker compose ps output: %w", err)
+	}
+	return services, nil
 }
 
 func (DockerCompose) StopServices(ctx context.Context, target Target, services []string) error {
@@ -76,6 +98,23 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 	}
 
 	return nil
+}
+
+func (DockerCompose) DBPing(ctx context.Context, target Target) error {
+	service := strings.TrimSpace(target.DBService)
+	if service == "" {
+		service = "db"
+	}
+
+	return runCompose(ctx, target, runOptions{
+		env: []string{"MYSQL_PWD=" + target.DBPassword},
+	},
+		"exec", "-T", service,
+		"mariadb",
+		"-u", target.DBUser,
+		target.DBName,
+		"-e", "SELECT 1;",
+	)
 }
 
 type runOptions struct {

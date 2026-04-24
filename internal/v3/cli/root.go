@@ -64,6 +64,7 @@ func NewRootCmd() *cobra.Command {
 
 	backupCmd := newBackupCmd()
 	backupCmd.AddCommand(newBackupVerifyCmd())
+	cmd.AddCommand(newDoctorCmd())
 	cmd.AddCommand(backupCmd)
 
 	return cmd

@@ -30,6 +30,26 @@ func TestDockerComposeValidateRunsComposeConfig(t *testing.T) {
 	}
 }
 
+func TestDockerComposeComposeConfigRunsComposeConfig(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+
+	rt := DockerCompose{}
+	err := rt.ComposeConfig(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	})
+	if err != nil {
+		t.Fatalf("ComposeConfig failed: %v", err)
+	}
+
+	log := mustReadFile(t, logPath)
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" config") {
+		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+}
+
 func TestDockerComposeDumpDatabaseRunsMariadbDump(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
@@ -123,6 +143,54 @@ func TestDockerComposeStartServicesRunsComposeStart(t *testing.T) {
 	}
 }
 
+func TestDockerComposeServicesRunsComposePS(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+	t.Setenv("TEST_DOCKER_PS_OUTPUT", `[{"Service":"db"},{"Service":"espocrm"}]`)
+
+	rt := DockerCompose{}
+	services, err := rt.Services(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	})
+	if err != nil {
+		t.Fatalf("Services failed: %v", err)
+	}
+	if len(services) != 2 || services[0].Name != "db" || services[1].Name != "espocrm" {
+		t.Fatalf("unexpected services: %#v", services)
+	}
+
+	log := mustReadFile(t, logPath)
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" ps --format json") {
+		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+}
+
+func TestDockerComposeDBPingRunsMariadbSelect1(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+
+	rt := DockerCompose{}
+	err := rt.DBPing(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+		DBService:   "db",
+		DBUser:      "espocrm",
+		DBPassword:  "db-secret",
+		DBName:      "espocrm",
+	})
+	if err != nil {
+		t.Fatalf("DBPing failed: %v", err)
+	}
+
+	log := mustReadFile(t, logPath)
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T db mariadb -u espocrm espocrm -e SELECT 1;") {
+		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+}
+
 func installFakeDocker(t *testing.T) string {
 	t.Helper()
 
@@ -179,16 +247,29 @@ case "${1:-}" in
   config)
     exit 0
     ;;
+  ps)
+    printf '%s' "${TEST_DOCKER_PS_OUTPUT:-[]}"
+    exit 0
+    ;;
   exec)
     shift
     [[ "${1:-}" == "-T" ]] || exit 1
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
-    [[ "${1:-}" == "mariadb-dump" ]] || exit 1
+    case "${1:-}" in
+      mariadb-dump)
+        [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
+        printf 'create table test(id int);\n'
+        exit 0
+        ;;
+      mariadb)
+        [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
+        exit 0
+        ;;
+    esac
     [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
-    printf 'create table test(id int);\n'
-    exit 0
+    exit 1
     ;;
   stop|start)
     exit 0
