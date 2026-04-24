@@ -83,6 +83,46 @@ func TestDockerComposeDumpDatabaseRunsMariadbDump(t *testing.T) {
 	}
 }
 
+func TestDockerComposeStopServicesRunsComposeStop(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+
+	rt := DockerCompose{}
+	err := rt.StopServices(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	}, []string{"espocrm", "espocrm-daemon"})
+	if err != nil {
+		t.Fatalf("StopServices failed: %v", err)
+	}
+
+	log := mustReadFile(t, logPath)
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" stop espocrm espocrm-daemon") {
+		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+}
+
+func TestDockerComposeStartServicesRunsComposeStart(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+
+	rt := DockerCompose{}
+	err := rt.StartServices(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	}, []string{"espocrm", "espocrm-daemon"})
+	if err != nil {
+		t.Fatalf("StartServices failed: %v", err)
+	}
+
+	log := mustReadFile(t, logPath)
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" start espocrm espocrm-daemon") {
+		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+}
+
 func installFakeDocker(t *testing.T) string {
 	t.Helper()
 
@@ -148,10 +188,6 @@ case "${1:-}" in
     [[ "${1:-}" == "mariadb-dump" ]] || exit 1
     [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     printf 'create table test(id int);\n'
-    exit 0
-    ;;
-  ps)
-    printf '[]'
     exit 0
     ;;
   stop|start)

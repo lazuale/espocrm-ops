@@ -26,6 +26,8 @@ type BackupResult struct {
 
 type backupRuntime interface {
 	Validate(ctx context.Context, target v3runtime.Target) error
+	StopServices(ctx context.Context, target v3runtime.Target, services []string) error
+	StartServices(ctx context.Context, target v3runtime.Target, services []string) error
 	DumpDatabase(ctx context.Context, target v3runtime.Target, destPath string) error
 }
 
@@ -82,6 +84,21 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 		DBPassword:  cfg.DBPassword,
 		DBName:      cfg.DBName,
 	}
+	servicesStopped := false
+	servicesReturned := false
+	serviceReturnAttempted := false
+	defer func() {
+		if !servicesStopped || servicesReturned || serviceReturnAttempted {
+			return
+		}
+		serviceReturnAttempted = true
+		startErr := rt.StartServices(ctx, target, cfg.AppServices)
+		if startErr == nil {
+			servicesReturned = true
+			return
+		}
+		err = combineServiceReturnError(err, startErr)
+	}()
 
 	if err := rt.Validate(ctx, target); err != nil {
 		return result, runtimeError("docker compose config failed", err)
@@ -92,6 +109,10 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 	if err := ensureTargetsAbsent(layout); err != nil {
 		return result, artifactError("backup target already exists", err)
 	}
+	if err := rt.StopServices(ctx, target, cfg.AppServices); err != nil {
+		return result, runtimeError("failed to stop app services", err)
+	}
+	servicesStopped = true
 
 	dbTmp, err := newTempTarget(layout.DBArtifact)
 	if err != nil {
@@ -148,6 +169,11 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 	if err := promoteTempFile(filesSidecarTmp, layout.FilesChecksum); err != nil {
 		return result, ioError("failed to finalize files checksum sidecar", err)
 	}
+	serviceReturnAttempted = true
+	if err := rt.StartServices(ctx, target, cfg.AppServices); err != nil {
+		return result, runtimeError("failed to return app services", err)
+	}
+	servicesReturned = true
 
 	manifestTmp, err := newTempTarget(layout.ManifestJSON)
 	if err != nil {
@@ -203,6 +229,14 @@ func validateBackupConfig(cfg v3config.BackupConfig) error {
 	} {
 		if strings.TrimSpace(field.value) == "" {
 			return fmt.Errorf("%s is required", field.name)
+		}
+	}
+	if len(cfg.AppServices) == 0 {
+		return fmt.Errorf("APP_SERVICES is required")
+	}
+	for _, service := range cfg.AppServices {
+		if strings.TrimSpace(service) == "" {
+			return fmt.Errorf("APP_SERVICES contains empty service name")
 		}
 	}
 	return nil
@@ -376,4 +410,29 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 
 func runtimeError(message string, err error) error {
 	return &VerifyError{Kind: ErrorKindRuntime, Message: message, Err: err}
+}
+
+func combineServiceReturnError(primary error, startErr error) error {
+	if startErr == nil {
+		return primary
+	}
+
+	serviceErr := fmt.Errorf("return app services failed: %w", startErr)
+	var verifyErr *VerifyError
+	if errors.As(primary, &verifyErr) {
+		if verifyErr.Err == nil {
+			return &VerifyError{
+				Kind:    verifyErr.Kind,
+				Message: verifyErr.Message,
+				Err:     serviceErr,
+			}
+		}
+		return &VerifyError{
+			Kind:    verifyErr.Kind,
+			Message: verifyErr.Message,
+			Err:     errors.Join(verifyErr.Err, serviceErr),
+		}
+	}
+
+	return runtimeError("backup failed and app services were not returned", errors.Join(primary, serviceErr))
 }

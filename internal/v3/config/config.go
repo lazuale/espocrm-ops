@@ -21,11 +21,14 @@ type BackupConfig struct {
 	EnvFile     string
 	BackupRoot  string
 	StorageDir  string
+	AppServices []string
 	DBService   string
 	DBUser      string
 	DBPassword  string
 	DBName      string
 }
+
+var defaultAppServices = []string{"espocrm", "espocrm-daemon", "espocrm-websocket"}
 
 func LoadBackup(req BackupRequest) (BackupConfig, error) {
 	scope := strings.TrimSpace(req.Scope)
@@ -74,6 +77,10 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 	if err != nil {
 		return BackupConfig{}, err
 	}
+	appServices, err := resolveAppServices(values["APP_SERVICES"])
+	if err != nil {
+		return BackupConfig{}, fmt.Errorf("APP_SERVICES in %s: %w", envFile, err)
+	}
 
 	return BackupConfig{
 		Scope:       scope,
@@ -82,6 +89,7 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 		EnvFile:     envFile,
 		BackupRoot:  resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
 		StorageDir:  resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
+		AppServices: appServices,
 		DBService:   resolveDBService(values["DB_SERVICE"]),
 		DBUser:      strings.TrimSpace(values["DB_USER"]),
 		DBPassword:  password,
@@ -150,6 +158,24 @@ func resolveDBPassword(values map[string]string, projectDir, envFile string) (st
 		return "", fmt.Errorf("DB_PASSWORD_FILE %s is empty", passwordPath)
 	}
 	return password, nil
+}
+
+func resolveAppServices(raw string) ([]string, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return append([]string(nil), defaultAppServices...), nil
+	}
+
+	parts := strings.Split(raw, ",")
+	services := make([]string, 0, len(parts))
+	for _, part := range parts {
+		service := strings.TrimSpace(part)
+		if service == "" {
+			return nil, fmt.Errorf("service names must be non-empty")
+		}
+		services = append(services, service)
+	}
+	return services, nil
 }
 
 func loadEnvAssignments(path string) (values map[string]string, err error) {

@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
@@ -22,37 +21,25 @@ type Target struct {
 	DBName      string
 }
 
-type Service struct {
-	Name  string `json:"Service"`
-	State string `json:"State"`
-}
-
 type DockerCompose struct{}
 
 func (DockerCompose) Validate(ctx context.Context, target Target) error {
 	return runCompose(ctx, target, runOptions{}, "config")
 }
 
-func (DockerCompose) Services(ctx context.Context, target Target) ([]Service, error) {
-	var stdout bytes.Buffer
-	if err := runCompose(ctx, target, runOptions{stdout: &stdout}, "ps", "--format", "json"); err != nil {
-		return nil, err
+func (DockerCompose) StopServices(ctx context.Context, target Target, services []string) error {
+	args, err := serviceArgs("stop", services)
+	if err != nil {
+		return err
 	}
-
-	services := []Service{}
-	if err := json.Unmarshal(stdout.Bytes(), &services); err != nil {
-		return nil, fmt.Errorf("decode docker compose ps json: %w", err)
-	}
-	return services, nil
-}
-
-func (DockerCompose) Stop(ctx context.Context, target Target, services ...string) error {
-	args := append([]string{"stop"}, trimServices(services)...)
 	return runCompose(ctx, target, runOptions{}, args...)
 }
 
-func (DockerCompose) Start(ctx context.Context, target Target, services ...string) error {
-	args := append([]string{"start"}, trimServices(services)...)
+func (DockerCompose) StartServices(ctx context.Context, target Target, services []string) error {
+	args, err := serviceArgs("start", services)
+	if err != nil {
+		return err
+	}
 	return runCompose(ctx, target, runOptions{}, args...)
 }
 
@@ -131,16 +118,20 @@ func runCompose(ctx context.Context, target Target, opts runOptions, args ...str
 	return nil
 }
 
-func trimServices(services []string) []string {
-	out := make([]string, 0, len(services))
+func serviceArgs(action string, services []string) ([]string, error) {
+	out := make([]string, 1, len(services)+1)
+	out[0] = action
 	for _, service := range services {
 		service = strings.TrimSpace(service)
 		if service == "" {
-			continue
+			return nil, fmt.Errorf("%s service names must be non-empty", action)
 		}
 		out = append(out, service)
 	}
-	return out
+	if len(out) == 1 {
+		return nil, fmt.Errorf("%s requires at least one service", action)
+	}
+	return out, nil
 }
 
 func closeResource(closer io.Closer, errp *error) {

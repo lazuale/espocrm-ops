@@ -45,6 +45,9 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	if cfg.StorageDir != filepath.Join(projectDir, "runtime", "prod", "espo") {
 		t.Fatalf("unexpected storage dir: %s", cfg.StorageDir)
 	}
+	if strings.Join(cfg.AppServices, ",") != "espocrm,espocrm-daemon,espocrm-websocket" {
+		t.Fatalf("unexpected app services: %v", cfg.AppServices)
+	}
 	if cfg.DBService != "db" {
 		t.Fatalf("unexpected db service: %s", cfg.DBService)
 	}
@@ -114,6 +117,36 @@ func TestLoadBackupConfigUsesComposeFileFromEnv(t *testing.T) {
 	}
 	if cfg.ComposeFile != customCompose {
 		t.Fatalf("unexpected compose file: %s", cfg.ComposeFile)
+	}
+}
+
+func TestLoadBackupConfigUsesAppServicesFromEnv(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=web,worker",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	if strings.Join(cfg.AppServices, ",") != "web,worker" {
+		t.Fatalf("unexpected app services: %v", cfg.AppServices)
 	}
 }
 

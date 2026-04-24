@@ -165,6 +165,9 @@ case "${1:-}" in
   config)
     exit 0
     ;;
+  stop|start)
+    exit 0
+    ;;
   exec)
     shift
     if [[ "${1:-}" != "-T" ]]; then
