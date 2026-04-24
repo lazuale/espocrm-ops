@@ -72,6 +72,15 @@ func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now 
 	}
 	now = now.UTC()
 
+	return withOperationLocks(ctx, []operationLockSpec{{
+		ProjectDir: cfg.ProjectDir,
+		Scope:      cfg.Scope,
+	}}, "backup lock failed", func(lockedCtx context.Context) (BackupResult, error) {
+		return backupLocked(lockedCtx, cfg, rt, now)
+	})
+}
+
+func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
 	layout := newBackupLayout(cfg.BackupRoot, cfg.BackupNamePrefix, now)
 	result = BackupResult{
 		Manifest:    layout.ManifestJSON,

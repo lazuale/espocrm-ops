@@ -72,6 +72,15 @@ func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPa
 	}
 	now = now.UTC()
 
+	return withOperationLocks(ctx, []operationLockSpec{{
+		ProjectDir: cfg.ProjectDir,
+		Scope:      cfg.Scope,
+	}}, "restore lock failed", func(lockedCtx context.Context) (RestoreResult, error) {
+		return restoreWithOptionsLocked(lockedCtx, cfg, manifestPath, rt, now, opts)
+	})
+}
+
+func restoreWithOptionsLocked(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, opts restoreOptions) (result RestoreResult, err error) {
 	result.Manifest = manifestPath
 
 	verifyResult, verifyErr := VerifyBackup(ctx, manifestPath)

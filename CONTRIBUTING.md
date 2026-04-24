@@ -80,6 +80,7 @@ Contract:
 - Keep `DB_ROOT_PASSWORD` explicit for restore-capable flows; do not fall back to `DB_USER` credentials for database reset.
 - Keep `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID` explicit for restore-capable flows; do not guess runtime ownership from the image, container user, or current operator account.
 - Keep health/post-check success strict: contract services must be explicitly listed, `running`, and `healthy`; MariaDB reachability alone is not success.
+- Do not ship a mutating operation path without the per-scope cross-process operation lock.
 - Keep `compose.yaml`, `env/.env.*.example`, `README.md`, and `internal/config/` on one literal runtime contract; when one changes, update the others and the repository guards in `repository_test.go`.
 - Do not add decorative env keys to examples.
 - Do not call mutable image tags production-safe unless the deployed image refs are digest-pinned.
@@ -102,6 +103,7 @@ Contract:
 1. Make the Go change.
 2. Run the smallest relevant tests while iterating.
    Health/post-check changes must include `internal/runtime/` and `internal/ops/` test coverage; do not rely on CLI JSON tests alone.
+   Locking/concurrency changes must include real `internal/ops/` lock tests plus flow tests that prove lock acquisition happens before mutation.
 3. Run `make ci` before claiming repository health.
 4. Update `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` when the graph or command behavior changes.
 

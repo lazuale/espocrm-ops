@@ -29,6 +29,7 @@
 - No implicit path switching.
 - No ambiguous success.
 - Success requires explicit health/post-check evidence; MariaDB reachability alone is not success.
+- No mutating operation without the explicit operation lock.
 - No shell-owned product, contract, validation, or recovery semantics.
 - No guard theatre.
 - No fake machine-enforcement.

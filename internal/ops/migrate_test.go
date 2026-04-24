@@ -82,6 +82,35 @@ func TestMigrateRestoreFailureFails(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestMigrateBusyTargetLockFailsBeforeMutation(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
+	lock := mustAcquireScopeOperationLock(t, cfg.ProjectDir, cfg.Scope)
+	defer func() {
+		if err := lock.Release(); err != nil {
+			t.Fatalf("release lock: %v", err)
+		}
+	}()
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "migrate lock failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
 func TestMigrateSuccessReturnsManifestAndSnapshotManifest(t *testing.T) {
 	sourceManifest, wantSQL, _ := writeScopedRestoreSourceBackupSet(t, "dev")
 	cfg, storageDir := restoreTargetConfig(t)

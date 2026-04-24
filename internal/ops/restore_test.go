@@ -36,6 +36,35 @@ func TestRestoreSourceManifestInvalidFailsBeforeMutation(t *testing.T) {
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
 }
 
+func TestRestoreBusyLockFailsBeforeMutation(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	lock := mustAcquireScopeOperationLock(t, cfg.ProjectDir, cfg.Scope)
+	defer func() {
+		if err := lock.Release(); err != nil {
+			t.Fatalf("release lock: %v", err)
+		}
+	}()
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "restore lock failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+}
+
 func TestRestoreRejectsDifferentManifestScopeBeforeMutation(t *testing.T) {
 	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
 	cfg, storageDir := restoreTargetConfig(t)
@@ -238,6 +267,19 @@ func TestRestoreFailureAndStartFailureIncludesBothErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "return app services failed") {
 		t.Fatalf("service return error missing: %v", err)
 	}
+}
+
+func TestRestoreFailureReleasesLock(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, _ := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+		restoreDBErr:   errf("restore db failed"),
+	}
+
+	_, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	assertScopeOperationLockAvailable(t, cfg.ProjectDir, cfg.Scope)
 }
 
 func TestRestoreStartFailureFails(t *testing.T) {

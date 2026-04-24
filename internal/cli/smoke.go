@@ -72,55 +72,64 @@ func runSmoke(ctx context.Context, fromScope, toScope, projectDir string, rt run
 	result := smokeResult{
 		FromScope: sourceCfg.Scope,
 		ToScope:   targetCfg.Scope,
-		Steps:     make([]smokeStep, 0, 6),
+		Steps:     make([]smokeStep, 0, 7),
 	}
 	nextStepTime := smokeStepTimeline(smokeNow())
 
-	if _, err := ops.Doctor(ctx, config.BackupRequest{
-		Scope:      sourceCfg.Scope,
-		ProjectDir: sourceCfg.ProjectDir,
-	}, rt); err != nil {
-		return smokeStepFailure(result, "doctor source", err)
-	}
-	result.Steps = append(result.Steps, smokeStep{Name: "doctor source", OK: true})
+	lockedResult, err := ops.WithProjectScopeOperationLocks(ctx, sourceCfg.ProjectDir, []string{sourceCfg.Scope, targetCfg.Scope}, "smoke lock failed", func(lockedCtx context.Context) (smokeResult, error) {
+		if _, err := ops.Doctor(lockedCtx, config.BackupRequest{
+			Scope:      sourceCfg.Scope,
+			ProjectDir: sourceCfg.ProjectDir,
+		}, rt); err != nil {
+			return smokeStepFailure(result, "doctor source", err)
+		}
+		result.Steps = append(result.Steps, smokeStep{Name: "doctor source", OK: true})
 
-	if _, err := ops.Doctor(ctx, config.BackupRequest{
-		Scope:      targetCfg.Scope,
-		ProjectDir: targetCfg.ProjectDir,
-	}, rt); err != nil {
-		return smokeStepFailure(result, "doctor target", err)
-	}
-	result.Steps = append(result.Steps, smokeStep{Name: "doctor target", OK: true})
+		if _, err := ops.Doctor(lockedCtx, config.BackupRequest{
+			Scope:      targetCfg.Scope,
+			ProjectDir: targetCfg.ProjectDir,
+		}, rt); err != nil {
+			return smokeStepFailure(result, "doctor target", err)
+		}
+		result.Steps = append(result.Steps, smokeStep{Name: "doctor target", OK: true})
 
-	backupResult, err := ops.Backup(ctx, sourceCfg, rt, nextStepTime())
-	result.Manifest = backupResult.Manifest
+		backupResult, err := ops.Backup(lockedCtx, sourceCfg, rt, nextStepTime())
+		result.Manifest = backupResult.Manifest
+		if err != nil {
+			return smokeStepFailure(result, "backup", err)
+		}
+		result.Steps = append(result.Steps, smokeStep{Name: "backup", OK: true})
+
+		verifyResult, err := ops.VerifyBackup(lockedCtx, result.Manifest)
+		if err != nil {
+			return smokeStepFailure(result, "backup verify", err)
+		}
+		result.Manifest = verifyResult.Manifest
+		result.Steps = append(result.Steps, smokeStep{Name: "backup verify", OK: true})
+
+		restoreResult, err := ops.Restore(lockedCtx, sourceCfg, result.Manifest, rt, nextStepTime())
+		result.RestoreSnapshotManifest = restoreResult.SnapshotManifest
+		if err != nil {
+			return smokeStepFailure(result, "restore", err)
+		}
+		result.Steps = append(result.Steps, smokeStep{Name: "restore", OK: true})
+
+		migrateResult, err := ops.Migrate(lockedCtx, sourceCfg.Scope, targetCfg, result.Manifest, rt, nextStepTime())
+		result.MigrateSnapshotManifest = migrateResult.SnapshotManifest
+		if err != nil {
+			return smokeStepFailure(result, "migrate", err)
+		}
+		result.Steps = append(result.Steps, smokeStep{Name: "migrate", OK: true})
+
+		return result, nil
+	})
 	if err != nil {
-		return smokeStepFailure(result, "backup", err)
+		if lockedResult.FromScope != "" || lockedResult.ToScope != "" || lockedResult.FailedStep != "" || len(lockedResult.Steps) > 0 {
+			return lockedResult, err
+		}
+		return smokeStepFailure(result, "lock", err)
 	}
-	result.Steps = append(result.Steps, smokeStep{Name: "backup", OK: true})
-
-	verifyResult, err := ops.VerifyBackup(ctx, result.Manifest)
-	if err != nil {
-		return smokeStepFailure(result, "backup verify", err)
-	}
-	result.Manifest = verifyResult.Manifest
-	result.Steps = append(result.Steps, smokeStep{Name: "backup verify", OK: true})
-
-	restoreResult, err := ops.Restore(ctx, sourceCfg, result.Manifest, rt, nextStepTime())
-	result.RestoreSnapshotManifest = restoreResult.SnapshotManifest
-	if err != nil {
-		return smokeStepFailure(result, "restore", err)
-	}
-	result.Steps = append(result.Steps, smokeStep{Name: "restore", OK: true})
-
-	migrateResult, err := ops.Migrate(ctx, sourceCfg.Scope, targetCfg, result.Manifest, rt, nextStepTime())
-	result.MigrateSnapshotManifest = migrateResult.SnapshotManifest
-	if err != nil {
-		return smokeStepFailure(result, "migrate", err)
-	}
-	result.Steps = append(result.Steps, smokeStep{Name: "migrate", OK: true})
-
-	return result, nil
+	return lockedResult, nil
 }
 
 func loadSmokeConfigs(fromScope, toScope, projectDir string) (config.BackupConfig, config.BackupConfig, error) {

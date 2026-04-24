@@ -138,6 +138,70 @@ func TestBackupCLIJSONFailureForMissingEnv(t *testing.T) {
 	}
 }
 
+func TestBackupCLIJSONFailureWhenLockBusy(t *testing.T) {
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo", "data")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	lock := holdCLIScopeLock(t, projectDir, "prod")
+	defer lock.Release(t)
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"backup", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "runtime" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if !strings.Contains(errMessage, "backup lock failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if !strings.Contains(errMessage, cliScopeLockMessage("prod")) {
+		t.Fatalf("missing scope lock detail: %s", errMessage)
+	}
+	if strings.Contains(errMessage, "db-secret") {
+		t.Fatalf("lock error leaked secret: %s", errMessage)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
 func TestBackupCLIJSONFailureWhenBackupNamePrefixMissing(t *testing.T) {
 	projectDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {

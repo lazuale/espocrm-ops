@@ -68,6 +68,77 @@ func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
 	}
 }
 
+func TestBackupBusyLockFailsBeforeSideEffects(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	lock := mustAcquireScopeOperationLock(t, root, "prod")
+	defer func() {
+		if err := lock.Release(); err != nil {
+			t.Fatalf("release lock: %v", err)
+		}
+	}()
+
+	rt := &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table test(id int);\n"),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "backup lock failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertBackupSetRemoved(t, result)
+}
+
+func TestBackupSuccessReleasesLock(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "data.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table test(id int);\n"),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	if _, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)); err != nil {
+		t.Fatalf("Backup failed: %v", err)
+	}
+	assertScopeOperationLockAvailable(t, root, "prod")
+}
+
+func TestBackupFailureAfterStopReleasesLock(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "data.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dumpErr: errf("dump failed"),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	_, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	assertScopeOperationLockAvailable(t, root, "prod")
+}
+
 func TestBackupUsesConfiguredNamePrefixNotScope(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")

@@ -518,6 +518,25 @@ func TestRuntimeContractDoesNotAdvertisePasswordFileKeys(t *testing.T) {
 	}
 }
 
+func TestOperationLockContractIsDocumented(t *testing.T) {
+	readme := string(readRepoFile(t, "README.md"))
+	for _, needle := range []string{"`.espops/locks`", "`doctor` is read-only and does not take an operation lock", "`smoke` locks both scopes"} {
+		if !strings.Contains(readme, needle) {
+			t.Fatalf("README must document operation locking contract %q", needle)
+		}
+	}
+
+	contributing := string(readRepoFile(t, "CONTRIBUTING.md"))
+	if !strings.Contains(contributing, "Do not ship a mutating operation path without the per-scope cross-process operation lock.") {
+		t.Fatal("CONTRIBUTING.md must require the operation lock on mutating flows")
+	}
+
+	agents := string(readRepoFile(t, "AGENTS.md"))
+	if !strings.Contains(agents, "No mutating operation without the explicit operation lock.") {
+		t.Fatal("AGENTS.md must require explicit operation locking")
+	}
+}
+
 func TestTrackedFilesDoNotContainHistoricalResidue(t *testing.T) {
 	files := trackedFiles(t)
 	patterns := buildHistoricalResiduePatterns()

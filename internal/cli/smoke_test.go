@@ -198,6 +198,59 @@ func TestSmokeCLIJSONFailsClosedAtTargetDoctor(t *testing.T) {
 	}
 }
 
+func TestSmokeCLIJSONFailureWhenScopeLockBusyReleasesOtherScope(t *testing.T) {
+	projectDir := smokeProjectDir(t, true)
+	lock := holdCLIScopeLock(t, projectDir, "prod")
+	defer lock.Release(t)
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{
+		"smoke",
+		"--from-scope", "dev",
+		"--to-scope", "prod",
+		"--project-dir", projectDir,
+	}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if step := requireJSONString(t, obj, "result", "failed_step"); step != "lock" {
+		t.Fatalf("unexpected failed_step: %s", step)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "runtime" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if !strings.Contains(errMessage, "smoke lock failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if !strings.Contains(errMessage, cliScopeLockMessage("prod")) {
+		t.Fatalf("missing busy scope detail: %s", errMessage)
+	}
+	steps := requireJSONObjectArray(t, obj, "result", "steps")
+	if len(steps) != 1 {
+		t.Fatalf("unexpected steps: %#v", steps)
+	}
+	if got := requireJSONStringFromObject(t, steps[0], "name"); got != "lock" {
+		t.Fatalf("unexpected step name: %s", got)
+	}
+	if requireJSONBoolFromObject(t, steps[0], "ok") {
+		t.Fatal("expected lock step to fail")
+	}
+	assertCLIScopeLockAvailable(t, projectDir, "dev")
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
 func TestSmokeCLIJSONFailsClosedAtBackup(t *testing.T) {
 	projectDir := smokeProjectDir(t, true)
 

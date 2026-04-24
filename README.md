@@ -181,6 +181,8 @@ Operator prerequisites:
 - `smoke` does no setup, no pull, no cleanup, no retry, and no fallback; if a step fails, `smoke` fails
 - Native tooling only: `docker compose`, `mariadb-dump`, `mariadb`, and Go stdlib archive/checksum handling
 - One command path only, with no service-name guessing or implicit service defaults
+- Mutating operations use per-scope cross-process file locks under `PROJECT_DIR/.espops/locks`; the tool may create that directory as an explicit runtime side effect
+  The literal lock home is `.espops/locks` inside the selected project directory.
 - `DB_SERVICE` must name the exact Compose database service
 - `APP_SERVICES` must list the exact Compose application services as a comma-separated contract
 - `DB_SERVICE` and every service in `APP_SERVICES` must expose a Docker Compose healthcheck; a merely running service without health status does not satisfy the success contract
@@ -192,6 +194,11 @@ Operator prerequisites:
 - `restore`, `migrate`, and `smoke` apply the restored storage tree to the explicit runtime uid/gid and fail closed if the operator cannot apply that ownership
 - `doctor` succeeds only when Compose config parses, backup root and storage dir checks pass, contract services are listed, contract services are `running` and `healthy`, and MariaDB `SELECT 1` succeeds
 - `restore`, `migrate`, and `smoke` succeed only after the restored storage post-check passes and the contract services are `running` and `healthy` before MariaDB `SELECT 1`; this validates Compose service health, not a full browser or user-login flow
+- `doctor` is read-only and does not take an operation lock
+- `backup` locks its scope before runtime validation, disk checks, service stop, and artifact creation
+- `restore` locks its target scope before manifest verify, snapshot backup, service stop, database reset, and storage mutation
+- `migrate` locks only its target scope because only the target mutates; the source scope is read-only manifest input
+- `smoke` locks both scopes for the whole flow, in deterministic scope-key order, so it cannot overlap with manual mutating commands
 
 ## Minimal Safe Workflow
 
@@ -203,6 +210,7 @@ Prepare the target scope first:
 4. Pre-pull the exact runtime images you intend to trust.
 5. Run `espops doctor`.
    Doctor does not stop or repair anything. It proves config parsing, local backup/storage prerequisites, contract service presence, Docker Compose service health, and DB reachability.
+6. Expect `espops` to create `PROJECT_DIR/.espops/locks` on the first mutating command. That directory is the explicit operation-lock home.
 
 Then use the commands in this order:
 
@@ -237,6 +245,8 @@ Check runtime readiness:
 
 `doctor` is a strict readiness check, not a loose preflight. A green result means the configured Compose services exist, are `running`, report `healthy`, and MariaDB answers a ping.
 
+`doctor` does not acquire the mutating operation lock. It may observe a changing system if you run it concurrently with `backup`, `restore`, `migrate`, or `smoke`.
+
 Create a backup:
 
 ```bash
@@ -259,6 +269,8 @@ Restore from a verified manifest:
 
 Success here means staged files passed validation, Docker Compose contract services came back `running` and `healthy`, and MariaDB answered the final ping. It does not claim a full browser/login flow.
 
+If another mutating `espops` process already owns the same scope lock, `restore` fails fast before snapshot, database reset, or storage mutation.
+
 Migrate from one scope into another:
 
 ```bash
@@ -267,11 +279,15 @@ Migrate from one scope into another:
 
 `migrate` uses the same post-check contract as `restore`: storage checks plus Compose service health plus DB ping.
 
+`migrate` locks only the target scope, because the source manifest is read-only input and the target scope is the one being reset and rewritten.
+
 Run the fixed smoke path:
 
 ```bash
 ./bin/espops smoke --from-scope dev --to-scope prod --project-dir /path/to/project
 ```
+
+`smoke` acquires both scope locks for the full flow before it starts its doctor/backup/restore/migrate chain.
 
 ## Repository Layout
 

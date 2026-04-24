@@ -22,10 +22,19 @@ func Migrate(ctx context.Context, fromScope string, targetCfg config.BackupConfi
 	if err := validateMigrateInputs(fromScope, targetCfg, manifestPath); err != nil {
 		return MigrateResult{}, &VerifyError{Kind: ErrorKindUsage, Message: err.Error()}
 	}
+	if now.IsZero() {
+		now = time.Now().UTC()
+	}
+	now = now.UTC()
 
-	restoreResult, restoreErr := restoreWithOptions(ctx, targetCfg, manifestPath, rt, now, restoreOptions{
-		allowedSourceScope: fromScope,
-		scopeErrorMessage:  "migrate source scope is invalid",
+	restoreResult, restoreErr := withOperationLocks(ctx, []operationLockSpec{{
+		ProjectDir: targetCfg.ProjectDir,
+		Scope:      targetCfg.Scope,
+	}}, "migrate lock failed", func(lockedCtx context.Context) (RestoreResult, error) {
+		return restoreWithOptionsLocked(lockedCtx, targetCfg, manifestPath, rt, now, restoreOptions{
+			allowedSourceScope: fromScope,
+			scopeErrorMessage:  "migrate source scope is invalid",
+		})
 	})
 	result.Manifest = restoreResult.Manifest
 	result.SnapshotManifest = restoreResult.SnapshotManifest
