@@ -2,8 +2,6 @@
 
 Accepted baseline date: `2026-04-24`.
 
-This repository now keeps only the retained v3 product root.
-
 ## Accepted Product Surface
 
 - `doctor`
@@ -15,18 +13,18 @@ This repository now keeps only the retained v3 product root.
 ## Accepted Production Layout
 
 - `cmd/espops/main.go`
-- `internal/v3/cli/*.go`
-- `internal/v3/config/config.go`
-- `internal/v3/ops/*.go`
-- `internal/v3/runtime/docker.go`
-- `internal/v3/manifest/manifest.go`
+- `internal/cli/*.go`
+- `internal/config/config.go`
+- `internal/manifest/manifest.go`
+- `internal/ops/*.go`
+- `internal/runtime/docker.go`
 
 No other production package family under `internal/` is accepted.
 
 ## Accepted Shell And Env Surface
 
-- production shell execution lives only in `internal/v3/runtime/docker.go`
-- production `os.Environ()` usage lives only in `internal/v3/runtime/docker.go`
+- production shell execution lives only in `internal/runtime/docker.go`
+- production `os.Environ()` usage lives only in `internal/runtime/docker.go`
 - config loading comes from scope env files, not hidden process-env toggles
 
 ## Accepted Repository Health Path

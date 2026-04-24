@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
+	config "github.com/lazuale/espocrm-ops/internal/config"
 )
 
 type MigrateResult struct {
@@ -14,7 +14,7 @@ type MigrateResult struct {
 	SnapshotManifest string
 }
 
-func Migrate(ctx context.Context, fromScope string, targetCfg v3config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result MigrateResult, err error) {
+func Migrate(ctx context.Context, fromScope string, targetCfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result MigrateResult, err error) {
 	if rt == nil {
 		return MigrateResult{}, runtimeError("migrate runtime is required", nil)
 	}
@@ -52,7 +52,7 @@ func Migrate(ctx context.Context, fromScope string, targetCfg v3config.BackupCon
 	return result, nil
 }
 
-func validateMigrateInputs(fromScope string, targetCfg v3config.BackupConfig, manifestPath string) error {
+func validateMigrateInputs(fromScope string, targetCfg config.BackupConfig, manifestPath string) error {
 	fromScope = strings.TrimSpace(fromScope)
 	switch fromScope {
 	case "":

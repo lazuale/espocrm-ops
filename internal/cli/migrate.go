@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	"github.com/lazuale/espocrm-ops/internal/v3/ops"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	"github.com/lazuale/espocrm-ops/internal/ops"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +40,7 @@ func newMigrateCmd() *cobra.Command {
 				return migrateUsageError(err)
 			}
 
-			result, migrateErr := ops.Migrate(cmd.Context(), fromScope, targetCfg, path, v3runtime.DockerCompose{}, migrateNow())
+			result, migrateErr := ops.Migrate(cmd.Context(), fromScope, targetCfg, path, runtime.DockerCompose{}, migrateNow())
 			if migrateErr != nil {
 				return migrateCommandError(result, migrateErr)
 			}
@@ -76,11 +76,11 @@ func migrateUsageError(err error) error {
 	}
 }
 
-func loadMigrateTargetConfig(scope, projectDir string) (v3config.BackupConfig, error) {
+func loadMigrateTargetConfig(scope, projectDir string) (config.BackupConfig, error) {
 	if scope == "" {
-		return v3config.BackupConfig{}, fmt.Errorf("--to-scope is required")
+		return config.BackupConfig{}, fmt.Errorf("--to-scope is required")
 	}
-	return v3config.LoadBackup(v3config.BackupRequest{
+	return config.LoadBackup(config.BackupRequest{
 		Scope:      scope,
 		ProjectDir: projectDir,
 	})

@@ -1,9 +1,9 @@
 package cli
 
 import (
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	"github.com/lazuale/espocrm-ops/internal/v3/ops"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	"github.com/lazuale/espocrm-ops/internal/ops"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -16,10 +16,10 @@ func newDoctorCmd() *cobra.Command {
 		Short: "Check whether backup and restore prerequisites are ready",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			result, err := ops.Doctor(cmd.Context(), v3config.BackupRequest{
+			result, err := ops.Doctor(cmd.Context(), config.BackupRequest{
 				Scope:      scope,
 				ProjectDir: projectDir,
-			}, v3runtime.DockerCompose{})
+			}, runtime.DockerCompose{})
 			if err != nil {
 				return doctorCommandError(result, err)
 			}

@@ -9,7 +9,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lazuale/espocrm-ops/internal/v3/ops"
+	"github.com/lazuale/espocrm-ops/internal/ops"
 )
 
 func TestBackupCLIJSONSuccess(t *testing.T) {

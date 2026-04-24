@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/v3/ops"
+	"github.com/lazuale/espocrm-ops/internal/ops"
 	"github.com/spf13/cobra"
 )
 

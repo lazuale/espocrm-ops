@@ -9,11 +9,11 @@ import (
 	"testing"
 	"time"
 
-	"github.com/lazuale/espocrm-ops/internal/v3/ops"
+	"github.com/lazuale/espocrm-ops/internal/ops"
 )
 
-func TestRestoreCLIJSONSuccess(t *testing.T) {
-	manifestPath, wantSQL := writeVerifiedRestoreBackupSet(t)
+func TestMigrateCLIJSONSuccess(t *testing.T) {
+	manifestPath, wantSQL := writeVerifiedScopedBackupSet(t, "dev")
 
 	projectDir := t.TempDir()
 	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
@@ -38,19 +38,19 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	stdinLogPath := filepath.Join(t.TempDir(), "restore-db.sql")
+	stdinLogPath := filepath.Join(t.TempDir(), "migrate-db.sql")
 	prependRestoreFakeDocker(t)
 	t.Setenv("TEST_RESTORE_DOCKER_STDIN_LOG", stdinLogPath)
 
-	oldNow := restoreNow
-	restoreNow = func() time.Time {
-		return time.Date(2026, 4, 24, 18, 0, 0, 0, time.UTC)
+	oldNow := migrateNow
+	migrateNow = func() time.Time {
+		return time.Date(2026, 4, 24, 19, 0, 0, 0, time.UTC)
 	}
-	defer func() { restoreNow = oldNow }()
+	defer func() { migrateNow = oldNow }()
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
-	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	exitCode := Execute([]string{"migrate", "--from-scope", "dev", "--to-scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
 	if exitCode != 0 {
 		t.Fatalf("expected exit code 0, got %d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
 	}
@@ -59,13 +59,13 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
 		t.Fatal(err)
 	}
-	if command := requireJSONString(t, obj, "command"); command != "restore" {
+	if command := requireJSONString(t, obj, "command"); command != "migrate" {
 		t.Fatalf("unexpected command: %s", command)
 	}
 	if !requireJSONBool(t, obj, "ok") {
 		t.Fatal("expected ok=true")
 	}
-	if message := requireJSONString(t, obj, "message"); message != "restore completed" {
+	if message := requireJSONString(t, obj, "message"); message != "migrate completed" {
 		t.Fatalf("unexpected message: %s", message)
 	}
 	if gotManifest := requireJSONString(t, obj, "result", "manifest"); gotManifest != manifestPath {
@@ -93,7 +93,7 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 	}
 }
 
-func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
+func TestMigrateCLIJSONFailure(t *testing.T) {
 	projectDir := t.TempDir()
 	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
@@ -120,36 +120,36 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 	missingManifest := filepath.Join(projectDir, "missing.manifest.json")
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
-	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", missingManifest}, stdout, stderr)
-	if exitCode != exitManifest {
-		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitManifest, exitCode, stdout.String(), stderr.String())
+	exitCode := Execute([]string{"migrate", "--from-scope", "prod", "--to-scope", "prod", "--project-dir", projectDir, "--manifest", missingManifest}, stdout, stderr)
+	if exitCode != exitUsage {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
 	}
 
 	var obj map[string]any
 	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
 		t.Fatal(err)
 	}
-	if command := requireJSONString(t, obj, "command"); command != "restore" {
+	if command := requireJSONString(t, obj, "command"); command != "migrate" {
 		t.Fatalf("unexpected command: %s", command)
 	}
 	if requireJSONBool(t, obj, "ok") {
 		t.Fatal("expected ok=false")
 	}
-	if message := requireJSONString(t, obj, "message"); message != "restore failed" {
+	if message := requireJSONString(t, obj, "message"); message != "migrate failed" {
 		t.Fatalf("unexpected message: %s", message)
 	}
-	if kind := requireJSONString(t, obj, "error", "kind"); kind != "manifest" {
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
 		t.Fatalf("unexpected error kind: %s", kind)
 	}
-	if gotManifest := requireJSONString(t, obj, "result", "manifest"); gotManifest != missingManifest {
-		t.Fatalf("unexpected manifest: %s", gotManifest)
+	if errMessage := requireJSONString(t, obj, "error", "message"); errMessage != "--from-scope and --to-scope must differ" {
+		t.Fatalf("unexpected error message: %s", errMessage)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
 }
 
-func writeVerifiedRestoreBackupSet(t *testing.T) (manifestPath, dbSQL string) {
+func writeVerifiedScopedBackupSet(t *testing.T, scope string) (manifestPath, dbSQL string) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -171,8 +171,8 @@ func writeVerifiedRestoreBackupSet(t *testing.T) (manifestPath, dbSQL string) {
 
 	raw, err := json.MarshalIndent(map[string]any{
 		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-24T18:00:00Z",
+		"scope":      scope,
+		"created_at": "2026-04-24T19:00:00Z",
 		"artifacts": map[string]any{
 			"db_backup":    filepath.Base(dbPath),
 			"files_backup": filepath.Base(filesPath),
@@ -191,79 +191,3 @@ func writeVerifiedRestoreBackupSet(t *testing.T) (manifestPath, dbSQL string) {
 
 	return manifestPath, dbSQL
 }
-
-func prependRestoreFakeDocker(t *testing.T) {
-	t.Helper()
-
-	rootDir := t.TempDir()
-	binDir := filepath.Join(rootDir, "bin")
-	if err := os.MkdirAll(binDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-
-	scriptPath := filepath.Join(binDir, "docker")
-	if err := os.WriteFile(scriptPath, []byte(restoreFakeDockerScript), 0o755); err != nil {
-		t.Fatal(err)
-	}
-	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
-}
-
-const restoreFakeDockerScript = `#!/usr/bin/env bash
-set -Eeuo pipefail
-
-if [[ "${1:-}" != "compose" ]]; then
-  printf 'unexpected docker invocation: %s\n' "$*" >&2
-  exit 1
-fi
-shift
-
-while [[ $# -gt 0 ]]; do
-  case "$1" in
-    --project-directory|-f|--env-file)
-      shift 2
-      ;;
-    *)
-      break
-      ;;
-  esac
-done
-
-case "${1:-}" in
-  config)
-    exit 0
-    ;;
-  stop|start)
-    exit 0
-    ;;
-  up)
-    [[ "${2:-}" == "-d" ]] || exit 1
-    exit 0
-    ;;
-  exec)
-    shift
-    [[ "${1:-}" == "-T" ]] || exit 1
-    shift
-    [[ "${1:-}" == "db" ]] || exit 1
-    shift
-    case "${1:-}" in
-      mariadb-dump)
-        printf 'create table snapshot(id int);\n'
-        exit 0
-        ;;
-      mariadb)
-        shift
-        for arg in "$@"; do
-          if [[ "$arg" == "-e" ]]; then
-            exit 0
-          fi
-        done
-        cat >"${TEST_RESTORE_DOCKER_STDIN_LOG:-/dev/null}"
-        exit 0
-        ;;
-    esac
-    ;;
-esac
-
-printf 'unexpected docker invocation: %s\n' "$*" >&2
-exit 1
-`

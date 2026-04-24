@@ -11,8 +11,8 @@ import (
 	"strings"
 	"time"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
 type RestoreResult struct {
@@ -22,12 +22,12 @@ type RestoreResult struct {
 
 type restoreRuntime interface {
 	backupRuntime
-	UpService(ctx context.Context, target v3runtime.Target, service string) error
-	RestoreDatabase(ctx context.Context, target v3runtime.Target, reader io.Reader) error
-	DBPing(ctx context.Context, target v3runtime.Target) error
+	UpService(ctx context.Context, target runtime.Target, service string) error
+	RestoreDatabase(ctx context.Context, target runtime.Target, reader io.Reader) error
+	DBPing(ctx context.Context, target runtime.Target) error
 }
 
-func Restore(ctx context.Context, cfg v3config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result RestoreResult, err error) {
+func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result RestoreResult, err error) {
 	if rt == nil {
 		return RestoreResult{}, runtimeError("restore runtime is required", nil)
 	}
@@ -53,7 +53,7 @@ func Restore(ctx context.Context, cfg v3config.BackupConfig, manifestPath string
 	}
 	result.SnapshotManifest = snapshotResult.Manifest
 
-	target := v3runtime.Target{
+	target := runtime.Target{
 		ProjectDir:  cfg.ProjectDir,
 		ComposeFile: cfg.ComposeFile,
 		EnvFile:     cfg.EnvFile,
@@ -112,7 +112,7 @@ func Restore(ctx context.Context, cfg v3config.BackupConfig, manifestPath string
 	return result, nil
 }
 
-func validateRestoreInputs(cfg v3config.BackupConfig, manifestPath string) error {
+func validateRestoreInputs(cfg config.BackupConfig, manifestPath string) error {
 	if err := validateBackupConfig(cfg); err != nil {
 		return err
 	}
@@ -122,7 +122,7 @@ func validateRestoreInputs(cfg v3config.BackupConfig, manifestPath string) error
 	return nil
 }
 
-func restoreDatabaseBackup(ctx context.Context, artifactPath string, rt restoreRuntime, target v3runtime.Target) (err error) {
+func restoreDatabaseBackup(ctx context.Context, artifactPath string, rt restoreRuntime, target runtime.Target) (err error) {
 	if err := ctx.Err(); err != nil {
 		return ioError("restore interrupted", err)
 	}
@@ -296,7 +296,7 @@ func extractTarEntry(root string, header *tar.Header, reader io.Reader) error {
 			return err
 		}
 		return os.Chmod(targetPath, mode)
-	case tar.TypeReg, legacyTarRegularTypeflag:
+	case tar.TypeReg, tarRegularTypeflagZero:
 		if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
 			return err
 		}

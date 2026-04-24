@@ -4,9 +4,9 @@ import (
 	"fmt"
 	"time"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	"github.com/lazuale/espocrm-ops/internal/v3/ops"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	"github.com/lazuale/espocrm-ops/internal/ops"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -40,7 +40,7 @@ func newBackupCmd() *cobra.Command {
 				}
 			}
 
-			result, backupErr := ops.Backup(cmd.Context(), cfg, v3runtime.DockerCompose{}, backupNow())
+			result, backupErr := ops.Backup(cmd.Context(), cfg, runtime.DockerCompose{}, backupNow())
 			if backupErr != nil {
 				return backupCommandError(result, backupErr)
 			}
@@ -65,11 +65,11 @@ func newBackupCmd() *cobra.Command {
 	return cmd
 }
 
-func loadBackupConfig(scope, projectDir string) (v3config.BackupConfig, error) {
+func loadBackupConfig(scope, projectDir string) (config.BackupConfig, error) {
 	if scope == "" {
-		return v3config.BackupConfig{}, fmt.Errorf("--scope is required")
+		return config.BackupConfig{}, fmt.Errorf("--scope is required")
 	}
-	return v3config.LoadBackup(v3config.BackupRequest{
+	return config.LoadBackup(config.BackupRequest{
 		Scope:      scope,
 		ProjectDir: projectDir,
 	})

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
 func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
@@ -296,8 +296,8 @@ func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
 	assertBackupSetRemoved(t, result)
 }
 
-func backupTestConfig(root, storageDir string) v3config.BackupConfig {
-	return v3config.BackupConfig{
+func backupTestConfig(root, storageDir string) config.BackupConfig {
+	return config.BackupConfig{
 		Scope:       "prod",
 		ProjectDir:  root,
 		ComposeFile: filepath.Join(root, "compose.yaml"),
@@ -320,18 +320,18 @@ type fakeBackupRuntime struct {
 	dumpErr          error
 	cancelOnStop     context.CancelFunc
 	calls            []string
-	lastTarget       v3runtime.Target
+	lastTarget       runtime.Target
 	lastServices     []string
 	startContextErrs []error
 }
 
-func (f *fakeBackupRuntime) Validate(_ context.Context, target v3runtime.Target) error {
+func (f *fakeBackupRuntime) Validate(_ context.Context, target runtime.Target) error {
 	f.calls = append(f.calls, "validate")
 	f.lastTarget = target
 	return f.validateErr
 }
 
-func (f *fakeBackupRuntime) StopServices(_ context.Context, target v3runtime.Target, services []string) error {
+func (f *fakeBackupRuntime) StopServices(_ context.Context, target runtime.Target, services []string) error {
 	f.calls = append(f.calls, "stop_services")
 	f.lastTarget = target
 	f.lastServices = append([]string(nil), services...)
@@ -341,7 +341,7 @@ func (f *fakeBackupRuntime) StopServices(_ context.Context, target v3runtime.Tar
 	return f.stopErr
 }
 
-func (f *fakeBackupRuntime) StartServices(ctx context.Context, target v3runtime.Target, services []string) error {
+func (f *fakeBackupRuntime) StartServices(ctx context.Context, target runtime.Target, services []string) error {
 	f.calls = append(f.calls, "start_services")
 	f.lastTarget = target
 	f.lastServices = append([]string(nil), services...)
@@ -349,7 +349,7 @@ func (f *fakeBackupRuntime) StartServices(ctx context.Context, target v3runtime.
 	return f.startErr
 }
 
-func (f *fakeBackupRuntime) DumpDatabase(ctx context.Context, target v3runtime.Target, destPath string) error {
+func (f *fakeBackupRuntime) DumpDatabase(ctx context.Context, target runtime.Target, destPath string) error {
 	f.calls = append(f.calls, "dump_database")
 	f.lastTarget = target
 	if err := ctx.Err(); err != nil {

@@ -7,8 +7,8 @@ import (
 	"strings"
 	"testing"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
 func TestDoctorMissingEnvFails(t *testing.T) {
@@ -21,7 +21,7 @@ func TestDoctorMissingEnvFails(t *testing.T) {
 	}, true)
 
 	rt := &fakeDoctorRuntime{}
-	result, err := Doctor(context.Background(), v3config.BackupRequest{
+	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
@@ -43,7 +43,7 @@ func TestDoctorBadComposeFileFails(t *testing.T) {
 	rt := &fakeDoctorRuntime{
 		composeErr: errf("compose failed"),
 	}
-	result, err := Doctor(context.Background(), v3config.BackupRequest{
+	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
@@ -86,7 +86,7 @@ func TestDoctorBackupRootNotWritableFails(t *testing.T) {
 	}
 
 	rt := &fakeDoctorRuntime{}
-	result, err := Doctor(context.Background(), v3config.BackupRequest{
+	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
@@ -121,7 +121,7 @@ func TestDoctorMissingBackupRootFailsAndDoesNotCreateDirectory(t *testing.T) {
 	}
 
 	rt := &fakeDoctorRuntime{}
-	result, err := Doctor(context.Background(), v3config.BackupRequest{
+	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
@@ -145,7 +145,7 @@ func TestDoctorStorageDirMissingFails(t *testing.T) {
 	projectDir := doctorProjectDir(t, validDoctorEnv(), false)
 
 	rt := &fakeDoctorRuntime{}
-	result, err := Doctor(context.Background(), v3config.BackupRequest{
+	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
@@ -167,13 +167,13 @@ func TestDoctorMissingDBServiceInPSFails(t *testing.T) {
 	projectDir := doctorProjectDir(t, validDoctorEnv(), true)
 
 	rt := &fakeDoctorRuntime{
-		services: []v3runtime.Service{
+		services: []runtime.Service{
 			{Name: "espocrm"},
 			{Name: "espocrm-daemon"},
 			{Name: "espocrm-websocket"},
 		},
 	}
-	result, err := Doctor(context.Background(), v3config.BackupRequest{
+	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
@@ -197,13 +197,13 @@ func TestDoctorMissingAppServiceInPSFails(t *testing.T) {
 	projectDir := doctorProjectDir(t, validDoctorEnv(), true)
 
 	rt := &fakeDoctorRuntime{
-		services: []v3runtime.Service{
+		services: []runtime.Service{
 			{Name: "db"},
 			{Name: "espocrm"},
 			{Name: "espocrm-websocket"},
 		},
 	}
-	result, err := Doctor(context.Background(), v3config.BackupRequest{
+	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
@@ -270,26 +270,26 @@ func validDoctorEnv() []string {
 
 type fakeDoctorRuntime struct {
 	composeErr  error
-	services    []v3runtime.Service
+	services    []runtime.Service
 	servicesErr error
 	dbPingErr   error
 	calls       []string
 }
 
-func (f *fakeDoctorRuntime) ComposeConfig(_ context.Context, _ v3runtime.Target) error {
+func (f *fakeDoctorRuntime) ComposeConfig(_ context.Context, _ runtime.Target) error {
 	f.calls = append(f.calls, "compose_config")
 	return f.composeErr
 }
 
-func (f *fakeDoctorRuntime) Services(_ context.Context, _ v3runtime.Target) ([]v3runtime.Service, error) {
+func (f *fakeDoctorRuntime) Services(_ context.Context, _ runtime.Target) ([]runtime.Service, error) {
 	f.calls = append(f.calls, "services")
 	if f.servicesErr != nil {
 		return nil, f.servicesErr
 	}
-	return append([]v3runtime.Service(nil), f.services...), nil
+	return append([]runtime.Service(nil), f.services...), nil
 }
 
-func (f *fakeDoctorRuntime) DBPing(_ context.Context, _ v3runtime.Target) error {
+func (f *fakeDoctorRuntime) DBPing(_ context.Context, _ runtime.Target) error {
 	f.calls = append(f.calls, "db_ping")
 	return f.dbPingErr
 }

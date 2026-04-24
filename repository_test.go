@@ -7,6 +7,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"strings"
 	"testing"
@@ -14,14 +15,14 @@ import (
 
 const modulePath = "github.com/lazuale/espocrm-ops"
 
-func TestRetainedInternalPackagesAreV3Only(t *testing.T) {
+func TestRetainedInternalPackagesAreFlat(t *testing.T) {
 	got := listImportPaths(t, "list", "-f", "{{.ImportPath}}", "./internal/...")
 	want := []string{
-		modulePath + "/internal/v3/cli",
-		modulePath + "/internal/v3/config",
-		modulePath + "/internal/v3/manifest",
-		modulePath + "/internal/v3/ops",
-		modulePath + "/internal/v3/runtime",
+		modulePath + "/internal/cli",
+		modulePath + "/internal/config",
+		modulePath + "/internal/manifest",
+		modulePath + "/internal/ops",
+		modulePath + "/internal/runtime",
 	}
 
 	if !slices.Equal(got, want) {
@@ -29,60 +30,52 @@ func TestRetainedInternalPackagesAreV3Only(t *testing.T) {
 	}
 }
 
-func TestLegacyInternalDirectoriesAreGone(t *testing.T) {
+func TestUnexpectedInternalDirectoriesAreAbsent(t *testing.T) {
 	root := repoRoot(t)
-	legacyDirs := []string{
-		"internal/app",
-		"internal/cli",
-		"internal/contract",
-		"internal/domain",
-		"internal/manifest",
-		"internal/model",
-		"internal/ops",
-		"internal/opsconfig",
-		"internal/platform",
-		"internal/runtime",
-		"internal/store",
-		"internal/testutil",
+	entries, err := os.ReadDir(filepath.Join(root, "internal"))
+	if err != nil {
+		t.Fatalf("read internal/: %v", err)
 	}
 
-	for _, rel := range legacyDirs {
-		path := filepath.Join(root, rel)
-		_, err := os.Stat(path)
-		if os.IsNotExist(err) {
+	var got []string
+	for _, entry := range entries {
+		if !entry.IsDir() {
 			continue
 		}
-		if err != nil {
-			t.Fatalf("stat %s: %v", path, err)
-		}
-		t.Fatalf("legacy directory still exists: %s", path)
+		got = append(got, entry.Name())
+	}
+	slices.Sort(got)
+
+	want := []string{"cli", "config", "manifest", "ops", "runtime"}
+	if !slices.Equal(got, want) {
+		t.Fatalf("unexpected internal directories:\n got: %v\nwant: %v", got, want)
 	}
 }
 
-func TestCommandDoesNotPullLegacyInternalPackages(t *testing.T) {
+func TestCommandDoesNotPullUnexpectedInternalPackages(t *testing.T) {
 	deps := listImportPaths(t, "list", "-deps", "-f", "{{.ImportPath}}", "./cmd/espops")
-	var gotLegacy []string
+	var unexpectedDeps []string
 	for _, dep := range deps {
 		switch {
-		case dep == modulePath+"/internal/v3/cli":
-		case dep == modulePath+"/internal/v3/config":
-		case dep == modulePath+"/internal/v3/manifest":
-		case dep == modulePath+"/internal/v3/ops":
-		case dep == modulePath+"/internal/v3/runtime":
+		case dep == modulePath+"/internal/cli":
+		case dep == modulePath+"/internal/config":
+		case dep == modulePath+"/internal/manifest":
+		case dep == modulePath+"/internal/ops":
+		case dep == modulePath+"/internal/runtime":
 		case strings.HasPrefix(dep, modulePath+"/internal/"):
-			gotLegacy = append(gotLegacy, dep)
+			unexpectedDeps = append(unexpectedDeps, dep)
 		}
 	}
 
-	if len(gotLegacy) > 0 {
-		t.Fatalf("cmd/espops still pulls legacy internal packages: %v", gotLegacy)
+	if len(unexpectedDeps) > 0 {
+		t.Fatalf("cmd/espops still pulls unexpected internal packages: %v", unexpectedDeps)
 	}
 }
 
 func TestProductionProcessEnvAccessSurfaceIsExplicit(t *testing.T) {
 	root := repoRoot(t)
 	fset := token.NewFileSet()
-	allowedEnvironOwner := filepath.Join(root, "internal", "v3", "runtime", "docker.go")
+	allowedEnvironOwner := filepath.Join(root, "internal", "runtime", "docker.go")
 
 	for _, path := range productionGoFiles(t, filepath.Join(root, "cmd"), filepath.Join(root, "internal")) {
 		file, err := parser.ParseFile(fset, path, nil, 0)
@@ -118,7 +111,7 @@ func TestProductionProcessEnvAccessSurfaceIsExplicit(t *testing.T) {
 func TestProductionShellExecutionSurfaceIsExplicit(t *testing.T) {
 	root := repoRoot(t)
 	fset := token.NewFileSet()
-	allowedExecOwner := filepath.Join(root, "internal", "v3", "runtime", "docker.go")
+	allowedExecOwner := filepath.Join(root, "internal", "runtime", "docker.go")
 
 	for _, path := range productionGoFiles(t, filepath.Join(root, "cmd"), filepath.Join(root, "internal")) {
 		file, err := parser.ParseFile(fset, path, nil, 0)
@@ -159,19 +152,14 @@ func TestAuthorityDocsDoNotDescribeRemovedLayout(t *testing.T) {
 		"REPO_COMPLIANCE_CHECKLIST.md",
 		"REPO_COMPLIANCE_BASELINE.md",
 	}
-	forbidden := []string{
-		"internal/app/",
-		"internal/cli/",
-		"internal/contract/",
-		"internal/domain/",
-		"internal/platform/",
-		"internal/model/",
-		"internal/opsconfig/",
-		"internal/runtime/",
-		"internal/store/",
-		"acceptance/v2",
-		"V2_SCOPE",
+	allowed := map[string]struct{}{
+		"internal/cli/":      {},
+		"internal/config/":   {},
+		"internal/manifest/": {},
+		"internal/ops/":      {},
+		"internal/runtime/":  {},
 	}
+	pattern := regexp.MustCompile(`internal/[a-z0-9_]+/`)
 
 	for _, rel := range docs {
 		path := filepath.Join(root, rel)
@@ -181,9 +169,9 @@ func TestAuthorityDocsDoNotDescribeRemovedLayout(t *testing.T) {
 		}
 
 		text := string(raw)
-		for _, snippet := range forbidden {
-			if strings.Contains(text, snippet) {
-				t.Fatalf("doc %s still contains removed layout reference %q", rel, snippet)
+		for _, match := range pattern.FindAllString(text, -1) {
+			if _, ok := allowed[match]; !ok {
+				t.Fatalf("doc %s contains unexpected internal layout reference %q", rel, match)
 			}
 		}
 	}

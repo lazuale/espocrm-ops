@@ -13,9 +13,9 @@ import (
 	"strings"
 	"time"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	v3manifest "github.com/lazuale/espocrm-ops/internal/v3/manifest"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	manifest "github.com/lazuale/espocrm-ops/internal/manifest"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
 type BackupResult struct {
@@ -25,10 +25,10 @@ type BackupResult struct {
 }
 
 type backupRuntime interface {
-	Validate(ctx context.Context, target v3runtime.Target) error
-	StopServices(ctx context.Context, target v3runtime.Target, services []string) error
-	StartServices(ctx context.Context, target v3runtime.Target, services []string) error
-	DumpDatabase(ctx context.Context, target v3runtime.Target, destPath string) error
+	Validate(ctx context.Context, target runtime.Target) error
+	StopServices(ctx context.Context, target runtime.Target, services []string) error
+	StartServices(ctx context.Context, target runtime.Target, services []string) error
+	DumpDatabase(ctx context.Context, target runtime.Target, destPath string) error
 }
 
 type backupLayout struct {
@@ -41,7 +41,7 @@ type backupLayout struct {
 
 const serviceReturnTimeout = 30 * time.Second
 
-func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
+func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
 	if rt == nil {
 		return BackupResult{}, runtimeError("backup runtime is required", nil)
 	}
@@ -77,7 +77,7 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 		}
 	}()
 
-	target := v3runtime.Target{
+	target := runtime.Target{
 		ProjectDir:  cfg.ProjectDir,
 		ComposeFile: cfg.ComposeFile,
 		EnvFile:     cfg.EnvFile,
@@ -187,15 +187,15 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 		return result, ioError("failed to allocate manifest temp file", err)
 	}
 	cleanupPaths = append(cleanupPaths, manifestTmp)
-	if err := writeManifestJSON(manifestTmp, v3manifest.Manifest{
+	if err := writeManifestJSON(manifestTmp, manifest.Manifest{
 		Version:   1,
 		Scope:     cfg.Scope,
 		CreatedAt: now.Format(time.RFC3339),
-		Artifacts: v3manifest.Artifacts{
+		Artifacts: manifest.Artifacts{
 			DBBackup:    filepath.Base(layout.DBArtifact),
 			FilesBackup: filepath.Base(layout.FilesArtifact),
 		},
-		Checksums: v3manifest.Checksums{
+		Checksums: manifest.Checksums{
 			DBBackup:    dbChecksum,
 			FilesBackup: filesChecksum,
 		},
@@ -219,7 +219,7 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 	}, nil
 }
 
-func validateBackupConfig(cfg v3config.BackupConfig) error {
+func validateBackupConfig(cfg config.BackupConfig) error {
 	for _, field := range []struct {
 		name  string
 		value string
@@ -325,7 +325,7 @@ func writeSHA256Sidecar(path, artifactName, checksum string) error {
 	return os.WriteFile(path, []byte(body), 0o644)
 }
 
-func writeManifestJSON(path string, manifestData v3manifest.Manifest) error {
+func writeManifestJSON(path string, manifestData manifest.Manifest) error {
 	raw, err := json.MarshalIndent(manifestData, "", "  ")
 	if err != nil {
 		return err

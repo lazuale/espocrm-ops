@@ -13,8 +13,8 @@ import (
 	"testing"
 	"time"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
 func TestRestoreSourceManifestInvalidFailsBeforeMutation(t *testing.T) {
@@ -371,7 +371,7 @@ func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
 	assertFileContains(t, filepath.Join(storageDir, "nested", "child.txt"), "child\n")
 }
 
-func restoreTargetConfig(t *testing.T) (v3config.BackupConfig, string) {
+func restoreTargetConfig(t *testing.T) (config.BackupConfig, string) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -431,12 +431,12 @@ type fakeRestoreRuntime struct {
 	startContextErrs  []error
 }
 
-func (f *fakeRestoreRuntime) Validate(_ context.Context, _ v3runtime.Target) error {
+func (f *fakeRestoreRuntime) Validate(_ context.Context, _ runtime.Target) error {
 	f.calls = append(f.calls, "validate")
 	return f.validateErr
 }
 
-func (f *fakeRestoreRuntime) StopServices(_ context.Context, _ v3runtime.Target, _ []string) error {
+func (f *fakeRestoreRuntime) StopServices(_ context.Context, _ runtime.Target, _ []string) error {
 	f.calls = append(f.calls, "stop_services")
 	f.stopCount++
 	if f.cancel != nil && f.stopCount == f.cancelOnStopCount {
@@ -445,14 +445,14 @@ func (f *fakeRestoreRuntime) StopServices(_ context.Context, _ v3runtime.Target,
 	return indexedError(f.stopErrors, f.stopCount)
 }
 
-func (f *fakeRestoreRuntime) StartServices(ctx context.Context, _ v3runtime.Target, _ []string) error {
+func (f *fakeRestoreRuntime) StartServices(ctx context.Context, _ runtime.Target, _ []string) error {
 	f.calls = append(f.calls, "start_services")
 	f.startContextErrs = append(f.startContextErrs, ctx.Err())
 	f.startCount++
 	return indexedError(f.startErrors, f.startCount)
 }
 
-func (f *fakeRestoreRuntime) DumpDatabase(_ context.Context, _ v3runtime.Target, destPath string) error {
+func (f *fakeRestoreRuntime) DumpDatabase(_ context.Context, _ runtime.Target, destPath string) error {
 	f.calls = append(f.calls, "dump_database")
 	if f.dumpErr != nil {
 		return f.dumpErr
@@ -460,13 +460,13 @@ func (f *fakeRestoreRuntime) DumpDatabase(_ context.Context, _ v3runtime.Target,
 	return os.WriteFile(destPath, append([]byte(nil), f.snapshotDBDump...), 0o644)
 }
 
-func (f *fakeRestoreRuntime) UpService(_ context.Context, _ v3runtime.Target, _ string) error {
+func (f *fakeRestoreRuntime) UpService(_ context.Context, _ runtime.Target, _ string) error {
 	f.calls = append(f.calls, "up_service")
 	f.upCount++
 	return indexedError(f.upErrors, f.upCount)
 }
 
-func (f *fakeRestoreRuntime) RestoreDatabase(_ context.Context, _ v3runtime.Target, reader io.Reader) error {
+func (f *fakeRestoreRuntime) RestoreDatabase(_ context.Context, _ runtime.Target, reader io.Reader) error {
 	f.calls = append(f.calls, "restore_database")
 	raw, err := io.ReadAll(reader)
 	if err != nil {
@@ -476,7 +476,7 @@ func (f *fakeRestoreRuntime) RestoreDatabase(_ context.Context, _ v3runtime.Targ
 	return f.restoreDBErr
 }
 
-func (f *fakeRestoreRuntime) DBPing(_ context.Context, _ v3runtime.Target) error {
+func (f *fakeRestoreRuntime) DBPing(_ context.Context, _ runtime.Target) error {
 	f.calls = append(f.calls, "db_ping")
 	return f.dbPingErr
 }

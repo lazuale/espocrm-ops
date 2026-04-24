@@ -6,8 +6,8 @@ import (
 	"os"
 	"strings"
 
-	v3config "github.com/lazuale/espocrm-ops/internal/v3/config"
-	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
+	config "github.com/lazuale/espocrm-ops/internal/config"
+	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
 type DoctorCheck struct {
@@ -20,19 +20,19 @@ type DoctorResult struct {
 }
 
 type doctorRuntime interface {
-	ComposeConfig(ctx context.Context, target v3runtime.Target) error
-	Services(ctx context.Context, target v3runtime.Target) ([]v3runtime.Service, error)
-	DBPing(ctx context.Context, target v3runtime.Target) error
+	ComposeConfig(ctx context.Context, target runtime.Target) error
+	Services(ctx context.Context, target runtime.Target) ([]runtime.Service, error)
+	DBPing(ctx context.Context, target runtime.Target) error
 }
 
-func Doctor(ctx context.Context, req v3config.BackupRequest, rt doctorRuntime) (DoctorResult, error) {
+func Doctor(ctx context.Context, req config.BackupRequest, rt doctorRuntime) (DoctorResult, error) {
 	if rt == nil {
 		return DoctorResult{}, runtimeError("doctor runtime is required", nil)
 	}
 
 	result := DoctorResult{Checks: make([]DoctorCheck, 0, 6)}
 
-	cfg, err := v3config.LoadBackup(req)
+	cfg, err := config.LoadBackup(req)
 	if err != nil {
 		return failDoctorCheck(result, "config", ErrorKindUsage, "doctor config check failed", err)
 	}
@@ -48,7 +48,7 @@ func Doctor(ctx context.Context, req v3config.BackupRequest, rt doctorRuntime) (
 	}
 	result.Checks = append(result.Checks, passedDoctorCheck("storage_dir"))
 
-	target := v3runtime.Target{
+	target := runtime.Target{
 		ProjectDir:  cfg.ProjectDir,
 		ComposeFile: cfg.ComposeFile,
 		EnvFile:     cfg.EnvFile,
@@ -141,7 +141,7 @@ func checkDoctorStorageDir(path string) error {
 	return nil
 }
 
-func requireDoctorServices(services []v3runtime.Service, dbService string, appServices []string) error {
+func requireDoctorServices(services []runtime.Service, dbService string, appServices []string) error {
 	available := make(map[string]struct{}, len(services))
 	for _, service := range services {
 		name := strings.TrimSpace(service.Name)

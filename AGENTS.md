@@ -8,7 +8,7 @@
 ## Authority
 - Repository authority is `AGENTS.md` -> `ARCHITECTURE.md` and `MICRO_MONOLITHS.md` -> Go code under `cmd/espops/` and `internal/` -> `Makefile` -> `.github/workflows/ci.yml`.
 - `README.md` and `CONTRIBUTING.md` are practical docs. If they drift from the retained Go product, fix them.
-- If an archived doc conflicts with `AGENTS.md` or the retained Go product, ignore the archived doc.
+- If a non-authority doc conflicts with `AGENTS.md` or the retained Go product, ignore the non-authority doc.
 
 ## Defaults
 - Block unless clearly safe.

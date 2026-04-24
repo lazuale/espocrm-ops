@@ -141,17 +141,10 @@ Migrate from one scope into another:
 ## Repository Layout
 
 - `cmd/espops/`: program entrypoint only
-- `internal/v3/cli/`: root command surface, envelopes, and exit mapping
-- `internal/v3/config/`: env-file loading and config validation
-- `internal/v3/ops/`: retained operation workflows and post-checks
-- `internal/v3/runtime/`: Docker Compose and MariaDB command execution
-- `internal/v3/manifest/`: backup manifest contract and artifact resolution
+- `internal/cli/`: root command surface, envelopes, and exit mapping
+- `internal/config/`: env-file loading and config validation
+- `internal/ops/`: retained operation workflows and post-checks
+- `internal/runtime/`: Docker Compose and MariaDB command execution
+- `internal/manifest/`: backup manifest contract and artifact resolution
 - `deploy/`: runtime tuning files used by `compose.yaml`
 - `env/`: example env files
-
-## More Context
-
-- Repository rules live in [AGENTS.md](AGENTS.md).
-- Layer rules live in [ARCHITECTURE.md](ARCHITECTURE.md).
-- Retained ownership and caller rules live in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
-- Current retained product notes live in [V3.md](V3.md).

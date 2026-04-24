@@ -12,7 +12,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/lazuale/espocrm-ops/internal/v3/manifest"
+	"github.com/lazuale/espocrm-ops/internal/manifest"
 )
 
 const (
@@ -25,7 +25,7 @@ const (
 	ErrorKindIO       = "io"
 )
 
-const legacyTarRegularTypeflag = byte(0)
+const tarRegularTypeflagZero = byte(0)
 
 type VerifyResult struct {
 	Manifest    string
@@ -261,7 +261,7 @@ func validateTarHeader(header *tar.Header) error {
 		return fmt.Errorf("tar entry escapes archive root: %s", name)
 	}
 	switch header.Typeflag {
-	case tar.TypeDir, tar.TypeReg, legacyTarRegularTypeflag:
+	case tar.TypeDir, tar.TypeReg, tarRegularTypeflagZero:
 		return nil
 	default:
 		return fmt.Errorf("tar entry type is not allowed: %d", header.Typeflag)
