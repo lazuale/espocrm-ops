@@ -86,6 +86,7 @@ Operator prerequisites:
 - `APP_SERVICES` must list the exact Compose application services as a comma-separated contract
 - `restore` fails closed unless `manifest.scope` matches `--scope`; use `migrate` for intentional cross-scope restore
 - `restore`, `migrate`, and `smoke` reset the target database as MariaDB root before importing the dump
+- `restore` and `migrate` restore files through staged extraction: the archive is validated, extracted into staging, the staged tree is validated, and target storage is cleared only after staging succeeds
 
 ## Minimal Safe Workflow
 
@@ -103,7 +104,7 @@ Then use the commands in this order:
 2. `espops backup verify`
    Verify the manifest you plan to trust.
 3. `espops restore`
-   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, and then imports into the clean database.
+   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction and clears target storage only after staging succeeds.
 4. `espops migrate`
    Migrate is thin composition over verified restore flow, not a separate engine. It is the only supported cross-scope restore path.
 

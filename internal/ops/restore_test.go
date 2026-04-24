@@ -352,6 +352,42 @@ func TestRestorePostCheckFailureFails(t *testing.T) {
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
 }
 
+func TestRestoreFilePhaseFailureAfterDatabaseImportStillReturnsServices(t *testing.T) {
+	sourceManifest, wantSQL, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+	oldExtract := restoreExtractTarEntry
+	restoreExtractTarEntry = func(root string, header *tar.Header, reader io.Reader) error {
+		if header.Name == "restored.txt" {
+			return errf("simulated staging write failure")
+		}
+		return oldExtract(root, header, reader)
+	}
+	defer func() {
+		restoreExtractTarEntry = oldExtract
+	}()
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files staging extraction failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != wantSQL {
+		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
 func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 	sourceManifest, wantSQL, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
@@ -384,6 +420,7 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 
 func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 	_, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchiveEntries(t, archivePath, []restoreArchiveEntry{
 		{name: "restored.txt", body: "restored\n"},
@@ -397,10 +434,12 @@ func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	probe.assertClean(t)
 }
 
 func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
 	_, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeBrokenRestoreFilesArchive(t, archivePath, "restored.txt", "restored\n")
 
@@ -411,10 +450,12 @@ func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	probe.assertClean(t)
 }
 
-func TestRestoreFilesBackupTopLevelSymlinkFailsBeforeCleanup(t *testing.T) {
+func TestRestoreFilesBackupTargetSymlinkFailsAfterSuccessfulStaging(t *testing.T) {
 	_, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t)
 	linkTarget := filepath.Join(t.TempDir(), "outside.txt")
 	if err := os.WriteFile(linkTarget, []byte("outside\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -429,7 +470,7 @@ func TestRestoreFilesBackupTopLevelSymlinkFailsBeforeCleanup(t *testing.T) {
 
 	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
 	assertVerifyErrorKind(t, err, ErrorKindIO)
-	if !strings.Contains(err.Error(), "symlink") {
+	if !strings.Contains(err.Error(), "files replace failed before target clear") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
@@ -437,10 +478,39 @@ func TestRestoreFilesBackupTopLevelSymlinkFailsBeforeCleanup(t *testing.T) {
 		t.Fatalf("expected symlink to remain: %v", err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	probe.assertClean(t)
+}
+
+func TestRestoreFilesBackupStagingExtractionFailureDoesNotClearStorage(t *testing.T) {
+	_, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
+
+	oldExtract := restoreExtractTarEntry
+	restoreExtractTarEntry = func(root string, header *tar.Header, reader io.Reader) error {
+		if header.Name == "restored.txt" {
+			return errf("simulated staging write failure")
+		}
+		return oldExtract(root, header, reader)
+	}
+	defer func() {
+		restoreExtractTarEntry = oldExtract
+	}()
+
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files staging extraction failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	probe.assertClean(t)
 }
 
 func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
 	_, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{
 		"restored.txt":     "restored\n",
@@ -453,6 +523,32 @@ func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
 	assertFileContains(t, filepath.Join(storageDir, "nested", "child.txt"), "child\n")
+	probe.assertClean(t)
+}
+
+func TestValidateRestoredStorageTreeRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	linkTarget := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(linkTarget, []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linkTarget, filepath.Join(root, "linked")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := validateRestoredStorageTree(root)
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("expected symlink validation error, got %v", err)
+	}
+}
+
+func TestValidateRestoredStorageTreeRejectsEmptyDirectory(t *testing.T) {
+	root := t.TempDir()
+
+	err := validateRestoredStorageTree(root)
+	if err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("expected empty validation error, got %v", err)
+	}
 }
 
 func restoreTargetConfig(t *testing.T) (config.BackupConfig, string) {
@@ -689,5 +785,46 @@ func writeBrokenRestoreFilesArchive(t *testing.T, path, name, body string) {
 	}
 	if err := gzipWriter.Close(); err != nil {
 		t.Fatal(err)
+	}
+}
+
+type restoreStagingProbe struct {
+	root    string
+	created []string
+}
+
+func useRestoreStagingProbe(t *testing.T) *restoreStagingProbe {
+	t.Helper()
+
+	probe := &restoreStagingProbe{root: t.TempDir()}
+	oldCreate := createRestoreStagingDir
+	createRestoreStagingDir = func(_ string) (string, error) {
+		dir, err := os.MkdirTemp(probe.root, restoreStagingDirPattern)
+		if err != nil {
+			return "", err
+		}
+		probe.created = append(probe.created, dir)
+		return dir, nil
+	}
+	t.Cleanup(func() {
+		createRestoreStagingDir = oldCreate
+	})
+	return probe
+}
+
+func (p *restoreStagingProbe) assertClean(t *testing.T) {
+	t.Helper()
+
+	for _, dir := range p.created {
+		if _, err := os.Stat(dir); !os.IsNotExist(err) {
+			t.Fatalf("expected staging dir %s to be removed, got %v", dir, err)
+		}
+	}
+	matches, err := filepath.Glob(filepath.Join(p.root, restoreStagingDirPattern))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("unexpected staging dirs left behind: %v", matches)
 	}
 }

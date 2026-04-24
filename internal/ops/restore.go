@@ -4,6 +4,7 @@ import (
 	"archive/tar"
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -38,6 +39,13 @@ type restoreOptions struct {
 	allowedSourceScope string
 	scopeErrorMessage  string
 }
+
+const restoreStagingDirPattern = "espops-restore-staging-*"
+
+var (
+	createRestoreStagingDir = defaultCreateRestoreStagingDir
+	restoreExtractTarEntry  = extractTarEntry
+)
 
 func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, opts restoreOptions) (result RestoreResult, err error) {
 	if rt == nil {
@@ -216,46 +224,29 @@ func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string) (e
 		return err
 	}
 
-	file, err := os.Open(artifactPath)
+	stagingDir, err := createRestoreStagingDir(storageDir)
 	if err != nil {
-		return ioError("failed to open source files backup", err)
+		return ioError("failed to create restore staging directory", err)
 	}
-	defer closeResource(file, &err)
+	defer func() {
+		cleanupErr := os.RemoveAll(stagingDir)
+		if cleanupErr == nil || err != nil {
+			return
+		}
+		err = ioError("failed to clean restore staging directory", cleanupErr)
+	}()
 
-	gzipReader, err := gzip.NewReader(file)
-	if err != nil {
-		return archiveError("files restore source is unreadable", err)
+	if err := extractFilesArchiveToStaging(ctx, artifactPath, stagingDir); err != nil {
+		return err
 	}
-	defer closeResource(gzipReader, &err)
-
-	tarReader := tar.NewReader(gzipReader)
-	if err := clearDirectoryContents(storageDir); err != nil {
-		return ioError("files restore failed", err)
+	if err := validateRestoredStorageTree(stagingDir); err != nil {
+		return archiveError("files restore staging is invalid", err)
 	}
-
-	var found bool
-	for {
-		if err := ctx.Err(); err != nil {
-			return ioError("restore interrupted", err)
-		}
-
-		header, nextErr := tarReader.Next()
-		if nextErr == io.EOF {
-			break
-		}
-		if nextErr != nil {
-			return archiveError("files restore source is unreadable", nextErr)
-		}
-		if err := validateTarHeader(header); err != nil {
-			return archiveError("files restore source is unsafe", err)
-		}
-		found = true
-		if err := extractTarEntry(storageDir, header, tarReader); err != nil {
-			return ioError("files restore failed", err)
-		}
+	if err := replaceRestoreStorageFromStaging(ctx, stagingDir, storageDir); err != nil {
+		return err
 	}
-	if !found {
-		return archiveError("files restore source is empty", nil)
+	if err := validateRestoredStorageTree(storageDir); err != nil {
+		return ioError("files restore post-check failed", err)
 	}
 
 	return nil
@@ -342,6 +333,55 @@ func ensureRestoreStorageClearable(path string) error {
 	})
 }
 
+func defaultCreateRestoreStagingDir(_ string) (string, error) {
+	return os.MkdirTemp("", restoreStagingDirPattern)
+}
+
+func extractFilesArchiveToStaging(ctx context.Context, artifactPath, stagingDir string) (err error) {
+	file, err := os.Open(artifactPath)
+	if err != nil {
+		return ioError("failed to open source files backup", err)
+	}
+	defer closeResource(file, &err)
+
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return archiveError("files restore source is unreadable", err)
+	}
+	defer closeResource(gzipReader, &err)
+
+	tarReader := tar.NewReader(gzipReader)
+	var found bool
+	for {
+		if err := ctx.Err(); err != nil {
+			return ioError("restore interrupted", err)
+		}
+
+		header, nextErr := tarReader.Next()
+		if nextErr == io.EOF {
+			break
+		}
+		if nextErr != nil {
+			return archiveError("files restore source is unreadable", nextErr)
+		}
+		if err := validateTarHeader(header); err != nil {
+			return archiveError("files restore source is unsafe", err)
+		}
+		found = true
+		if err := restoreExtractTarEntry(stagingDir, header, tarReader); err != nil {
+			if errors.Is(err, io.ErrUnexpectedEOF) {
+				return archiveError("files restore source is unreadable", err)
+			}
+			return ioError("files staging extraction failed", err)
+		}
+	}
+	if !found {
+		return archiveError("files restore source is empty", nil)
+	}
+
+	return nil
+}
+
 func clearDirectoryContents(path string) error {
 	entries, err := os.ReadDir(path)
 	if err != nil {
@@ -368,6 +408,124 @@ func clearDirectoryContents(path string) error {
 		}
 	}
 	return nil
+}
+
+func validateRestoredStorageTree(path string) error {
+	if err := ensureRestoreStorageDir(path); err != nil {
+		return err
+	}
+
+	var found bool
+	walkErr := filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if current == path {
+			return nil
+		}
+
+		rel, err := filepath.Rel(path, current)
+		if err != nil {
+			return err
+		}
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("storage entry %s is a symlink", filepath.ToSlash(rel))
+		}
+		if !info.IsDir() && !info.Mode().IsRegular() {
+			return fmt.Errorf("storage entry %s has unsupported type", filepath.ToSlash(rel))
+		}
+		found = true
+		return nil
+	})
+	if walkErr != nil {
+		return walkErr
+	}
+	if !found {
+		return fmt.Errorf("storage dir is empty")
+	}
+
+	return nil
+}
+
+func replaceRestoreStorageFromStaging(ctx context.Context, stagingDir, storageDir string) error {
+	if err := ctx.Err(); err != nil {
+		return ioError("restore interrupted", err)
+	}
+	if err := clearDirectoryContents(storageDir); err != nil {
+		return ioError("files replace failed before target clear", err)
+	}
+	if err := copyDirectoryContents(ctx, stagingDir, storageDir); err != nil {
+		return ioError("files replace failed after target clear; target may be partially restored", err)
+	}
+	return nil
+}
+
+func copyDirectoryContents(ctx context.Context, sourceDir, targetDir string) error {
+	return filepath.WalkDir(sourceDir, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if current == sourceDir {
+			return nil
+		}
+
+		rel, err := filepath.Rel(sourceDir, current)
+		if err != nil {
+			return err
+		}
+		targetPath := filepath.Join(targetDir, rel)
+		if !pathWithinRoot(targetDir, targetPath) {
+			return fmt.Errorf("restore entry escapes target root: %s", filepath.ToSlash(rel))
+		}
+
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		mode := info.Mode().Perm()
+		switch {
+		case info.Mode()&os.ModeSymlink != 0:
+			return fmt.Errorf("restore entry %s is a symlink", filepath.ToSlash(rel))
+		case info.IsDir():
+			if err := os.MkdirAll(targetPath, mode); err != nil {
+				return err
+			}
+			return os.Chmod(targetPath, mode)
+		case info.Mode().IsRegular():
+			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
+				return err
+			}
+			return copyRegularFile(current, targetPath, mode)
+		default:
+			return fmt.Errorf("restore entry %s has unsupported type", filepath.ToSlash(rel))
+		}
+	})
+}
+
+func copyRegularFile(sourcePath, targetPath string, mode os.FileMode) (err error) {
+	sourceFile, err := os.Open(sourcePath)
+	if err != nil {
+		return err
+	}
+	defer closeResource(sourceFile, &err)
+
+	targetFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
+	if err != nil {
+		return err
+	}
+	defer closeResource(targetFile, &err)
+
+	if _, err := io.Copy(targetFile, sourceFile); err != nil {
+		return err
+	}
+	return os.Chmod(targetPath, mode)
 }
 
 func extractTarEntry(root string, header *tar.Header, reader io.Reader) error {
