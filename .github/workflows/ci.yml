@@ -15,11 +15,9 @@ permissions:
   contents: read
 
 jobs:
-  go-core:
+  go-health:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    env:
-      HEALTH_TOOLS_BIN: ${{ runner.temp }}/go-bin
     steps:
       - uses: actions/checkout@v6
         with:
@@ -34,7 +32,53 @@ jobs:
         run: make install-ci-health-tools
 
       - name: Add health tools to PATH
-        run: echo "${HEALTH_TOOLS_BIN}" >> "$GITHUB_PATH"
+        run: echo "$HOME/go/bin" >> "$GITHUB_PATH"
 
-      - name: Run Go CI
-        run: make ci
+      - name: Build
+        run: make build
+
+      - name: Verify Go Modules
+        run: go mod verify
+
+      - name: Run Unit Tests
+        run: go test ./...
+
+      - name: Run Readonly Tests
+        run: go test -mod=readonly ./...
+
+      - name: Run Race Tests
+        run: go test -race ./...
+
+      - name: Run Go Vet
+        run: go vet ./...
+
+      - name: Run Staticcheck
+        run: staticcheck ./...
+
+      - name: Run GolangCI-Lint
+        run: golangci-lint run --no-config ./...
+
+      - name: Verify Module Files Stay Clean
+        run: git diff --exit-code -- go.mod go.sum
+
+  docker-integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Verify Docker Daemon
+        run: docker info
+
+      - name: Verify Docker Compose Plugin
+        run: docker compose version
+
+      - name: Run Docker Integration Tests
+        run: make integration

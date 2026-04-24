@@ -48,6 +48,7 @@
 ## Testing
 - Scenario proof first.
 - Do not claim a reliability improvement without end-to-end evidence.
+- Do not claim integration coverage without real Docker integration evidence.
 
 ## Done
 - Keep authority surfaces in sync.

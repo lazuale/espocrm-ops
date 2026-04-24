@@ -29,18 +29,33 @@ go run ./cmd/espops --help
 
 ## Test
 
+`make test` is the fast unit layer. It includes CLI and ops tests that intentionally use fake docker scripts where isolation is the point.
+
+`make integration` is the real Docker integration layer. It requires:
+
+- a reachable Docker daemon
+- the Docker Compose plugin
+- network access to pull the minimal MariaDB and Alpine images used by the generated integration fixture
+
+It does not silently skip when Docker is unavailable; it fails closed instead.
+
 The repository health path is:
 
 ```bash
 make ci
 ```
 
+`make ci` runs build, `go mod verify`, `go test -mod=readonly ./...`, race tests, `go vet`, `staticcheck`, `golangci-lint`, the real Docker integration target, and a clean `go.mod`/`go.sum` check.
+
 Useful individual targets:
 
 ```bash
 make test
 make test-race
+make test-readonly
 make integration
+make vet
+make mod-verify
 make staticcheck
 make lint
 ```

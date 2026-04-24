@@ -4,8 +4,9 @@ BIN := bin/$(APP)
 HEALTH_TOOLS_BIN ?= $(HOME)/go/bin
 STATICCHECK_VERSION ?= v0.7.0
 GOLANGCI_LINT_VERSION ?= v2.11.4
+INTEGRATION_PKGS := ./internal/runtime
 
-.PHONY: build test test-race integration ci staticcheck lint fmt vet coverage clean install-health-tools install-ci-health-tools
+.PHONY: build test test-race test-readonly integration integration-preflight ci staticcheck lint fmt vet mod-verify mod-clean-check coverage clean install-health-tools install-ci-health-tools
 
 build:
 	mkdir -p bin
@@ -17,8 +18,21 @@ test:
 test-race:
 	go test -race ./...
 
-integration:
-	go test ./... -run Integration
+test-readonly:
+	go test -mod=readonly ./...
+
+integration-preflight:
+	@docker info >/dev/null
+	@docker compose version >/dev/null
+
+integration: integration-preflight
+	go test -count=1 -p 1 -tags=integration $(INTEGRATION_PKGS)
+
+mod-verify:
+	go mod verify
+
+mod-clean-check:
+	git diff --exit-code -- go.mod go.sum
 
 staticcheck:
 	staticcheck ./...
@@ -26,7 +40,7 @@ staticcheck:
 lint:
 	golangci-lint run --no-config ./...
 
-ci: build test test-race integration staticcheck lint
+ci: build mod-verify test-readonly test-race vet staticcheck lint integration mod-clean-check
 
 fmt:
 	go fmt ./...

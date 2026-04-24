@@ -175,6 +175,84 @@ func TestDocsUseOnlyCurrentInternalLayout(t *testing.T) {
 	}
 }
 
+func TestGoSumIsTracked(t *testing.T) {
+	files := trackedFiles(t)
+	if !slices.Contains(files, "go.sum") {
+		t.Fatal("go.sum must be tracked")
+	}
+}
+
+func TestRepositoryHasTaggedIntegrationTests(t *testing.T) {
+	root := repoRoot(t)
+	var found bool
+
+	err := filepath.WalkDir(root, func(path string, entry os.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if entry.IsDir() || !strings.HasSuffix(path, "_integration_test.go") {
+			return nil
+		}
+
+		raw, err := os.ReadFile(path)
+		if err != nil {
+			return err
+		}
+		text := string(raw)
+		if strings.Contains(text, "//go:build integration") && strings.Contains(text, "func TestIntegration") {
+			found = true
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk integration tests: %v", err)
+	}
+	if !found {
+		t.Fatal("expected at least one tagged integration test file")
+	}
+}
+
+func TestMakefileIntegrationTargetIsReal(t *testing.T) {
+	raw := readRepoFile(t, "Makefile")
+	text := string(raw)
+
+	if strings.Contains(text, "go test ./... -run Integration") {
+		t.Fatal("Makefile integration target must not use fake Integration name filtering")
+	}
+	for _, needle := range []string{
+		"integration-preflight:",
+		"docker info >/dev/null",
+		"docker compose version >/dev/null",
+		"go test -count=1 -p 1 -tags=integration $(INTEGRATION_PKGS)",
+		"ci: build mod-verify test-readonly test-race vet staticcheck lint integration mod-clean-check",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("Makefile missing required integration/ci contract %q", needle)
+		}
+	}
+}
+
+func TestCIWorkflowRunsExplicitHealthChecks(t *testing.T) {
+	text := string(readRepoFile(t, ".github/workflows/ci.yml"))
+	for _, needle := range []string{
+		"go mod verify",
+		"go test ./...",
+		"go test -mod=readonly ./...",
+		"go test -race ./...",
+		"go vet ./...",
+		"staticcheck ./...",
+		"golangci-lint run --no-config ./...",
+		"git diff --exit-code -- go.mod go.sum",
+		"docker info",
+		"docker compose version",
+		"make integration",
+	} {
+		if !strings.Contains(text, needle) {
+			t.Fatalf("workflow missing required health command %q", needle)
+		}
+	}
+}
+
 func TestTrackedFilesDoNotContainHistoricalResidue(t *testing.T) {
 	files := trackedFiles(t)
 	patterns := buildHistoricalResiduePatterns()
@@ -324,6 +402,16 @@ func containsDisallowedRecoveryTerms(line string) bool {
 
 func joinParts(parts ...string) string {
 	return strings.Join(parts, "")
+}
+
+func readRepoFile(t *testing.T, rel string) []byte {
+	t.Helper()
+
+	raw, err := os.ReadFile(filepath.Join(repoRoot(t), rel))
+	if err != nil {
+		t.Fatalf("read %s: %v", rel, err)
+	}
+	return raw
 }
 
 func repoRoot(t *testing.T) string {
