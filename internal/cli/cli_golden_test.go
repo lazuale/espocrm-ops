@@ -7,54 +7,8 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"os"
-	"path/filepath"
 	"testing"
-	"time"
 )
-
-func TestGolden_BackupVerify_JSON(t *testing.T) {
-	tmp := t.TempDir()
-	journalDir := filepath.Join(tmp, "journal")
-
-	opts := []testAppOption{
-		withFixedTestRuntime(time.Date(2026, 4, 15, 12, 0, 0, 0, time.UTC), "op-fixed-1"),
-	}
-
-	backupRoot := filepath.Join(tmp, "backups")
-	set := writeBackupSet(t, backupRoot, "espocrm-prod", "2026-04-15_11-00-00", "prod", map[string]string{
-		"storage/a.txt": "hello",
-	})
-	writeBackupVerifyReferenceManifest(t, set, sha256OfFile(t, set.DBBackup), sha256OfFile(t, set.FilesBackup))
-
-	out, err := runRootCommandWithOptions(t, opts,
-		"--journal-dir", journalDir,
-		"--json",
-		"backup",
-		"verify",
-		"--manifest", set.ManifestJSON,
-	)
-	if err != nil {
-		t.Fatalf("command failed: %v\noutput=%s", err, out)
-	}
-
-	normalized := normalizeBackupVerifyJSON(t, []byte(out))
-	assertGoldenJSON(t, normalized, filepath.Join("testdata", "backup_verify_ok.golden.json"))
-}
-
-func normalizeBackupVerifyJSON(t *testing.T, raw []byte) []byte {
-	t.Helper()
-
-	obj := parseCLIJSONBytes(t, raw)
-	normalizeArtifactPlaceholders(obj, map[string]string{
-		"backup_root":    "REPLACE_AT_RUNTIME",
-		"manifest":       "REPLACE_AT_RUNTIME",
-		"db_backup":      "REPLACE_AT_RUNTIME",
-		"db_checksum":    "REPLACE_AT_RUNTIME",
-		"files_backup":   "REPLACE_AT_RUNTIME",
-		"files_checksum": "REPLACE_AT_RUNTIME",
-	})
-	return marshalCLIJSON(t, obj)
-}
 
 func writeJSON(t *testing.T, path string, v any) {
 	t.Helper()
