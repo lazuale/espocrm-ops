@@ -56,10 +56,13 @@ func (e *commandError) Error() string {
 
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "v3",
-		Short:         "Minimal v3 backup and restore tools",
+		Use:           "espops",
+		Short:         "EspoCRM backup and recovery utilities",
 		SilenceUsage:  true,
 		SilenceErrors: true,
+		CompletionOptions: cobra.CompletionOptions{
+			DisableDefaultCmd: true,
+		},
 	}
 
 	backupCmd := newBackupCmd()
@@ -110,9 +113,9 @@ func renderExecutionError(w io.Writer, err error) int {
 	}
 
 	_ = writeJSON(w, envelope{
-		Command:  "v3",
+		Command:  "espops",
 		OK:       false,
-		Message:  "v3 command failed",
+		Message:  "espops command failed",
 		Error:    &errorPayload{Kind: "io", Message: err.Error()},
 		Warnings: []string{},
 		Result:   struct{}{},
