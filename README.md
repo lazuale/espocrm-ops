@@ -56,6 +56,8 @@ Required env keys per scope:
 
 - `BACKUP_ROOT`
 - `ESPO_STORAGE_DIR`
+- `APP_SERVICES`
+- `DB_SERVICE`
 - `DB_USER`
 - `DB_NAME`
 - one of `DB_PASSWORD` or `DB_PASSWORD_FILE`
@@ -63,8 +65,6 @@ Required env keys per scope:
 Optional env keys:
 
 - `COMPOSE_FILE`
-- `APP_SERVICES`
-- `DB_SERVICE`
 - `ESPO_CONTOUR`
 
 Example env files live under `env/`.
@@ -77,7 +77,9 @@ Operator prerequisites:
 - `smoke` does no setup, no pull, no cleanup, no retry, and no fallback; if a step fails, `smoke` fails
 - MariaDB native tooling target is `11.4 LTS`
 - Native tooling only: `docker compose`, `mariadb-dump`, `mariadb`, and Go stdlib archive/checksum handling
-- One command path only, with no service-name guessing
+- One command path only, with no service-name guessing or implicit service defaults
+- `DB_SERVICE` must name the exact Compose database service
+- `APP_SERVICES` must list the exact Compose application services as a comma-separated contract
 
 ## Minimal Safe Workflow
 

@@ -278,6 +278,8 @@ func smokeProjectDir(t *testing.T, createTargetBackupRoot bool) string {
 		"ESPO_CONTOUR=dev",
 		"BACKUP_ROOT=./backups/dev",
 		"ESPO_STORAGE_DIR=./runtime/dev/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm_dev",
@@ -291,6 +293,8 @@ func smokeProjectDir(t *testing.T, createTargetBackupRoot bool) string {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm_prod",
@@ -382,7 +386,8 @@ case "${1:-}" in
     shift
     [[ "${1:-}" == "-e" ]] || exit 1
     shift
-    [[ "${1:-}" == "MYSQL_PWD=db-secret" ]] || exit 1
+    [[ "${1:-}" == "MYSQL_PWD" ]] || exit 1
+    [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift

@@ -67,6 +67,7 @@ make ci
 - `internal/runtime/` owns Docker Compose and MariaDB process execution.
 - `internal/manifest/` owns manifest validation and artifact path resolution.
 - Keep shell execution and `os.Environ()` confined to `internal/runtime/docker.go`.
+- Keep `DB_SERVICE` and `APP_SERVICES` explicit in the env contract; do not reintroduce guessed or defaulted service names.
 - Prefer deletion over wrappers.
 - Fail closed when correctness is ambiguous.
 - Keep `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` in sync with the code.

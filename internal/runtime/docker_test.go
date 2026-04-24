@@ -70,8 +70,11 @@ func TestDockerComposeDumpDatabaseRunsMariadbDump(t *testing.T) {
 	}
 
 	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD=db-secret db mariadb-dump --single-transaction --quick --routines --triggers --events -u espocrm espocrm") {
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD db mariadb-dump --single-transaction --quick --routines --triggers --events -u espocrm espocrm") {
 		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+	if strings.Contains(log, "db-secret") {
+		t.Fatalf("docker log leaked db password:\n%s", log)
 	}
 
 	raw, err := os.Open(destPath)
@@ -226,8 +229,11 @@ func TestDockerComposeDBPingRunsMariadbSelect1(t *testing.T) {
 	}
 
 	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD=db-secret db mariadb -u espocrm espocrm -e SELECT 1;") {
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD db mariadb -u espocrm espocrm -e SELECT 1;") {
 		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+	if strings.Contains(log, "db-secret") {
+		t.Fatalf("docker log leaked db password:\n%s", log)
 	}
 }
 
@@ -252,11 +258,41 @@ func TestDockerComposeRestoreDatabaseRunsMariadb(t *testing.T) {
 	}
 
 	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD=db-secret db mariadb -u espocrm espocrm") {
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD db mariadb -u espocrm espocrm") {
 		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+	if strings.Contains(log, "db-secret") {
+		t.Fatalf("docker log leaked db password:\n%s", log)
 	}
 	if body := mustReadFile(t, stdinLogPath); body != "create table restored(id int);\n" {
 		t.Fatalf("unexpected restore db body: %q", body)
+	}
+}
+
+func TestDockerComposeDBPingRuntimeErrorRedactsPassword(t *testing.T) {
+	projectDir := t.TempDir()
+	installFakeDocker(t)
+	t.Setenv("TEST_DOCKER_FAIL_EXEC", "1")
+	t.Setenv("TEST_DOCKER_FAIL_STDERR", "db ping failed with MYSQL_PWD=db-secret")
+
+	rt := DockerCompose{}
+	err := rt.DBPing(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+		DBService:   "db",
+		DBUser:      "espocrm",
+		DBPassword:  "db-secret",
+		DBName:      "espocrm",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "db-secret") {
+		t.Fatalf("runtime error leaked db password: %v", err)
+	}
+	if !strings.Contains(err.Error(), "MYSQL_PWD=<redacted>") {
+		t.Fatalf("expected redacted runtime error, got %v", err)
 	}
 }
 
@@ -330,10 +366,15 @@ case "${1:-}" in
     shift
     [[ "${1:-}" == "-e" ]] || exit 1
     shift
-    [[ "${1:-}" == "MYSQL_PWD=db-secret" ]] || exit 1
+    [[ "${1:-}" == "MYSQL_PWD" ]] || exit 1
+    [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
+    if [[ "${TEST_DOCKER_FAIL_EXEC:-}" == "1" ]]; then
+      printf '%s\n' "${TEST_DOCKER_FAIL_STDERR:-exec failed}" >&2
+      exit 1
+    fi
     case "${1:-}" in
       mariadb-dump)
         printf 'create table test(id int);\n'

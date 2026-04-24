@@ -23,6 +23,8 @@ func TestDoctorCLIJSONSuccess(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
@@ -80,6 +82,8 @@ func TestDoctorCLIJSONFailureForMissingEnv(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"",
@@ -220,8 +224,12 @@ case "${1:-}" in
       exit 1
     fi
     shift
-    if [[ "${1:-}" != "MYSQL_PWD=db-secret" ]]; then
+    if [[ "${1:-}" != "MYSQL_PWD" ]]; then
       printf 'unexpected exec env: %s\n' "${1:-}" >&2
+      exit 1
+    fi
+    if [[ "${MYSQL_PWD:-}" != "db-secret" ]]; then
+      printf 'unexpected MYSQL_PWD environment\n' >&2
       exit 1
     fi
     shift

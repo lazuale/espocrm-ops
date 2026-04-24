@@ -28,8 +28,6 @@ type BackupConfig struct {
 	DBName      string
 }
 
-var defaultAppServices = []string{"espocrm", "espocrm-daemon", "espocrm-websocket"}
-
 func LoadBackup(req BackupRequest) (BackupConfig, error) {
 	scope := strings.TrimSpace(req.Scope)
 	if scope != "dev" && scope != "prod" {
@@ -64,6 +62,8 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 	required := []string{
 		"BACKUP_ROOT",
 		"ESPO_STORAGE_DIR",
+		"APP_SERVICES",
+		"DB_SERVICE",
 		"DB_USER",
 		"DB_NAME",
 	}
@@ -90,7 +90,7 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 		BackupRoot:  resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
 		StorageDir:  resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
 		AppServices: appServices,
-		DBService:   resolveDBService(values["DB_SERVICE"]),
+		DBService:   strings.TrimSpace(values["DB_SERVICE"]),
 		DBUser:      strings.TrimSpace(values["DB_USER"]),
 		DBPassword:  password,
 		DBName:      strings.TrimSpace(values["DB_NAME"]),
@@ -117,14 +117,6 @@ func requireFile(path, label string) error {
 		return fmt.Errorf("%s %s must be a file", label, path)
 	}
 	return nil
-}
-
-func resolveDBService(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "db"
-	}
-	return value
 }
 
 func resolveProjectPath(projectDir, value string) string {
@@ -163,7 +155,7 @@ func resolveDBPassword(values map[string]string, projectDir, envFile string) (st
 func resolveAppServices(raw string) ([]string, error) {
 	raw = strings.TrimSpace(raw)
 	if raw == "" {
-		return append([]string(nil), defaultAppServices...), nil
+		return nil, fmt.Errorf("value is required")
 	}
 
 	parts := strings.Split(raw, ",")

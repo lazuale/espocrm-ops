@@ -32,6 +32,7 @@
 - No guard theatre.
 - No fake machine-enforcement.
 - No new product surface.
+- `DB_SERVICE` and `APP_SERVICES` are explicit runtime contract inputs, not inferred defaults.
 
 ## Core Flow
 - Resolve input.

@@ -30,6 +30,8 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
@@ -109,6 +111,8 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
@@ -245,7 +249,8 @@ case "${1:-}" in
     shift
     [[ "${1:-}" == "-e" ]] || exit 1
     shift
-    [[ "${1:-}" == "MYSQL_PWD=db-secret" ]] || exit 1
+    [[ "${1:-}" == "MYSQL_PWD" ]] || exit 1
+    [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift

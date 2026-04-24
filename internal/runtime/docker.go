@@ -12,6 +12,8 @@ import (
 	"strings"
 )
 
+const redactedSecret = "<redacted>"
+
 type Target struct {
 	ProjectDir  string
 	ComposeFile string
@@ -68,7 +70,7 @@ func (DockerCompose) StartServices(ctx context.Context, target Target, services 
 func (DockerCompose) UpService(ctx context.Context, target Target, service string) error {
 	service = strings.TrimSpace(service)
 	if service == "" {
-		service = "db"
+		return fmt.Errorf("service is required")
 	}
 	return runCompose(ctx, target, runOptions{}, "up", "-d", service)
 }
@@ -83,15 +85,16 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 	gz := gzip.NewWriter(file)
 	defer closeResource(gz, &err)
 
-	service := strings.TrimSpace(target.DBService)
-	if service == "" {
-		service = "db"
+	service, err := dbServiceName(target)
+	if err != nil {
+		return err
 	}
 
 	if err := runCompose(ctx, target, runOptions{
 		stdout: gz,
+		env:    []string{"MYSQL_PWD=" + target.DBPassword},
 	},
-		"exec", "-T", "-e", "MYSQL_PWD="+target.DBPassword, service,
+		"exec", "-T", "-e", "MYSQL_PWD", service,
 		"mariadb-dump",
 		"--single-transaction",
 		"--quick",
@@ -108,14 +111,15 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 }
 
 func (DockerCompose) DBPing(ctx context.Context, target Target) error {
-	service := strings.TrimSpace(target.DBService)
-	if service == "" {
-		service = "db"
+	service, err := dbServiceName(target)
+	if err != nil {
+		return err
 	}
 
 	return runCompose(ctx, target, runOptions{
+		env: []string{"MYSQL_PWD=" + target.DBPassword},
 	},
-		"exec", "-T", "-e", "MYSQL_PWD="+target.DBPassword, service,
+		"exec", "-T", "-e", "MYSQL_PWD", service,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
@@ -124,15 +128,16 @@ func (DockerCompose) DBPing(ctx context.Context, target Target) error {
 }
 
 func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, reader io.Reader) error {
-	service := strings.TrimSpace(target.DBService)
-	if service == "" {
-		service = "db"
+	service, err := dbServiceName(target)
+	if err != nil {
+		return err
 	}
 
 	return runCompose(ctx, target, runOptions{
 		stdin: reader,
+		env:   []string{"MYSQL_PWD=" + target.DBPassword},
 	},
-		"exec", "-T", "-e", "MYSQL_PWD="+target.DBPassword, service,
+		"exec", "-T", "-e", "MYSQL_PWD", service,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
@@ -164,19 +169,108 @@ func runCompose(ctx context.Context, target Target, opts runOptions, args ...str
 	} else {
 		cmd.Stdout = io.Discard
 	}
-	cmd.Env = append(os.Environ(), opts.env...)
+	cmd.Env = mergeCommandEnv(os.Environ(), opts.env)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		message := strings.TrimSpace(stderr.String())
+		command := sanitizeComposeCommand(target, cmdArgs)
+		message := sanitizeComposeText(target, strings.TrimSpace(stderr.String()))
 		if message == "" {
-			return fmt.Errorf("docker %s: %w", strings.Join(cmdArgs, " "), err)
+			return fmt.Errorf("docker %s: %w", command, err)
 		}
-		return fmt.Errorf("docker %s: %s: %w", strings.Join(cmdArgs, " "), message, err)
+		return fmt.Errorf("docker %s: %s: %w", command, message, err)
 	}
 
 	return nil
+}
+
+func dbServiceName(target Target) (string, error) {
+	service := strings.TrimSpace(target.DBService)
+	if service == "" {
+		return "", fmt.Errorf("db service is required")
+	}
+	return service, nil
+}
+
+func mergeCommandEnv(base, overrides []string) []string {
+	if len(overrides) == 0 {
+		return append([]string(nil), base...)
+	}
+
+	indexByKey := make(map[string]int, len(base)+len(overrides))
+	out := make([]string, 0, len(base)+len(overrides))
+	for _, entry := range base {
+		key, _, _ := strings.Cut(entry, "=")
+		if idx, ok := indexByKey[key]; ok {
+			out[idx] = entry
+			continue
+		}
+		indexByKey[key] = len(out)
+		out = append(out, entry)
+	}
+	for _, entry := range overrides {
+		key, _, _ := strings.Cut(entry, "=")
+		if idx, ok := indexByKey[key]; ok {
+			out[idx] = entry
+			continue
+		}
+		indexByKey[key] = len(out)
+		out = append(out, entry)
+	}
+	return out
+}
+
+func sanitizeComposeCommand(target Target, args []string) string {
+	sanitized := make([]string, len(args))
+	for i, arg := range args {
+		sanitized[i] = sanitizeComposeText(target, arg)
+	}
+	return strings.Join(sanitized, " ")
+}
+
+func sanitizeComposeText(target Target, text string) string {
+	text = redactEnvAssignments(text, "MYSQL_PWD", "DB_PASSWORD")
+
+	secret := target.DBPassword
+	if secret == "" {
+		return text
+	}
+	return strings.ReplaceAll(text, secret, redactedSecret)
+}
+
+func redactEnvAssignments(text string, keys ...string) string {
+	for _, key := range keys {
+		text = redactEnvAssignment(text, key)
+	}
+	return text
+}
+
+func redactEnvAssignment(text, key string) string {
+	marker := key + "="
+	searchFrom := 0
+	for {
+		relativeStart := strings.Index(text[searchFrom:], marker)
+		if relativeStart < 0 {
+			return text
+		}
+		start := searchFrom + relativeStart
+		end := start + len(marker)
+		for end < len(text) && !isSecretDelimiter(text[end]) {
+			end++
+		}
+		text = text[:start] + marker + redactedSecret + text[end:]
+		searchFrom = start + len(marker) + len(redactedSecret)
+	}
+}
+
+func isSecretDelimiter(b byte) bool {
+	switch b {
+	case ' ', '\t', '\n', '\r', '"', '\'', ',', ';', ')', '(':
+		return true
+	default:
+		return false
+	}
 }
 
 func serviceArgs(action string, services []string) ([]string, error) {

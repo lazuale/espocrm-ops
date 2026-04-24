@@ -28,6 +28,8 @@ func TestBackupCLIJSONSuccess(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
@@ -87,6 +89,8 @@ func TestBackupCLIJSONFailureForMissingEnv(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"",
@@ -119,6 +123,139 @@ func TestBackupCLIJSONFailureForMissingEnv(t *testing.T) {
 	}
 	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "DB_NAME is required") {
 		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestBackupCLIJSONFailureWhenDBServiceMissing(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"backup", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
+	if exitCode != exitUsage {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "DB_SERVICE is required") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestBackupCLIJSONFailureWhenAppServicesMissing(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"backup", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
+	if exitCode != exitUsage {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "APP_SERVICES is required") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestBackupCLIJSONRuntimeErrorRedactsPassword(t *testing.T) {
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo", "data")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prependFakeDocker(t)
+	t.Setenv("TEST_BACKUP_DOCKER_FAIL_DUMP", "1")
+	t.Setenv("TEST_BACKUP_DOCKER_FAIL_MESSAGE", "dump failed with MYSQL_PWD=db-secret")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"backup", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if strings.Contains(errMessage, "db-secret") {
+		t.Fatalf("json error leaked db password: %s", errMessage)
+	}
+	if !strings.Contains(errMessage, "MYSQL_PWD=<redacted>") {
+		t.Fatalf("expected redacted json error message, got %s", errMessage)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
@@ -180,8 +317,12 @@ case "${1:-}" in
       exit 1
     fi
     shift
-    if [[ "${1:-}" != "MYSQL_PWD=db-secret" ]]; then
+    if [[ "${1:-}" != "MYSQL_PWD" ]]; then
       printf 'unexpected exec env: %s\n' "${1:-}" >&2
+      exit 1
+    fi
+    if [[ "${MYSQL_PWD:-}" != "db-secret" ]]; then
+      printf 'unexpected MYSQL_PWD environment\n' >&2
       exit 1
     fi
     shift
@@ -192,6 +333,10 @@ case "${1:-}" in
     shift
     if [[ "${1:-}" != "mariadb-dump" ]]; then
       printf 'unexpected command: %s\n' "${1:-}" >&2
+      exit 1
+    fi
+    if [[ "${TEST_BACKUP_DOCKER_FAIL_DUMP:-}" == "1" ]]; then
+      printf '%s\n' "${TEST_BACKUP_DOCKER_FAIL_MESSAGE:-dump failed}" >&2
       exit 1
     fi
     printf 'create table test(id int);\n'

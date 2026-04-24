@@ -18,6 +18,8 @@ func TestLoadBackupConfigValid(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
@@ -69,6 +71,8 @@ func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
 		"ESPO_CONTOUR=dev",
 		"BACKUP_ROOT=./backups/dev",
 		"ESPO_STORAGE_DIR=./runtime/dev/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD_FILE=./db.password",
 		"DB_NAME=espocrm",
@@ -100,6 +104,8 @@ func TestLoadBackupConfigUsesComposeFileFromEnv(t *testing.T) {
 		"COMPOSE_FILE=./compose.prod.yaml",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
@@ -130,6 +136,7 @@ func TestLoadBackupConfigUsesAppServicesFromEnv(t *testing.T) {
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"APP_SERVICES=web,worker",
+		"DB_SERVICE=database",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
@@ -148,6 +155,71 @@ func TestLoadBackupConfigUsesAppServicesFromEnv(t *testing.T) {
 	if strings.Join(cfg.AppServices, ",") != "web,worker" {
 		t.Fatalf("unexpected app services: %v", cfg.AppServices)
 	}
+	if cfg.DBService != "database" {
+		t.Fatalf("unexpected db service: %s", cfg.DBService)
+	}
+}
+
+func TestLoadBackupConfigMissingDBServiceFails(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(projectDir, ".env.prod")
+	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=web,worker",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "DB_SERVICE is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadBackupConfigMissingAppServicesFails(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	envPath := filepath.Join(projectDir, ".env.prod")
+	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "APP_SERVICES is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
 }
 
 func TestLoadBackupConfigMissingRequiredEnvValue(t *testing.T) {
@@ -159,6 +231,8 @@ func TestLoadBackupConfigMissingRequiredEnvValue(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=dev",
 		"ESPO_STORAGE_DIR=./runtime/dev/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",

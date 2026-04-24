@@ -230,6 +230,7 @@ func validateBackupConfig(cfg config.BackupConfig) error {
 		{name: "env file", value: cfg.EnvFile},
 		{name: "BACKUP_ROOT", value: cfg.BackupRoot},
 		{name: "ESPO_STORAGE_DIR", value: cfg.StorageDir},
+		{name: "DB_SERVICE", value: cfg.DBService},
 		{name: "DB_USER", value: cfg.DBUser},
 		{name: "DB_PASSWORD", value: cfg.DBPassword},
 		{name: "DB_NAME", value: cfg.DBName},
