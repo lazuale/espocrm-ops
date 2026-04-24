@@ -29,6 +29,27 @@ type Service struct {
 	Name string `json:"Service"`
 }
 
+type ServiceStatus struct {
+	Name   string `json:"Service"`
+	State  string `json:"State"`
+	Health string `json:"Health"`
+}
+
+type ServiceHealthError struct {
+	Service   string
+	State     string
+	Health    string
+	Message   string
+	Retryable bool
+}
+
+func (e *ServiceHealthError) Error() string {
+	if e == nil {
+		return ""
+	}
+	return e.Message
+}
+
 type DockerCompose struct{}
 
 func (DockerCompose) ComposeConfig(ctx context.Context, target Target) error {
@@ -40,16 +61,37 @@ func (DockerCompose) Validate(ctx context.Context, target Target) error {
 }
 
 func (DockerCompose) Services(ctx context.Context, target Target) ([]Service, error) {
+	statuses, err := DockerCompose{}.ServiceStatuses(ctx, target)
+	if err != nil {
+		return nil, err
+	}
+
+	services := make([]Service, 0, len(statuses))
+	for _, status := range statuses {
+		services = append(services, Service{Name: status.Name})
+	}
+	return services, nil
+}
+
+func (DockerCompose) ServiceStatuses(ctx context.Context, target Target) ([]ServiceStatus, error) {
 	var stdout bytes.Buffer
 	if err := runCompose(ctx, target, runOptions{stdout: &stdout}, "ps", "--format", "json"); err != nil {
 		return nil, err
 	}
 
-	services, err := decodeServices(stdout.Bytes())
+	statuses, err := decodeServiceStatuses(stdout.Bytes())
 	if err != nil {
 		return nil, fmt.Errorf("decode docker compose ps output: %w", err)
 	}
-	return services, nil
+	return statuses, nil
+}
+
+func (rt DockerCompose) RequireHealthyServices(ctx context.Context, target Target, services []string) error {
+	statuses, err := rt.ServiceStatuses(ctx, target)
+	if err != nil {
+		return err
+	}
+	return requireHealthyServices(statuses, services)
 }
 
 func (DockerCompose) StopServices(ctx context.Context, target Target, services []string) error {
@@ -345,31 +387,115 @@ func closeResource(closer io.Closer, errp *error) {
 	}
 }
 
-func decodeServices(raw []byte) ([]Service, error) {
+func decodeServiceStatuses(raw []byte) ([]ServiceStatus, error) {
 	raw = bytes.TrimSpace(raw)
 	if len(raw) == 0 {
 		return nil, io.ErrUnexpectedEOF
 	}
 
 	if raw[0] == '[' {
-		var services []Service
+		var services []ServiceStatus
 		if err := json.Unmarshal(raw, &services); err != nil {
 			return nil, err
 		}
+		normalizeServiceStatuses(services)
 		return services, nil
 	}
 
 	decoder := json.NewDecoder(bytes.NewReader(raw))
-	services := make([]Service, 0, 4)
+	services := make([]ServiceStatus, 0, 4)
 	for {
-		var service Service
+		var service ServiceStatus
 		if err := decoder.Decode(&service); err != nil {
 			if err == io.EOF {
 				break
 			}
 			return nil, err
 		}
+		normalizeServiceStatus(&service)
 		services = append(services, service)
 	}
 	return services, nil
+}
+
+func normalizeServiceStatuses(services []ServiceStatus) {
+	for i := range services {
+		normalizeServiceStatus(&services[i])
+	}
+}
+
+func normalizeServiceStatus(service *ServiceStatus) {
+	if service == nil {
+		return
+	}
+	service.Name = strings.TrimSpace(service.Name)
+	service.State = strings.ToLower(strings.TrimSpace(service.State))
+	service.Health = strings.ToLower(strings.TrimSpace(service.Health))
+}
+
+func requireHealthyServices(statuses []ServiceStatus, services []string) error {
+	available := make(map[string]ServiceStatus, len(statuses))
+	for _, status := range statuses {
+		name := strings.TrimSpace(status.Name)
+		if name == "" {
+			continue
+		}
+		available[name] = status
+	}
+
+	for _, service := range services {
+		name := strings.TrimSpace(service)
+		if name == "" {
+			return fmt.Errorf("service names must be non-empty")
+		}
+
+		status, ok := available[name]
+		if !ok {
+			return &ServiceHealthError{
+				Service: name,
+				Message: fmt.Sprintf("service %q not found in docker compose ps output", name),
+			}
+		}
+		if status.State != "running" {
+			return &ServiceHealthError{
+				Service: name,
+				State:   statusValue(status.State),
+				Message: fmt.Sprintf("service %q state is %q (want \"running\")", name, statusValue(status.State)),
+			}
+		}
+		if status.Health == "" {
+			return &ServiceHealthError{
+				Service: name,
+				State:   status.State,
+				Message: fmt.Sprintf("service %q has no docker compose health status", name),
+			}
+		}
+		if status.Health == "starting" {
+			return &ServiceHealthError{
+				Service:   name,
+				State:     status.State,
+				Health:    status.Health,
+				Message:   fmt.Sprintf("service %q health is %q (want \"healthy\")", name, status.Health),
+				Retryable: true,
+			}
+		}
+		if status.Health != "healthy" {
+			return &ServiceHealthError{
+				Service: name,
+				State:   status.State,
+				Health:  status.Health,
+				Message: fmt.Sprintf("service %q health is %q (want \"healthy\")", name, status.Health),
+			}
+		}
+	}
+
+	return nil
+}
+
+func statusValue(value string) string {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "unknown"
+	}
+	return value
 }

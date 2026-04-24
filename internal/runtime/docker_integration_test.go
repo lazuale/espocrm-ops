@@ -83,7 +83,7 @@ func TestIntegrationDoctorPassesAgainstRealComposeProject(t *testing.T) {
 	if err := rt.UpService(ctx, project.target(), "app"); err != nil {
 		t.Fatalf("UpService(app) failed: %v", err)
 	}
-	project.waitForDB(t, ctx)
+	project.waitForHealthyServices(t, ctx, rt, []string{"db", "app"})
 
 	result, err := ops.Doctor(ctx, project.backupRequest(), rt)
 	if err != nil {
@@ -96,6 +96,7 @@ func TestIntegrationDoctorPassesAgainstRealComposeProject(t *testing.T) {
 		"storage_dir",
 		"compose_config",
 		"services",
+		"service_health",
 		"db_ping",
 	}
 	if len(result.Checks) != len(wantChecks) {
@@ -105,6 +106,26 @@ func TestIntegrationDoctorPassesAgainstRealComposeProject(t *testing.T) {
 		if result.Checks[i].Name != name || !result.Checks[i].OK {
 			t.Fatalf("unexpected doctor check[%d]: %#v", i, result.Checks[i])
 		}
+	}
+}
+
+func TestIntegrationRuntimeRequireHealthyServicesPassesAgainstRealComposeProject(t *testing.T) {
+	project := newIntegrationProject(t, "dev")
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Minute)
+	defer cancel()
+
+	rt := runtime.DockerCompose{}
+	if err := rt.UpService(ctx, project.target(), "db"); err != nil {
+		t.Fatalf("UpService(db) failed: %v", err)
+	}
+	if err := rt.UpService(ctx, project.target(), "app"); err != nil {
+		t.Fatalf("UpService(app) failed: %v", err)
+	}
+
+	project.waitForHealthyServices(t, ctx, rt, []string{"db", "app"})
+
+	if err := rt.RequireHealthyServices(ctx, project.target(), []string{"db", "app"}); err != nil {
+		t.Fatalf("RequireHealthyServices failed against real compose project: %v", err)
 	}
 }
 
@@ -196,9 +217,24 @@ func (p integrationProject) composeYAML() string {
 		"      MARIADB_DATABASE: ${DB_NAME}",
 		"      MARIADB_USER: ${DB_USER}",
 		"      MARIADB_PASSWORD: ${DB_PASSWORD}",
+		"    healthcheck:",
+		"      test: [\"CMD\", \"healthcheck.sh\", \"--connect\", \"--innodb_initialized\"]",
+		"      interval: 2s",
+		"      timeout: 5s",
+		"      retries: 30",
+		"      start_period: 5s",
 		"  app:",
 		"    image: " + integrationAppImage,
 		"    command: [\"sh\", \"-c\", \"trap 'exit 0' TERM INT; while true; do sleep 3600; done\"]",
+		"    depends_on:",
+		"      db:",
+		"        condition: service_healthy",
+		"    healthcheck:",
+		"      test: [\"CMD\", \"sh\", \"-c\", \"test -r /etc/alpine-release\"]",
+		"      interval: 2s",
+		"      timeout: 5s",
+		"      retries: 30",
+		"      start_period: 2s",
 		"",
 	}, "\n")
 }
@@ -238,6 +274,22 @@ func (p integrationProject) waitForDB(t *testing.T, ctx context.Context) {
 		time.Sleep(2 * time.Second)
 	}
 	t.Fatalf("database never became reachable: %v", lastErr)
+}
+
+func (p integrationProject) waitForHealthyServices(t *testing.T, ctx context.Context, rt runtime.DockerCompose, services []string) {
+	t.Helper()
+
+	deadline := time.Now().Add(90 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if err := rt.RequireHealthyServices(ctx, p.target(), services); err == nil {
+			return
+		} else {
+			lastErr = err
+		}
+		time.Sleep(2 * time.Second)
+	}
+	t.Fatalf("services never became healthy: %v", lastErr)
 }
 
 func (p integrationProject) cleanup(t *testing.T) {

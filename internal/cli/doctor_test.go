@@ -37,7 +37,7 @@ func TestDoctorCLIJSONSuccess(t *testing.T) {
 	}
 
 	prependDoctorFakeDocker(t)
-	t.Setenv("TEST_DOCTOR_DOCKER_PS_OUTPUT", `[{"Service":"db"},{"Service":"espocrm"},{"Service":"espocrm-daemon"},{"Service":"espocrm-websocket"}]`)
+	t.Setenv("TEST_DOCTOR_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
@@ -60,16 +60,82 @@ func TestDoctorCLIJSONSuccess(t *testing.T) {
 		t.Fatalf("unexpected message: %s", message)
 	}
 	checks := requireJSONObjectArray(t, obj, "result", "checks")
-	if len(checks) != 6 {
+	if len(checks) != 7 {
 		t.Fatalf("unexpected checks: %#v", checks)
 	}
-	for i, name := range []string{"config", "backup_root", "storage_dir", "compose_config", "services", "db_ping"} {
+	for i, name := range []string{"config", "backup_root", "storage_dir", "compose_config", "services", "service_health", "db_ping"} {
 		if got := requireJSONStringFromObject(t, checks[i], "name"); got != name {
 			t.Fatalf("unexpected check name at %d: %s", i, got)
 		}
 		if !requireJSONBoolFromObject(t, checks[i], "ok") {
 			t.Fatalf("expected check %s to pass", name)
 		}
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestDoctorCLIJSONFailureForUnhealthyService(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(projectDir, "backups", "prod"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectDir, "runtime", "prod", "espo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prependDoctorFakeDocker(t)
+	t.Setenv("TEST_DOCTOR_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"doctor", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "runtime" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "doctor service health check failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	checks := requireJSONObjectArray(t, obj, "result", "checks")
+	if len(checks) != 6 {
+		t.Fatalf("unexpected checks: %#v", checks)
+	}
+	if name := requireJSONStringFromObject(t, checks[5], "name"); name != "service_health" {
+		t.Fatalf("unexpected failed check: %s", name)
+	}
+	if requireJSONBoolFromObject(t, checks[5], "ok") {
+		t.Fatal("expected service_health check to fail")
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())

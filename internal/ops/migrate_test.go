@@ -6,6 +6,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func TestMigrateFromEqualsToFails(t *testing.T) {
@@ -101,11 +102,50 @@ func TestMigrateSuccessReturnsManifestAndSnapshotManifest(t *testing.T) {
 	if _, err := os.Stat(result.SnapshotManifest); err != nil {
 		t.Fatalf("expected snapshot manifest: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
 		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+}
+
+func TestMigrateServiceHealthFailureFails(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+		healthErrors: map[int]error{
+			1: errf(`service "espocrm-websocket" health is "unhealthy" (want "healthy")`),
+		},
+	}
+
+	oldSleep := serviceHealthSleep
+	serviceHealthSleep = func(context.Context, time.Duration) error {
+		return context.DeadlineExceeded
+	}
+	defer func() {
+		serviceHealthSleep = oldSleep
+	}()
+
+	result, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "restore post-check failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `service "espocrm-websocket"`) {
+		t.Fatalf("expected health detail, got %v", err)
+	}
+	if result.Manifest != sourceManifest {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")

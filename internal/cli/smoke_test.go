@@ -245,6 +245,88 @@ func TestSmokeCLIJSONFailsClosedAtBackup(t *testing.T) {
 	}
 }
 
+func TestSmokeCLIJSONFailsClosedAtRestoreHealth(t *testing.T) {
+	projectDir := smokeProjectDir(t, true)
+
+	prependSmokeFakeDocker(t)
+	t.Setenv("TEST_SMOKE_DOCKER_PS_OUTPUT", smokeDockerPSOutput())
+	t.Setenv("TEST_SMOKE_DOCKER_FAIL_HEALTH_AFTER_START_COUNT", "3")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{
+		"smoke",
+		"--from-scope", "dev",
+		"--to-scope", "prod",
+		"--project-dir", projectDir,
+	}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if step := requireJSONString(t, obj, "result", "failed_step"); step != "restore" {
+		t.Fatalf("unexpected failed_step: %s", step)
+	}
+	steps := requireJSONObjectArray(t, obj, "result", "steps")
+	if len(steps) != 5 {
+		t.Fatalf("unexpected steps: %#v", steps)
+	}
+	if got := requireJSONStringFromObject(t, steps[4], "name"); got != "restore" {
+		t.Fatalf("unexpected final step: %s", got)
+	}
+	if requireJSONBoolFromObject(t, steps[4], "ok") {
+		t.Fatal("expected restore step to fail")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestSmokeCLIJSONFailsClosedAtMigrateHealth(t *testing.T) {
+	projectDir := smokeProjectDir(t, true)
+
+	prependSmokeFakeDocker(t)
+	t.Setenv("TEST_SMOKE_DOCKER_PS_OUTPUT", smokeDockerPSOutput())
+	t.Setenv("TEST_SMOKE_DOCKER_FAIL_HEALTH_AFTER_START_COUNT", "5")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{
+		"smoke",
+		"--from-scope", "dev",
+		"--to-scope", "prod",
+		"--project-dir", projectDir,
+	}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if step := requireJSONString(t, obj, "result", "failed_step"); step != "migrate" {
+		t.Fatalf("unexpected failed_step: %s", step)
+	}
+	steps := requireJSONObjectArray(t, obj, "result", "steps")
+	if len(steps) != 6 {
+		t.Fatalf("unexpected steps: %#v", steps)
+	}
+	if got := requireJSONStringFromObject(t, steps[5], "name"); got != "migrate" {
+		t.Fatalf("unexpected final step: %s", got)
+	}
+	if requireJSONBoolFromObject(t, steps[5], "ok") {
+		t.Fatal("expected migrate step to fail")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
 func smokeProjectDir(t *testing.T, createTargetBackupRoot bool) string {
 	t.Helper()
 
@@ -332,15 +414,20 @@ func prependSmokeFakeDocker(t *testing.T) {
 	if err := os.WriteFile(scriptPath, []byte(smokeFakeDockerScript), 0o755); err != nil {
 		t.Fatal(err)
 	}
+	stateFile := filepath.Join(rootDir, "start-count")
+	if err := os.WriteFile(stateFile, []byte("0"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("TEST_SMOKE_DOCKER_STATE_FILE", stateFile)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 }
 
 func smokeDockerPSOutput() string {
 	return strings.Join([]string{
-		`{"Service":"db"}`,
-		`{"Service":"espocrm"}`,
-		`{"Service":"espocrm-daemon"}`,
-		`{"Service":"espocrm-websocket"}`,
+		`{"Service":"db","State":"running","Health":"healthy"}`,
+		`{"Service":"espocrm","State":"running","Health":"healthy"}`,
+		`{"Service":"espocrm-daemon","State":"running","Health":"healthy"}`,
+		`{"Service":"espocrm-websocket","State":"running","Health":"healthy"}`,
 		"",
 	}, "\n")
 }
@@ -359,6 +446,8 @@ func assertFileBody(t *testing.T, path, want string) {
 
 const smokeFakeDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
+
+default_failed_health_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
 
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
@@ -382,10 +471,28 @@ case "${1:-}" in
     exit 0
     ;;
   ps)
+    start_count=0
+    if [[ -f "${TEST_SMOKE_DOCKER_STATE_FILE:-}" ]]; then
+      start_count="$(cat "${TEST_SMOKE_DOCKER_STATE_FILE}")"
+    fi
+    if [[ -n "${TEST_SMOKE_DOCKER_FAIL_HEALTH_AFTER_START_COUNT:-}" ]] && (( start_count >= TEST_SMOKE_DOCKER_FAIL_HEALTH_AFTER_START_COUNT )); then
+      printf '%s' "${TEST_SMOKE_DOCKER_FAIL_HEALTH_PS_OUTPUT:-$default_failed_health_ps}"
+      exit 0
+    fi
     printf '%s' "${TEST_SMOKE_DOCKER_PS_OUTPUT:-[]}"
     exit 0
     ;;
-  stop|start)
+  stop)
+    exit 0
+    ;;
+  start)
+    if [[ -n "${TEST_SMOKE_DOCKER_STATE_FILE:-}" ]]; then
+      start_count=0
+      if [[ -f "${TEST_SMOKE_DOCKER_STATE_FILE}" ]]; then
+        start_count="$(cat "${TEST_SMOKE_DOCKER_STATE_FILE}")"
+      fi
+      printf '%s' "$((start_count + 1))" >"${TEST_SMOKE_DOCKER_STATE_FILE}"
+    fi
     exit 0
     ;;
   up)

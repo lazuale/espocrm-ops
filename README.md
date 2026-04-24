@@ -183,12 +183,15 @@ Operator prerequisites:
 - One command path only, with no service-name guessing or implicit service defaults
 - `DB_SERVICE` must name the exact Compose database service
 - `APP_SERVICES` must list the exact Compose application services as a comma-separated contract
+- `DB_SERVICE` and every service in `APP_SERVICES` must expose a Docker Compose healthcheck; a merely running service without health status does not satisfy the success contract
 - Retention cleanup runs only after the freshly created backup set passes self-verify, deletes only complete same-prefix sets from the current `BACKUP_ROOT` layout, and refuses incomplete or suspicious sets instead of deleting them automatically
 - `restore` fails closed unless `manifest.scope` matches `--scope`; use `migrate` for intentional cross-scope restore
 - `restore`, `migrate`, and `smoke` reset the target database as MariaDB root before importing the dump
 - `restore` and `migrate` restore files through staged extraction: the archive is validated, extracted into staging, the staged tree is validated, and target storage is cleared only after staging succeeds
 - `espops` never guesses `ESPO_RUNTIME_UID` or `ESPO_RUNTIME_GID` from the image or the container runtime
 - `restore`, `migrate`, and `smoke` apply the restored storage tree to the explicit runtime uid/gid and fail closed if the operator cannot apply that ownership
+- `doctor` succeeds only when Compose config parses, backup root and storage dir checks pass, contract services are listed, contract services are `running` and `healthy`, and MariaDB `SELECT 1` succeeds
+- `restore`, `migrate`, and `smoke` succeed only after the restored storage post-check passes and the contract services are `running` and `healthy` before MariaDB `SELECT 1`; this validates Compose service health, not a full browser or user-login flow
 
 ## Minimal Safe Workflow
 
@@ -199,6 +202,7 @@ Prepare the target scope first:
 3. Ensure `ESPO_STORAGE_DIR` already exists, points at the correct scope storage, and is clearable by the operator account for `restore` and `migrate`.
 4. Pre-pull the exact runtime images you intend to trust.
 5. Run `espops doctor`.
+   Doctor does not stop or repair anything. It proves config parsing, local backup/storage prerequisites, contract service presence, Docker Compose service health, and DB reachability.
 
 Then use the commands in this order:
 
@@ -207,9 +211,9 @@ Then use the commands in this order:
 2. `espops backup verify`
    Verify the manifest you plan to trust.
 3. `espops restore`
-   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction, clears target storage only after staging succeeds, and applies the explicit runtime uid/gid before the final file post-check.
+   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction, clears target storage only after staging succeeds, applies the explicit runtime uid/gid before the final file post-check, starts the contract services, waits for Docker Compose health to go green, and only then accepts MariaDB `SELECT 1` as the final post-check.
 4. `espops migrate`
-   Migrate is thin composition over verified restore flow, not a separate engine. It is the only supported cross-scope restore path.
+   Migrate is thin composition over verified restore flow, not a separate engine. It inherits the same final health contract and is the only supported cross-scope restore path.
 
 For one explicit fixed-path operator check across both scopes:
 
@@ -231,6 +235,8 @@ Check runtime readiness:
 ./bin/espops doctor --scope prod --project-dir /path/to/project
 ```
 
+`doctor` is a strict readiness check, not a loose preflight. A green result means the configured Compose services exist, are `running`, report `healthy`, and MariaDB answers a ping.
+
 Create a backup:
 
 ```bash
@@ -251,11 +257,15 @@ Restore from a verified manifest:
 ./bin/espops restore --scope prod --project-dir /path/to/project --manifest /path/to/manifest.json
 ```
 
+Success here means staged files passed validation, Docker Compose contract services came back `running` and `healthy`, and MariaDB answered the final ping. It does not claim a full browser/login flow.
+
 Migrate from one scope into another:
 
 ```bash
 ./bin/espops migrate --from-scope dev --to-scope prod --project-dir /path/to/project --manifest /path/to/manifest.json
 ```
+
+`migrate` uses the same post-check contract as `restore`: storage checks plus Compose service health plus DB ping.
 
 Run the fixed smoke path:
 

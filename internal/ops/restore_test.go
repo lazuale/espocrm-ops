@@ -347,8 +347,89 @@ func TestRestorePostCheckFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+}
+
+func TestRestoreServiceHealthFailureFailsBeforeDBPing(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+		healthErrors: map[int]error{
+			1: errf(`service "espocrm" health is "unhealthy" (want "healthy")`),
+		},
+	}
+
+	oldSleep := serviceHealthSleep
+	serviceHealthSleep = func(context.Context, time.Duration) error {
+		return context.DeadlineExceeded
+	}
+	defer func() {
+		serviceHealthSleep = oldSleep
+	}()
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "restore post-check failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `service "espocrm" health is "unhealthy"`) {
+		t.Fatalf("expected service health detail, got %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+}
+
+func TestRestoreHealthWaitCancellationFailsWithoutHang(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+		healthErrors: map[int]error{
+			1: &runtime.ServiceHealthError{
+				Service:   "espocrm",
+				State:     "running",
+				Health:    "starting",
+				Message:   `service "espocrm" health is "starting" (want "healthy")`,
+				Retryable: true,
+			},
+		},
+	}
+
+	oldSleep := serviceHealthSleep
+	serviceHealthSleep = func(waitCtx context.Context, _ time.Duration) error {
+		cancel()
+		<-waitCtx.Done()
+		return waitCtx.Err()
+	}
+	defer func() {
+		serviceHealthSleep = oldSleep
+	}()
+
+	result, err := Restore(ctx, cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation in error chain, got %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.healthContextErrs) != 1 || rt.healthContextErrs[0] != nil {
+		t.Fatalf("expected active health context, got %v", rt.healthContextErrs)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
@@ -452,7 +533,7 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 	if _, err := os.Stat(result.SnapshotManifest); err != nil {
 		t.Fatalf("expected snapshot manifest: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
@@ -799,6 +880,7 @@ type fakeRestoreRuntime struct {
 	stopErrors        map[int]error
 	startErrors       map[int]error
 	upErrors          map[int]error
+	healthErrors      map[int]error
 	restoreDBErr      error
 	resetDBErr        error
 	dbPingErr         error
@@ -808,8 +890,10 @@ type fakeRestoreRuntime struct {
 	stopCount         int
 	startCount        int
 	upCount           int
+	healthCount       int
 	restoreDBBody     string
 	startContextErrs  []error
+	healthContextErrs []error
 }
 
 func (f *fakeRestoreRuntime) Validate(_ context.Context, _ runtime.Target) error {
@@ -860,6 +944,13 @@ func (f *fakeRestoreRuntime) RestoreDatabase(_ context.Context, _ runtime.Target
 	}
 	f.restoreDBBody = string(raw)
 	return f.restoreDBErr
+}
+
+func (f *fakeRestoreRuntime) RequireHealthyServices(ctx context.Context, _ runtime.Target, _ []string) error {
+	f.calls = append(f.calls, "service_health")
+	f.healthContextErrs = append(f.healthContextErrs, ctx.Err())
+	f.healthCount++
+	return indexedError(f.healthErrors, f.healthCount)
 }
 
 func (f *fakeRestoreRuntime) DBPing(_ context.Context, _ runtime.Target) error {

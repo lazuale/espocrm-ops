@@ -22,6 +22,7 @@ type DoctorResult struct {
 type doctorRuntime interface {
 	ComposeConfig(ctx context.Context, target runtime.Target) error
 	Services(ctx context.Context, target runtime.Target) ([]runtime.Service, error)
+	RequireHealthyServices(ctx context.Context, target runtime.Target, services []string) error
 	DBPing(ctx context.Context, target runtime.Target) error
 }
 
@@ -30,7 +31,7 @@ func Doctor(ctx context.Context, req config.BackupRequest, rt doctorRuntime) (Do
 		return DoctorResult{}, runtimeError("doctor runtime is required", nil)
 	}
 
-	result := DoctorResult{Checks: make([]DoctorCheck, 0, 6)}
+	result := DoctorResult{Checks: make([]DoctorCheck, 0, 7)}
 
 	cfg, err := config.LoadBackup(req)
 	if err != nil {
@@ -71,6 +72,11 @@ func Doctor(ctx context.Context, req config.BackupRequest, rt doctorRuntime) (Do
 		return failDoctorCheck(result, "services", ErrorKindRuntime, "doctor services check failed", err)
 	}
 	result.Checks = append(result.Checks, passedDoctorCheck("services"))
+
+	if err := requireRuntimeServiceHealth(ctx, target, cfg.DBService, cfg.AppServices, rt); err != nil {
+		return failDoctorCheck(result, "service_health", ErrorKindRuntime, "doctor service health check failed", err)
+	}
+	result.Checks = append(result.Checks, passedDoctorCheck("service_health"))
 
 	if err := rt.DBPing(ctx, target); err != nil {
 		return failDoctorCheck(result, "db_ping", ErrorKindRuntime, "doctor db ping failed", err)

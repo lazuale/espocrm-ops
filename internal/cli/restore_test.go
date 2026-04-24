@@ -222,6 +222,71 @@ func TestRestoreCLIJSONRejectsManifestFromDifferentScope(t *testing.T) {
 	}
 }
 
+func TestRestoreCLIJSONHealthFailureIsRuntimeFailure(t *testing.T) {
+	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
+
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
+		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prependRestoreFakeDocker(t)
+	t.Setenv("TEST_RESTORE_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "runtime" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "restore post-check failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if strings.Contains(requireJSONString(t, obj, "error", "message"), "root-secret") {
+		t.Fatal("health failure must not leak secrets")
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
 func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
 
@@ -475,6 +540,8 @@ func currentRuntimeGIDString() string {
 const restoreFakeDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
 
+default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
+
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
   exit 1
@@ -494,6 +561,10 @@ done
 
 case "${1:-}" in
   config)
+    exit 0
+    ;;
+  ps)
+    printf '%s' "${TEST_RESTORE_DOCKER_PS_OUTPUT:-$default_ps}"
     exit 0
     ;;
   stop|start)

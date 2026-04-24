@@ -28,6 +28,7 @@
 - No silent recovery.
 - No implicit path switching.
 - No ambiguous success.
+- Success requires explicit health/post-check evidence; MariaDB reachability alone is not success.
 - No shell-owned product, contract, validation, or recovery semantics.
 - No guard theatre.
 - No fake machine-enforcement.

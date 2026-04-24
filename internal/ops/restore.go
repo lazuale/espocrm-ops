@@ -27,6 +27,7 @@ type restoreRuntime interface {
 	UpService(ctx context.Context, target runtime.Target, service string) error
 	ResetDatabase(ctx context.Context, target runtime.Target) error
 	RestoreDatabase(ctx context.Context, target runtime.Target, reader io.Reader) error
+	RequireHealthyServices(ctx context.Context, target runtime.Target, services []string) error
 	DBPing(ctx context.Context, target runtime.Target) error
 }
 
@@ -146,6 +147,10 @@ func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPa
 	}
 	cancel()
 	servicesReturned = true
+
+	if err := waitForRuntimeServiceHealth(ctx, target, cfg.DBService, cfg.AppServices, rt); err != nil {
+		return result, runtimeError("restore post-check failed", err)
+	}
 
 	if err := rt.DBPing(ctx, target); err != nil {
 		return result, runtimeError("restore post-check failed", err)
