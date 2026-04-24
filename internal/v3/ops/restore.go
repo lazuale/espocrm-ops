@@ -148,6 +148,9 @@ func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string) (e
 	if err := ensureRestoreStorageDir(storageDir); err != nil {
 		return ioError("restore storage target is invalid", err)
 	}
+	if err := validateFilesArchiveForRestore(artifactPath); err != nil {
+		return err
+	}
 
 	file, err := os.Open(artifactPath)
 	if err != nil {
@@ -194,6 +197,44 @@ func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string) (e
 	return nil
 }
 
+func validateFilesArchiveForRestore(path string) (err error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return ioError("failed to open source files backup", err)
+	}
+	defer closeResource(file, &err)
+
+	gzipReader, err := gzip.NewReader(file)
+	if err != nil {
+		return archiveError("files restore source is unreadable", err)
+	}
+	defer closeResource(gzipReader, &err)
+
+	tarReader := tar.NewReader(gzipReader)
+	var found bool
+	for {
+		header, nextErr := tarReader.Next()
+		if nextErr == io.EOF {
+			break
+		}
+		if nextErr != nil {
+			return archiveError("files restore source is unreadable", nextErr)
+		}
+		if err := validateTarHeader(header); err != nil {
+			return archiveError("files restore source is unsafe", err)
+		}
+		found = true
+		if _, err := io.Copy(io.Discard, tarReader); err != nil {
+			return archiveError("files restore source is unreadable", err)
+		}
+	}
+	if !found {
+		return archiveError("files restore source is empty", nil)
+	}
+
+	return nil
+}
+
 func ensureRestoreStorageDir(path string) error {
 	info, err := os.Lstat(path)
 	if err != nil {
@@ -213,8 +254,23 @@ func clearDirectoryContents(path string) error {
 	if err != nil {
 		return err
 	}
+	paths := make([]string, 0, len(entries))
 	for _, entry := range entries {
-		if err := os.RemoveAll(filepath.Join(path, entry.Name())); err != nil {
+		entryPath := filepath.Join(path, entry.Name())
+		info, err := os.Lstat(entryPath)
+		if err != nil {
+			return err
+		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("storage dir entry must not be a symlink: %s", entry.Name())
+		}
+		if !info.Mode().IsRegular() && !info.IsDir() {
+			return fmt.Errorf("storage dir entry type is not supported: %s", entry.Name())
+		}
+		paths = append(paths, entryPath)
+	}
+	for _, entryPath := range paths {
+		if err := os.RemoveAll(entryPath); err != nil {
 			return err
 		}
 	}

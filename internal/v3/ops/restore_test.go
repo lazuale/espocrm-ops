@@ -1,6 +1,9 @@
 package ops
 
 import (
+	"archive/tar"
+	"bytes"
+	"compress/gzip"
 	"context"
 	"io"
 	"os"
@@ -226,6 +229,79 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
 }
 
+func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
+	_, storageDir := restoreTargetConfig(t)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchiveEntries(t, archivePath, []restoreArchiveEntry{
+		{name: "restored.txt", body: "restored\n"},
+		{name: "../escape.txt", body: "bad\n"},
+	})
+
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	assertVerifyErrorKind(t, err, ErrorKindArchive)
+	if !strings.Contains(err.Error(), "unsafe") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
+	_, storageDir := restoreTargetConfig(t)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeBrokenRestoreFilesArchive(t, archivePath, "restored.txt", "restored\n")
+
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	assertVerifyErrorKind(t, err, ErrorKindArchive)
+	if !strings.Contains(err.Error(), "unreadable") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreFilesBackupTopLevelSymlinkFailsBeforeCleanup(t *testing.T) {
+	_, storageDir := restoreTargetConfig(t)
+	linkTarget := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(linkTarget, []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	linkPath := filepath.Join(storageDir, "linked")
+	if err := os.Symlink(linkTarget, linkPath); err != nil {
+		t.Fatal(err)
+	}
+
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
+
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	if _, err := os.Lstat(linkPath); err != nil {
+		t.Fatalf("expected symlink to remain: %v", err)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
+	_, storageDir := restoreTargetConfig(t)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchive(t, archivePath, map[string]string{
+		"restored.txt":     "restored\n",
+		"nested/child.txt": "child\n",
+	})
+
+	if err := restoreFilesBackup(context.Background(), archivePath, storageDir); err != nil {
+		t.Fatalf("restoreFilesBackup failed: %v", err)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+	assertFileContains(t, filepath.Join(storageDir, "nested", "child.txt"), "child\n")
+}
+
 func restoreTargetConfig(t *testing.T) (v3config.BackupConfig, string) {
 	t.Helper()
 
@@ -360,5 +436,92 @@ func assertNoFile(t *testing.T, path string) {
 
 	if _, err := os.Stat(path); !os.IsNotExist(err) {
 		t.Fatalf("expected no file %s, got %v", path, err)
+	}
+}
+
+type restoreArchiveEntry struct {
+	name string
+	body string
+}
+
+func writeRestoreFilesArchive(t *testing.T, path string, files map[string]string) {
+	t.Helper()
+
+	entries := make([]restoreArchiveEntry, 0, len(files))
+	for name, body := range files {
+		entries = append(entries, restoreArchiveEntry{name: name, body: body})
+	}
+	writeRestoreFilesArchiveEntries(t, path, entries)
+}
+
+func writeRestoreFilesArchiveEntries(t *testing.T, path string, entries []restoreArchiveEntry) {
+	t.Helper()
+
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTestResource(t, file)
+
+	gzipWriter := gzip.NewWriter(file)
+	defer closeTestResource(t, gzipWriter)
+
+	tarWriter := tar.NewWriter(gzipWriter)
+	defer closeTestResource(t, tarWriter)
+
+	for _, entry := range entries {
+		header := &tar.Header{
+			Name: entry.name,
+			Mode: 0o644,
+			Size: int64(len(entry.body)),
+		}
+		if err := tarWriter.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tarWriter.Write([]byte(entry.body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+}
+
+func writeBrokenRestoreFilesArchive(t *testing.T, path, name, body string) {
+	t.Helper()
+
+	var tarBody bytes.Buffer
+	tarWriter := tar.NewWriter(&tarBody)
+	header := &tar.Header{
+		Name: name,
+		Mode: 0o644,
+		Size: int64(len(body)),
+	}
+	if err := tarWriter.WriteHeader(header); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tarWriter.Write([]byte(body)); err != nil {
+		t.Fatal(err)
+	}
+	if err := tarWriter.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	raw := tarBody.Bytes()
+	if len(raw) < 1024 {
+		t.Fatalf("unexpected tar size: %d", len(raw))
+	}
+	broken := append([]byte(nil), raw[:len(raw)-1024]...)
+	broken = append(broken, []byte("broken")...)
+
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTestResource(t, file)
+
+	gzipWriter := gzip.NewWriter(file)
+	if _, err := gzipWriter.Write(broken); err != nil {
+		t.Fatal(err)
+	}
+	if err := gzipWriter.Close(); err != nil {
+		t.Fatal(err)
 	}
 }
