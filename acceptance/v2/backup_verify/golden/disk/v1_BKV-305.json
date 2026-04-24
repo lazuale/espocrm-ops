@@ -1,7 +1,0 @@
-{
-  "backup_root_entries": [
-    "manifests/",
-    "manifests/espocrm-prod_2026-04-07_01-00-00.manifest.json"
-  ],
-  "process_exit_code": 4
-}
