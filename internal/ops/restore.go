@@ -23,11 +23,23 @@ type RestoreResult struct {
 type restoreRuntime interface {
 	backupRuntime
 	UpService(ctx context.Context, target runtime.Target, service string) error
+	ResetDatabase(ctx context.Context, target runtime.Target) error
 	RestoreDatabase(ctx context.Context, target runtime.Target, reader io.Reader) error
 	DBPing(ctx context.Context, target runtime.Target) error
 }
 
 func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result RestoreResult, err error) {
+	return restoreWithOptions(ctx, cfg, manifestPath, rt, now, restoreOptions{
+		scopeErrorMessage: "restore source scope is invalid",
+	})
+}
+
+type restoreOptions struct {
+	allowedSourceScope string
+	scopeErrorMessage  string
+}
+
+func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, opts restoreOptions) (result RestoreResult, err error) {
 	if rt == nil {
 		return RestoreResult{}, runtimeError("restore runtime is required", nil)
 	}
@@ -46,6 +58,9 @@ func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, 
 		return result, verifyErr
 	}
 	result.Manifest = verifyResult.Manifest
+	if err := validateRestoreSourceScope(cfg.Scope, verifyResult.Scope, opts); err != nil {
+		return result, err
+	}
 	if err := ensureRestoreStorageClearable(cfg.StorageDir); err != nil {
 		return result, ioError("restore storage target is not clearable", err)
 	}
@@ -57,13 +72,14 @@ func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, 
 	result.SnapshotManifest = snapshotResult.Manifest
 
 	target := runtime.Target{
-		ProjectDir:  cfg.ProjectDir,
-		ComposeFile: cfg.ComposeFile,
-		EnvFile:     cfg.EnvFile,
-		DBService:   cfg.DBService,
-		DBUser:      cfg.DBUser,
-		DBPassword:  cfg.DBPassword,
-		DBName:      cfg.DBName,
+		ProjectDir:     cfg.ProjectDir,
+		ComposeFile:    cfg.ComposeFile,
+		EnvFile:        cfg.EnvFile,
+		DBService:      cfg.DBService,
+		DBUser:         cfg.DBUser,
+		DBPassword:     cfg.DBPassword,
+		DBRootPassword: cfg.DBRootPassword,
+		DBName:         cfg.DBName,
 	}
 
 	servicesStopped := false
@@ -92,6 +108,9 @@ func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, 
 	if err := rt.UpService(ctx, target, cfg.DBService); err != nil {
 		return result, runtimeError("failed to ensure db service", err)
 	}
+	if err := resetDatabase(ctx, rt, target); err != nil {
+		return result, err
+	}
 	if err := restoreDatabaseBackup(ctx, verifyResult.DBBackup, rt, target); err != nil {
 		return result, err
 	}
@@ -119,8 +138,45 @@ func validateRestoreInputs(cfg config.BackupConfig, manifestPath string) error {
 	if err := validateBackupConfig(cfg); err != nil {
 		return err
 	}
+	if strings.TrimSpace(cfg.DBRootPassword) == "" {
+		return fmt.Errorf("DB_ROOT_PASSWORD is required")
+	}
 	if strings.TrimSpace(manifestPath) == "" {
 		return fmt.Errorf("manifest path is required")
+	}
+	return nil
+}
+
+func validateRestoreSourceScope(targetScope, sourceScope string, opts restoreOptions) error {
+	wantScope := strings.TrimSpace(targetScope)
+	if allowed := strings.TrimSpace(opts.allowedSourceScope); allowed != "" {
+		wantScope = allowed
+	}
+	if sourceScope == wantScope {
+		return nil
+	}
+
+	message := strings.TrimSpace(opts.scopeErrorMessage)
+	if message == "" {
+		message = "restore source scope is invalid"
+	}
+	return &VerifyError{
+		Kind:    ErrorKindUsage,
+		Message: message,
+		Err: fmt.Errorf(
+			"manifest scope %q does not match required scope %q",
+			sourceScope,
+			wantScope,
+		),
+	}
+}
+
+func resetDatabase(ctx context.Context, rt restoreRuntime, target runtime.Target) error {
+	if err := ctx.Err(); err != nil {
+		return ioError("restore interrupted", err)
+	}
+	if err := rt.ResetDatabase(ctx, target); err != nil {
+		return runtimeError("database reset failed", err)
 	}
 	return nil
 }

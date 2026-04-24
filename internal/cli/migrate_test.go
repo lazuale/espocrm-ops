@@ -34,6 +34,7 @@ func TestMigrateCLIJSONSuccess(t *testing.T) {
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
 	}, "\n")), 0o644); err != nil {
@@ -115,6 +116,7 @@ func TestMigrateCLIJSONFailure(t *testing.T) {
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
 	}, "\n")), 0o644); err != nil {

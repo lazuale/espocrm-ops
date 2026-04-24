@@ -15,20 +15,29 @@ type BackupRequest struct {
 }
 
 type BackupConfig struct {
-	Scope       string
-	ProjectDir  string
-	ComposeFile string
-	EnvFile     string
-	BackupRoot  string
-	StorageDir  string
-	AppServices []string
-	DBService   string
-	DBUser      string
-	DBPassword  string
-	DBName      string
+	Scope          string
+	ProjectDir     string
+	ComposeFile    string
+	EnvFile        string
+	BackupRoot     string
+	StorageDir     string
+	AppServices    []string
+	DBService      string
+	DBUser         string
+	DBPassword     string
+	DBRootPassword string
+	DBName         string
 }
 
 func LoadBackup(req BackupRequest) (BackupConfig, error) {
+	return load(req, false)
+}
+
+func LoadRestore(req BackupRequest) (BackupConfig, error) {
+	return load(req, true)
+}
+
+func load(req BackupRequest, requireRootPassword bool) (BackupConfig, error) {
 	scope := strings.TrimSpace(req.Scope)
 	if scope != "dev" && scope != "prod" {
 		return BackupConfig{}, fmt.Errorf("--scope must be dev or prod")
@@ -73,7 +82,11 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 		}
 	}
 
-	password, err := resolveDBPassword(values, projectDir, envFile)
+	password, err := resolveEnvSecret(values, projectDir, envFile, "DB_PASSWORD", "DB_PASSWORD_FILE", true)
+	if err != nil {
+		return BackupConfig{}, err
+	}
+	rootPassword, err := resolveEnvSecret(values, projectDir, envFile, "DB_ROOT_PASSWORD", "DB_ROOT_PASSWORD_FILE", requireRootPassword)
 	if err != nil {
 		return BackupConfig{}, err
 	}
@@ -83,17 +96,18 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 	}
 
 	return BackupConfig{
-		Scope:       scope,
-		ProjectDir:  projectDir,
-		ComposeFile: composeFile,
-		EnvFile:     envFile,
-		BackupRoot:  resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
-		StorageDir:  resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
-		AppServices: appServices,
-		DBService:   strings.TrimSpace(values["DB_SERVICE"]),
-		DBUser:      strings.TrimSpace(values["DB_USER"]),
-		DBPassword:  password,
-		DBName:      strings.TrimSpace(values["DB_NAME"]),
+		Scope:          scope,
+		ProjectDir:     projectDir,
+		ComposeFile:    composeFile,
+		EnvFile:        envFile,
+		BackupRoot:     resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
+		StorageDir:     resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
+		AppServices:    appServices,
+		DBService:      strings.TrimSpace(values["DB_SERVICE"]),
+		DBUser:         strings.TrimSpace(values["DB_USER"]),
+		DBPassword:     password,
+		DBRootPassword: rootPassword,
+		DBName:         strings.TrimSpace(values["DB_NAME"]),
 	}, nil
 }
 
@@ -127,27 +141,30 @@ func resolveProjectPath(projectDir, value string) string {
 	return filepath.Join(projectDir, filepath.Clean(value))
 }
 
-func resolveDBPassword(values map[string]string, projectDir, envFile string) (string, error) {
-	inline := strings.TrimSpace(values["DB_PASSWORD"])
-	fileRef := strings.TrimSpace(values["DB_PASSWORD_FILE"])
+func resolveEnvSecret(values map[string]string, projectDir, envFile, inlineKey, fileKey string, required bool) (string, error) {
+	inline := strings.TrimSpace(values[inlineKey])
+	fileRef := strings.TrimSpace(values[fileKey])
 
 	switch {
 	case inline != "" && fileRef != "":
-		return "", fmt.Errorf("only one of DB_PASSWORD or DB_PASSWORD_FILE may be set in %s", envFile)
+		return "", fmt.Errorf("only one of %s or %s may be set in %s", inlineKey, fileKey, envFile)
 	case inline != "":
 		return inline, nil
 	case fileRef == "":
-		return "", fmt.Errorf("DB_PASSWORD or DB_PASSWORD_FILE is required in %s", envFile)
+		if !required {
+			return "", nil
+		}
+		return "", fmt.Errorf("%s or %s is required in %s", inlineKey, fileKey, envFile)
 	}
 
 	passwordPath := resolveProjectPath(projectDir, fileRef)
 	raw, err := os.ReadFile(passwordPath)
 	if err != nil {
-		return "", fmt.Errorf("read DB_PASSWORD_FILE %s: %w", passwordPath, err)
+		return "", fmt.Errorf("read %s %s: %w", fileKey, passwordPath, err)
 	}
 	password := strings.TrimSpace(string(raw))
 	if password == "" {
-		return "", fmt.Errorf("DB_PASSWORD_FILE %s is empty", passwordPath)
+		return "", fmt.Errorf("%s %s is empty", fileKey, passwordPath)
 	}
 	return password, nil
 }

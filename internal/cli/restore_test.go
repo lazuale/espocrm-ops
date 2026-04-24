@@ -34,6 +34,7 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
 	}, "\n")), 0o644); err != nil {
@@ -115,6 +116,7 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
 	}, "\n")), 0o644); err != nil {
@@ -147,6 +149,113 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 	}
 	if gotManifest := requireJSONString(t, obj, "result", "manifest"); gotManifest != missingManifest {
 		t.Fatalf("unexpected manifest: %s", gotManifest)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONRejectsManifestFromDifferentScope(t *testing.T) {
+	manifestPath, _ := writeVerifiedScopedBackupSet(t, "dev")
+
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitUsage {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "restore source scope is invalid") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
+	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
+
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prependRestoreFakeDocker(t)
+	t.Setenv("TEST_RESTORE_DOCKER_FAIL_RESET", "1")
+	t.Setenv("TEST_RESTORE_DOCKER_FAIL_MESSAGE", "reset failed with MYSQL_PWD=root-secret and root-secret")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if strings.Contains(errMessage, "root-secret") {
+		t.Fatalf("json error leaked db root password: %s", errMessage)
+	}
+	if !strings.Contains(errMessage, "MYSQL_PWD=<redacted>") {
+		t.Fatalf("expected redacted json error message, got %s", errMessage)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
@@ -250,24 +359,44 @@ case "${1:-}" in
     [[ "${1:-}" == "-e" ]] || exit 1
     shift
     [[ "${1:-}" == "MYSQL_PWD" ]] || exit 1
-    [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
     case "${1:-}" in
       mariadb-dump)
+        [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
         printf 'create table snapshot(id int);\n'
         exit 0
         ;;
       mariadb)
         shift
-        for arg in "$@"; do
-          if [[ "$arg" == "-e" ]]; then
+        [[ "${1:-}" == "-u" ]] || exit 1
+        shift
+        case "${1:-}" in
+          root)
+            [[ "${MYSQL_PWD:-}" == "root-secret" ]] || exit 1
+            shift
+            [[ "${1:-}" == "-e" ]] || exit 1
+            shift
+            if [[ "${TEST_RESTORE_DOCKER_FAIL_RESET:-}" == "1" ]]; then
+              printf '%s\n' "${TEST_RESTORE_DOCKER_FAIL_MESSAGE:-reset failed}" >&2
+              exit 1
+            fi
+            [[ "${1:-}" == DROP\ DATABASE\ IF\ EXISTS*CREATE\ DATABASE*CHARACTER\ SET\ utf8mb4\ COLLATE\ utf8mb4_unicode_ci\; ]] || exit 1
             exit 0
-          fi
-        done
-        cat >"${TEST_RESTORE_DOCKER_STDIN_LOG:-/dev/null}"
-        exit 0
+            ;;
+          espocrm)
+            [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
+            shift
+            for arg in "$@"; do
+              if [[ "$arg" == "-e" ]]; then
+                exit 0
+              fi
+            done
+            cat >"${TEST_RESTORE_DOCKER_STDIN_LOG:-/dev/null}"
+            exit 0
+            ;;
+        esac
         ;;
     esac
     ;;

@@ -74,7 +74,7 @@ func TestMigrateRestoreFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
@@ -101,7 +101,7 @@ func TestMigrateSuccessReturnsManifestAndSnapshotManifest(t *testing.T) {
 	if _, err := os.Stat(result.SnapshotManifest); err != nil {
 		t.Fatalf("expected snapshot manifest: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "restore_database", "start_services", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {

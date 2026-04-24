@@ -106,7 +106,7 @@ func runSmoke(ctx context.Context, fromScope, toScope, projectDir string, rt run
 	result.Manifest = verifyResult.Manifest
 	result.Steps = append(result.Steps, smokeStep{Name: "backup verify", OK: true})
 
-	restoreResult, err := ops.Restore(ctx, targetCfg, result.Manifest, rt, nextStepTime())
+	restoreResult, err := ops.Restore(ctx, sourceCfg, result.Manifest, rt, nextStepTime())
 	result.RestoreSnapshotManifest = restoreResult.SnapshotManifest
 	if err != nil {
 		return smokeStepFailure(result, "restore", err)
@@ -160,7 +160,7 @@ func loadSmokeScopeConfig(flagName, scope, projectDir string) (config.BackupConf
 		}
 	}
 
-	cfg, err := config.LoadBackup(config.BackupRequest{
+	cfg, err := config.LoadRestore(config.BackupRequest{
 		Scope:      scope,
 		ProjectDir: projectDir,
 	})

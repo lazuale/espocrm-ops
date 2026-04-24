@@ -130,7 +130,7 @@ func loadRestoreConfig(scope, projectDir string) (config.BackupConfig, error) {
 	if scope == "" {
 		return config.BackupConfig{}, fmt.Errorf("--scope is required")
 	}
-	return config.LoadBackup(config.BackupRequest{
+	return config.LoadRestore(config.BackupRequest{
 		Scope:      scope,
 		ProjectDir: projectDir,
 	})

@@ -68,6 +68,7 @@ make ci
 - `internal/manifest/` owns manifest validation and artifact path resolution.
 - Keep shell execution and `os.Environ()` confined to `internal/runtime/docker.go`.
 - Keep `DB_SERVICE` and `APP_SERVICES` explicit in the env contract; do not reintroduce guessed or defaulted service names.
+- Keep `DB_ROOT_PASSWORD` or `DB_ROOT_PASSWORD_FILE` explicit for restore-capable flows; do not fall back to `DB_USER` credentials for database reset.
 - Prefer deletion over wrappers.
 - Fail closed when correctness is ambiguous.
 - Keep `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` in sync with the code.

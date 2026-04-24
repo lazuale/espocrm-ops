@@ -34,6 +34,31 @@ func TestRestoreSourceManifestInvalidFailsBeforeMutation(t *testing.T) {
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
 }
 
+func TestRestoreRejectsDifferentManifestScopeBeforeMutation(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindUsage)
+	if !strings.Contains(err.Error(), "restore source scope is invalid") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != sourceManifest {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
 func TestRestoreSnapshotFailureFailsBeforeMutation(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
@@ -97,8 +122,34 @@ func TestRestoreDBFailureAttemptsStart(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreResetDBFailureAttemptsStartWithoutImportOrFileMutation(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+		resetDBErr:     errf("reset db failed"),
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "database reset failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != "" {
+		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
@@ -205,7 +256,7 @@ func TestRestoreStartFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -294,7 +345,7 @@ func TestRestorePostCheckFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "restore_database", "start_services", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
@@ -321,7 +372,7 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 	if _, err := os.Stat(result.SnapshotManifest); err != nil {
 		t.Fatalf("expected snapshot manifest: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "restore_database", "start_services", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
@@ -453,6 +504,7 @@ type fakeRestoreRuntime struct {
 	startErrors       map[int]error
 	upErrors          map[int]error
 	restoreDBErr      error
+	resetDBErr        error
 	dbPingErr         error
 	cancel            context.CancelFunc
 	cancelOnStopCount int
@@ -497,6 +549,11 @@ func (f *fakeRestoreRuntime) UpService(_ context.Context, _ runtime.Target, _ st
 	f.calls = append(f.calls, "up_service")
 	f.upCount++
 	return indexedError(f.upErrors, f.upCount)
+}
+
+func (f *fakeRestoreRuntime) ResetDatabase(_ context.Context, _ runtime.Target) error {
+	f.calls = append(f.calls, "reset_database")
+	return f.resetDBErr
 }
 
 func (f *fakeRestoreRuntime) RestoreDatabase(_ context.Context, _ runtime.Target, reader io.Reader) error {

@@ -80,7 +80,7 @@ func loadMigrateTargetConfig(scope, projectDir string) (config.BackupConfig, err
 	if scope == "" {
 		return config.BackupConfig{}, fmt.Errorf("--to-scope is required")
 	}
-	return config.LoadBackup(config.BackupRequest{
+	return config.LoadRestore(config.BackupRequest{
 		Scope:      scope,
 		ProjectDir: projectDir,
 	})

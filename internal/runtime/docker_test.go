@@ -237,6 +237,32 @@ func TestDockerComposeDBPingRunsMariadbSelect1(t *testing.T) {
 	}
 }
 
+func TestDockerComposeResetDatabaseRunsMariadbRootCommand(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+
+	rt := DockerCompose{}
+	err := rt.ResetDatabase(context.Background(), Target{
+		ProjectDir:     projectDir,
+		ComposeFile:    filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:        filepath.Join(projectDir, ".env.prod"),
+		DBService:      "db",
+		DBRootPassword: "root-secret",
+		DBName:         "espocrm",
+	})
+	if err != nil {
+		t.Fatalf("ResetDatabase failed: %v", err)
+	}
+
+	log := mustReadFile(t, logPath)
+	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD db mariadb -u root -e DROP DATABASE IF EXISTS `espocrm`; CREATE DATABASE `espocrm` CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;") {
+		t.Fatalf("unexpected docker log:\n%s", log)
+	}
+	if strings.Contains(log, "root-secret") {
+		t.Fatalf("docker log leaked db root password:\n%s", log)
+	}
+}
+
 func TestDockerComposeRestoreDatabaseRunsMariadb(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
@@ -290,6 +316,32 @@ func TestDockerComposeDBPingRuntimeErrorRedactsPassword(t *testing.T) {
 	}
 	if strings.Contains(err.Error(), "db-secret") {
 		t.Fatalf("runtime error leaked db password: %v", err)
+	}
+	if !strings.Contains(err.Error(), "MYSQL_PWD=<redacted>") {
+		t.Fatalf("expected redacted runtime error, got %v", err)
+	}
+}
+
+func TestDockerComposeResetDatabaseRuntimeErrorRedactsRootPassword(t *testing.T) {
+	projectDir := t.TempDir()
+	installFakeDocker(t)
+	t.Setenv("TEST_DOCKER_FAIL_EXEC", "1")
+	t.Setenv("TEST_DOCKER_FAIL_STDERR", "reset failed with MYSQL_PWD=root-secret and root-secret")
+
+	rt := DockerCompose{}
+	err := rt.ResetDatabase(context.Background(), Target{
+		ProjectDir:     projectDir,
+		ComposeFile:    filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:        filepath.Join(projectDir, ".env.prod"),
+		DBService:      "db",
+		DBRootPassword: "root-secret",
+		DBName:         "espocrm",
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if strings.Contains(err.Error(), "root-secret") {
+		t.Fatalf("runtime error leaked db root password: %v", err)
 	}
 	if !strings.Contains(err.Error(), "MYSQL_PWD=<redacted>") {
 		t.Fatalf("expected redacted runtime error, got %v", err)
@@ -367,7 +419,6 @@ case "${1:-}" in
     [[ "${1:-}" == "-e" ]] || exit 1
     shift
     [[ "${1:-}" == "MYSQL_PWD" ]] || exit 1
-    [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
@@ -377,10 +428,35 @@ case "${1:-}" in
     fi
     case "${1:-}" in
       mariadb-dump)
+        [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
         printf 'create table test(id int);\n'
         exit 0
         ;;
       mariadb)
+        shift
+        [[ "${1:-}" == "-u" ]] || exit 1
+        shift
+        case "${1:-}" in
+          root)
+            [[ "${MYSQL_PWD:-}" == "root-secret" ]] || exit 1
+            shift
+            [[ "${1:-}" == "-e" ]] || exit 1
+            shift
+            [[ "${1:-}" == DROP\ DATABASE\ IF\ EXISTS*CREATE\ DATABASE*CHARACTER\ SET\ utf8mb4\ COLLATE\ utf8mb4_unicode_ci\; ]] || exit 1
+            exit 0
+            ;;
+          espocrm)
+            [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
+            shift
+            for arg in "$@"; do
+              if [[ "$arg" == "-e" ]]; then
+                exit 0
+              fi
+            done
+            cat >"${TEST_DOCKER_STDIN_LOG:-/dev/null}"
+            exit 0
+            ;;
+        esac
         for arg in "$@"; do
           if [[ "$arg" == "-e" ]]; then
             exit 0

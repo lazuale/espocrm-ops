@@ -33,6 +33,7 @@
 - No fake machine-enforcement.
 - No new product surface.
 - `DB_SERVICE` and `APP_SERVICES` are explicit runtime contract inputs, not inferred defaults.
+- `restore`, `migrate`, and `smoke` require an explicit MariaDB root secret for database reset; no fallback to `DB_USER`.
 
 ## Core Flow
 - Resolve input.

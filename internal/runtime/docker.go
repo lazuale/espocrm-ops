@@ -15,13 +15,14 @@ import (
 const redactedSecret = "<redacted>"
 
 type Target struct {
-	ProjectDir  string
-	ComposeFile string
-	EnvFile     string
-	DBService   string
-	DBUser      string
-	DBPassword  string
-	DBName      string
+	ProjectDir     string
+	ComposeFile    string
+	EnvFile        string
+	DBService      string
+	DBUser         string
+	DBPassword     string
+	DBRootPassword string
+	DBName         string
 }
 
 type Service struct {
@@ -89,10 +90,14 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 	if err != nil {
 		return err
 	}
+	password, err := requiredPassword("db password", target.DBPassword)
+	if err != nil {
+		return err
+	}
 
 	if err := runCompose(ctx, target, runOptions{
 		stdout: gz,
-		env:    []string{"MYSQL_PWD=" + target.DBPassword},
+		env:    []string{"MYSQL_PWD=" + password},
 	},
 		"exec", "-T", "-e", "MYSQL_PWD", service,
 		"mariadb-dump",
@@ -111,15 +116,11 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 }
 
 func (DockerCompose) DBPing(ctx context.Context, target Target) error {
-	service, err := dbServiceName(target)
+	password, err := requiredPassword("db password", target.DBPassword)
 	if err != nil {
 		return err
 	}
-
-	return runCompose(ctx, target, runOptions{
-		env: []string{"MYSQL_PWD=" + target.DBPassword},
-	},
-		"exec", "-T", "-e", "MYSQL_PWD", service,
+	return runMariaDBExec(ctx, target, password,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
@@ -127,17 +128,26 @@ func (DockerCompose) DBPing(ctx context.Context, target Target) error {
 	)
 }
 
-func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, reader io.Reader) error {
-	service, err := dbServiceName(target)
+func (DockerCompose) ResetDatabase(ctx context.Context, target Target) error {
+	password, err := requiredPassword("db root password", target.DBRootPassword)
 	if err != nil {
 		return err
 	}
+	return runMariaDBExec(ctx, target, password,
+		"mariadb",
+		"-u", "root",
+		"-e", resetDatabaseSQL(target.DBName),
+	)
+}
 
-	return runCompose(ctx, target, runOptions{
+func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, reader io.Reader) error {
+	password, err := requiredPassword("db password", target.DBPassword)
+	if err != nil {
+		return err
+	}
+	return runMariaDBExecWithOptions(ctx, target, password, runOptions{
 		stdin: reader,
-		env:   []string{"MYSQL_PWD=" + target.DBPassword},
 	},
-		"exec", "-T", "-e", "MYSQL_PWD", service,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
@@ -193,6 +203,41 @@ func dbServiceName(target Target) (string, error) {
 	return service, nil
 }
 
+func runMariaDBExec(ctx context.Context, target Target, password string, args ...string) error {
+	return runMariaDBExecWithOptions(ctx, target, password, runOptions{}, args...)
+}
+
+func runMariaDBExecWithOptions(ctx context.Context, target Target, password string, opts runOptions, args ...string) error {
+	service, err := dbServiceName(target)
+	if err != nil {
+		return err
+	}
+
+	opts.env = append([]string{"MYSQL_PWD=" + password}, opts.env...)
+	composeArgs := append([]string{"exec", "-T", "-e", "MYSQL_PWD", service}, args...)
+	return runCompose(ctx, target, opts, composeArgs...)
+}
+
+func requiredPassword(label, value string) (string, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return "", fmt.Errorf("%s is required", label)
+	}
+	return value, nil
+}
+
+func resetDatabaseSQL(name string) string {
+	return fmt.Sprintf(
+		"DROP DATABASE IF EXISTS %s; CREATE DATABASE %s CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
+		quoteSQLIdentifier(name),
+		quoteSQLIdentifier(name),
+	)
+}
+
+func quoteSQLIdentifier(name string) string {
+	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
 func mergeCommandEnv(base, overrides []string) []string {
 	if len(overrides) == 0 {
 		return append([]string(nil), base...)
@@ -230,13 +275,15 @@ func sanitizeComposeCommand(target Target, args []string) string {
 }
 
 func sanitizeComposeText(target Target, text string) string {
-	text = redactEnvAssignments(text, "MYSQL_PWD", "DB_PASSWORD")
-
-	secret := target.DBPassword
-	if secret == "" {
-		return text
+	text = redactEnvAssignments(text, "MYSQL_PWD", "DB_PASSWORD", "DB_ROOT_PASSWORD")
+	for _, secret := range []string{target.DBPassword, target.DBRootPassword} {
+		secret = strings.TrimSpace(secret)
+		if secret == "" {
+			continue
+		}
+		text = strings.ReplaceAll(text, secret, redactedSecret)
 	}
-	return strings.ReplaceAll(text, secret, redactedSecret)
+	return text
 }
 
 func redactEnvAssignments(text string, keys ...string) string {

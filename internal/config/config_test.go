@@ -93,6 +93,110 @@ func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
 	}
 }
 
+func TestLoadRestoreConfigRequiresDBRootPassword(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRestore(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "DB_ROOT_PASSWORD or DB_ROOT_PASSWORD_FILE is required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRestoreConfigReadsDBRootPasswordFile(t *testing.T) {
+	projectDir := t.TempDir()
+	rootPasswordPath := filepath.Join(projectDir, "db.root.password")
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootPasswordPath, []byte("root-secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD_FILE=./db.root.password",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadRestore(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("LoadRestore failed: %v", err)
+	}
+	if cfg.DBRootPassword != "root-secret" {
+		t.Fatalf("unexpected db root password: %q", cfg.DBRootPassword)
+	}
+}
+
+func TestLoadRestoreConfigRejectsInlineAndFileDBRootPassword(t *testing.T) {
+	projectDir := t.TempDir()
+	rootPasswordPath := filepath.Join(projectDir, "db.root.password")
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(rootPasswordPath, []byte("root-secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_ROOT_PASSWORD_FILE=./db.root.password",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRestore(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "only one of DB_ROOT_PASSWORD or DB_ROOT_PASSWORD_FILE may be set") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestLoadBackupConfigUsesComposeFileFromEnv(t *testing.T) {
 	projectDir := t.TempDir()
 	customCompose := filepath.Join(projectDir, "compose.prod.yaml")

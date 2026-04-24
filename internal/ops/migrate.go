@@ -23,26 +23,10 @@ func Migrate(ctx context.Context, fromScope string, targetCfg config.BackupConfi
 		return MigrateResult{}, &VerifyError{Kind: ErrorKindUsage, Message: err.Error()}
 	}
 
-	result.Manifest = manifestPath
-
-	verifyResult, verifyErr := VerifyBackup(ctx, manifestPath)
-	if verifyErr != nil {
-		return result, verifyErr
-	}
-	result.Manifest = verifyResult.Manifest
-	if verifyResult.Scope != fromScope {
-		return result, &VerifyError{
-			Kind:    ErrorKindUsage,
-			Message: "migrate source scope is invalid",
-			Err: fmt.Errorf(
-				"manifest scope %q does not match --from-scope %q",
-				verifyResult.Scope,
-				fromScope,
-			),
-		}
-	}
-
-	restoreResult, restoreErr := Restore(ctx, targetCfg, verifyResult.Manifest, rt, now)
+	restoreResult, restoreErr := restoreWithOptions(ctx, targetCfg, manifestPath, rt, now, restoreOptions{
+		allowedSourceScope: fromScope,
+		scopeErrorMessage:  "migrate source scope is invalid",
+	})
 	result.Manifest = restoreResult.Manifest
 	result.SnapshotManifest = restoreResult.SnapshotManifest
 	if restoreErr != nil {

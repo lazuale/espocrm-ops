@@ -282,6 +282,7 @@ func smokeProjectDir(t *testing.T, createTargetBackupRoot bool) string {
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm_dev",
 		"",
 	}
@@ -297,6 +298,7 @@ func smokeProjectDir(t *testing.T, createTargetBackupRoot bool) string {
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm_prod",
 		"",
 	}
@@ -387,12 +389,12 @@ case "${1:-}" in
     [[ "${1:-}" == "-e" ]] || exit 1
     shift
     [[ "${1:-}" == "MYSQL_PWD" ]] || exit 1
-    [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
     case "${1:-}" in
       mariadb-dump)
+        [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
         if [[ "${TEST_SMOKE_DOCKER_FAIL_DUMP:-}" == "1" ]]; then
           printf 'dump failed\n' >&2
           exit 1
@@ -402,13 +404,29 @@ case "${1:-}" in
         ;;
       mariadb)
         shift
-        for arg in "$@"; do
-          if [[ "$arg" == "-e" ]]; then
+        [[ "${1:-}" == "-u" ]] || exit 1
+        shift
+        case "${1:-}" in
+          root)
+            [[ "${MYSQL_PWD:-}" == "root-secret" ]] || exit 1
+            shift
+            [[ "${1:-}" == "-e" ]] || exit 1
+            shift
+            [[ "${1:-}" == DROP\ DATABASE\ IF\ EXISTS*CREATE\ DATABASE*CHARACTER\ SET\ utf8mb4\ COLLATE\ utf8mb4_unicode_ci\; ]] || exit 1
             exit 0
-          fi
-        done
-        cat >"${TEST_SMOKE_DOCKER_STDIN_LOG:-/dev/null}"
-        exit 0
+            ;;
+          espocrm)
+            [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
+            shift
+            for arg in "$@"; do
+              if [[ "$arg" == "-e" ]]; then
+                exit 0
+              fi
+            done
+            cat >"${TEST_SMOKE_DOCKER_STDIN_LOG:-/dev/null}"
+            exit 0
+            ;;
+        esac
         ;;
     esac
     ;;

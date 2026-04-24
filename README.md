@@ -62,6 +62,10 @@ Required env keys per scope:
 - `DB_NAME`
 - one of `DB_PASSWORD` or `DB_PASSWORD_FILE`
 
+Additional required env keys for `restore`, `migrate`, and `smoke`:
+
+- one of `DB_ROOT_PASSWORD` or `DB_ROOT_PASSWORD_FILE`
+
 Optional env keys:
 
 - `COMPOSE_FILE`
@@ -80,6 +84,8 @@ Operator prerequisites:
 - One command path only, with no service-name guessing or implicit service defaults
 - `DB_SERVICE` must name the exact Compose database service
 - `APP_SERVICES` must list the exact Compose application services as a comma-separated contract
+- `restore` fails closed unless `manifest.scope` matches `--scope`; use `migrate` for intentional cross-scope restore
+- `restore`, `migrate`, and `smoke` reset the target database as MariaDB root before importing the dump
 
 ## Minimal Safe Workflow
 
@@ -97,9 +103,9 @@ Then use the commands in this order:
 2. `espops backup verify`
    Verify the manifest you plan to trust.
 3. `espops restore`
-   Restore is destructive for the target scope. It verifies the source manifest first and creates a target snapshot before mutation.
+   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, and then imports into the clean database.
 4. `espops migrate`
-   Migrate is thin composition over verified restore flow, not a separate engine.
+   Migrate is thin composition over verified restore flow, not a separate engine. It is the only supported cross-scope restore path.
 
 For one explicit fixed-path operator check across both scopes:
 
