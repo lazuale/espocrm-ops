@@ -71,7 +71,9 @@ func Restore(ctx context.Context, cfg v3config.BackupConfig, manifestPath string
 			return
 		}
 		serviceReturnAttempted = true
-		startErr := rt.StartServices(ctx, target, cfg.AppServices)
+		startCtx, cancel := serviceReturnContext()
+		startErr := rt.StartServices(startCtx, target, cfg.AppServices)
+		cancel()
 		if startErr == nil {
 			servicesReturned = true
 			return
@@ -95,9 +97,12 @@ func Restore(ctx context.Context, cfg v3config.BackupConfig, manifestPath string
 	}
 
 	serviceReturnAttempted = true
-	if err := rt.StartServices(ctx, target, cfg.AppServices); err != nil {
+	startCtx, cancel := serviceReturnContext()
+	if err := rt.StartServices(startCtx, target, cfg.AppServices); err != nil {
+		cancel()
 		return result, runtimeError("failed to return app services", err)
 	}
+	cancel()
 	servicesReturned = true
 
 	if err := rt.DBPing(ctx, target); err != nil {

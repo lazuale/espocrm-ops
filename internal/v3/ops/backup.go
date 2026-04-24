@@ -39,6 +39,8 @@ type backupLayout struct {
 	ManifestJSON  string
 }
 
+const serviceReturnTimeout = 30 * time.Second
+
 func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
 	if rt == nil {
 		return BackupResult{}, runtimeError("backup runtime is required", nil)
@@ -92,7 +94,9 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 			return
 		}
 		serviceReturnAttempted = true
-		startErr := rt.StartServices(ctx, target, cfg.AppServices)
+		startCtx, cancel := serviceReturnContext()
+		startErr := rt.StartServices(startCtx, target, cfg.AppServices)
+		cancel()
 		if startErr == nil {
 			servicesReturned = true
 			return
@@ -170,9 +174,12 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 		return result, ioError("failed to finalize files checksum sidecar", err)
 	}
 	serviceReturnAttempted = true
-	if err := rt.StartServices(ctx, target, cfg.AppServices); err != nil {
+	startCtx, cancel := serviceReturnContext()
+	if err := rt.StartServices(startCtx, target, cfg.AppServices); err != nil {
+		cancel()
 		return result, runtimeError("failed to return app services", err)
 	}
+	cancel()
 	servicesReturned = true
 
 	manifestTmp, err := newTempTarget(layout.ManifestJSON)
@@ -435,4 +442,8 @@ func combineServiceReturnError(primary error, startErr error) error {
 	}
 
 	return runtimeError("backup failed and app services were not returned", errors.Join(primary, serviceErr))
+}
+
+func serviceReturnContext() (context.Context, context.CancelFunc) {
+	return context.WithTimeout(context.Background(), serviceReturnTimeout)
 }

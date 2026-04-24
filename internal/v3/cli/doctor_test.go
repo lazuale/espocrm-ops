@@ -10,6 +10,9 @@ import (
 
 func TestDoctorCLIJSONSuccess(t *testing.T) {
 	projectDir := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(projectDir, "backups", "prod"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	if err := os.MkdirAll(filepath.Join(projectDir, "runtime", "prod", "espo"), 0o755); err != nil {
 		t.Fatal(err)
 	}

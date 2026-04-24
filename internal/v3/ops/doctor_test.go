@@ -100,6 +100,47 @@ func TestDoctorBackupRootNotWritableFails(t *testing.T) {
 	}
 }
 
+func TestDoctorMissingBackupRootFailsAndDoesNotCreateDirectory(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(projectDir, "runtime", "prod", "espo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeDoctorRuntime{}
+	result, err := Doctor(context.Background(), v3config.BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	}, rt)
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "doctor backup root check failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertDoctorChecks(t, result.Checks,
+		DoctorCheck{Name: "config", OK: true},
+		DoctorCheck{Name: "backup_root", OK: false},
+	)
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	if _, statErr := os.Stat(filepath.Join(projectDir, "backups", "prod")); !os.IsNotExist(statErr) {
+		t.Fatalf("expected backup root to remain absent, got %v", statErr)
+	}
+}
+
 func TestDoctorStorageDirMissingFails(t *testing.T) {
 	projectDir := doctorProjectDir(t, validDoctorEnv(), false)
 
@@ -192,6 +233,11 @@ func doctorProjectDir(t *testing.T, envLines []string, createStorage bool) strin
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join(append(envLines, ""), "\n")), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if backupRoot := doctorEnvValue(envLines, "BACKUP_ROOT"); backupRoot != "" {
+		if err := os.MkdirAll(filepath.Join(projectDir, filepath.Clean(backupRoot)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if createStorage {
 		if err := os.MkdirAll(filepath.Join(projectDir, "runtime", "prod", "espo"), 0o755); err != nil {
 			t.Fatal(err)
@@ -199,6 +245,16 @@ func doctorProjectDir(t *testing.T, envLines []string, createStorage bool) strin
 	}
 
 	return projectDir
+}
+
+func doctorEnvValue(envLines []string, key string) string {
+	for _, line := range envLines {
+		name, value, ok := strings.Cut(line, "=")
+		if ok && name == key {
+			return value
+		}
+	}
+	return ""
 }
 
 func validDoctorEnv() []string {

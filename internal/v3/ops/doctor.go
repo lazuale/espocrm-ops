@@ -94,8 +94,12 @@ func checkDoctorBackupRoot(path string) error {
 	if path == "" {
 		return fmt.Errorf("backup root is required")
 	}
-	if err := os.MkdirAll(path, 0o755); err != nil {
+	info, err := os.Stat(path)
+	if err != nil {
 		return err
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("backup root must be a directory")
 	}
 
 	probe, err := os.CreateTemp(path, ".doctor-write-*")

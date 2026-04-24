@@ -5,6 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
+	"errors"
 	"io"
 	"os"
 	"path/filepath"
@@ -176,6 +177,74 @@ func TestRestoreStartFailureFails(t *testing.T) {
 	}
 }
 
+func TestRestoreCancellationAfterStopStillAttemptsStart(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump:    gzipBytes(t, "create table snapshot(id int);\n"),
+		cancel:            cancel,
+		cancelOnStopCount: 2,
+	}
+
+	result, err := Restore(ctx, cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "restore interrupted") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation in error chain: %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.startContextErrs) != 2 || rt.startContextErrs[1] != nil {
+		t.Fatalf("expected uncanceled restore return context, got %v", rt.startContextErrs)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreCancellationAfterStopAndStartFailureIncludesBothErrors(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump:    gzipBytes(t, "create table snapshot(id int);\n"),
+		cancel:            cancel,
+		cancelOnStopCount: 2,
+		startErrors: map[int]error{
+			2: errf("start failed"),
+		},
+	}
+
+	result, err := Restore(ctx, cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "restore interrupted") {
+		t.Fatalf("original error was lost: %v", err)
+	}
+	if !strings.Contains(err.Error(), "return app services failed") {
+		t.Fatalf("service return error missing: %v", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation in error chain: %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.startContextErrs) != 2 || rt.startContextErrs[1] != nil {
+		t.Fatalf("expected uncanceled restore return context, got %v", rt.startContextErrs)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
 func TestRestorePostCheckFailureFails(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
@@ -344,19 +413,22 @@ func restoreTestTime() time.Time {
 }
 
 type fakeRestoreRuntime struct {
-	snapshotDBDump []byte
-	validateErr    error
-	dumpErr        error
-	stopErrors     map[int]error
-	startErrors    map[int]error
-	upErrors       map[int]error
-	restoreDBErr   error
-	dbPingErr      error
-	calls          []string
-	stopCount      int
-	startCount     int
-	upCount        int
-	restoreDBBody  string
+	snapshotDBDump    []byte
+	validateErr       error
+	dumpErr           error
+	stopErrors        map[int]error
+	startErrors       map[int]error
+	upErrors          map[int]error
+	restoreDBErr      error
+	dbPingErr         error
+	cancel            context.CancelFunc
+	cancelOnStopCount int
+	calls             []string
+	stopCount         int
+	startCount        int
+	upCount           int
+	restoreDBBody     string
+	startContextErrs  []error
 }
 
 func (f *fakeRestoreRuntime) Validate(_ context.Context, _ v3runtime.Target) error {
@@ -367,11 +439,15 @@ func (f *fakeRestoreRuntime) Validate(_ context.Context, _ v3runtime.Target) err
 func (f *fakeRestoreRuntime) StopServices(_ context.Context, _ v3runtime.Target, _ []string) error {
 	f.calls = append(f.calls, "stop_services")
 	f.stopCount++
+	if f.cancel != nil && f.stopCount == f.cancelOnStopCount {
+		f.cancel()
+	}
 	return indexedError(f.stopErrors, f.stopCount)
 }
 
-func (f *fakeRestoreRuntime) StartServices(_ context.Context, _ v3runtime.Target, _ []string) error {
+func (f *fakeRestoreRuntime) StartServices(ctx context.Context, _ v3runtime.Target, _ []string) error {
 	f.calls = append(f.calls, "start_services")
+	f.startContextErrs = append(f.startContextErrs, ctx.Err())
 	f.startCount++
 	return indexedError(f.startErrors, f.startCount)
 }

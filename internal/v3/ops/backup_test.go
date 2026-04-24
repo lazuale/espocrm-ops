@@ -3,6 +3,7 @@ package ops
 import (
 	"compress/gzip"
 	"context"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -200,6 +201,78 @@ func TestBackupStartFailureAfterPriorFailureKeepsOriginalErrorVisible(t *testing
 	assertBackupSetRemoved(t, result)
 }
 
+func TestBackupCancellationAfterStopStillAttemptsStart(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	rt := &fakeBackupRuntime{
+		dbDump:       gzipBytes(t, "create table test(id int);\n"),
+		cancelOnStop: cancel,
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(ctx, cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "database backup failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation in error chain: %v", err)
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.startContextErrs) != 1 || rt.startContextErrs[0] != nil {
+		t.Fatalf("expected uncanceled service return context, got %v", rt.startContextErrs)
+	}
+	assertBackupSetRemoved(t, result)
+}
+
+func TestBackupCancellationAfterStopAndStartFailureIncludesBothErrors(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	rt := &fakeBackupRuntime{
+		dbDump:       gzipBytes(t, "create table test(id int);\n"),
+		startErr:     errf("start failed"),
+		cancelOnStop: cancel,
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(ctx, cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "database backup failed") {
+		t.Fatalf("original error was lost: %v", err)
+	}
+	if !strings.Contains(err.Error(), "return app services failed") {
+		t.Fatalf("service return error missing: %v", err)
+	}
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("expected cancellation in error chain: %v", err)
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.startContextErrs) != 1 || rt.startContextErrs[0] != nil {
+		t.Fatalf("expected uncanceled service return context, got %v", rt.startContextErrs)
+	}
+	assertBackupSetRemoved(t, result)
+}
+
 func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
 	root := t.TempDir()
 	storagePath := filepath.Join(root, "runtime", "prod", "espo")
@@ -240,14 +313,16 @@ func backupTestConfig(root, storageDir string) v3config.BackupConfig {
 }
 
 type fakeBackupRuntime struct {
-	dbDump       []byte
-	validateErr  error
-	stopErr      error
-	startErr     error
-	dumpErr      error
-	calls        []string
-	lastTarget   v3runtime.Target
-	lastServices []string
+	dbDump           []byte
+	validateErr      error
+	stopErr          error
+	startErr         error
+	dumpErr          error
+	cancelOnStop     context.CancelFunc
+	calls            []string
+	lastTarget       v3runtime.Target
+	lastServices     []string
+	startContextErrs []error
 }
 
 func (f *fakeBackupRuntime) Validate(_ context.Context, target v3runtime.Target) error {
@@ -260,19 +335,26 @@ func (f *fakeBackupRuntime) StopServices(_ context.Context, target v3runtime.Tar
 	f.calls = append(f.calls, "stop_services")
 	f.lastTarget = target
 	f.lastServices = append([]string(nil), services...)
+	if f.cancelOnStop != nil {
+		f.cancelOnStop()
+	}
 	return f.stopErr
 }
 
-func (f *fakeBackupRuntime) StartServices(_ context.Context, target v3runtime.Target, services []string) error {
+func (f *fakeBackupRuntime) StartServices(ctx context.Context, target v3runtime.Target, services []string) error {
 	f.calls = append(f.calls, "start_services")
 	f.lastTarget = target
 	f.lastServices = append([]string(nil), services...)
+	f.startContextErrs = append(f.startContextErrs, ctx.Err())
 	return f.startErr
 }
 
-func (f *fakeBackupRuntime) DumpDatabase(_ context.Context, target v3runtime.Target, destPath string) error {
+func (f *fakeBackupRuntime) DumpDatabase(ctx context.Context, target v3runtime.Target, destPath string) error {
 	f.calls = append(f.calls, "dump_database")
 	f.lastTarget = target
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	if f.dumpErr != nil {
 		return f.dumpErr
 	}
