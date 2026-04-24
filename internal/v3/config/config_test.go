@@ -86,6 +86,37 @@ func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
 	}
 }
 
+func TestLoadBackupConfigUsesComposeFileFromEnv(t *testing.T) {
+	projectDir := t.TempDir()
+	customCompose := filepath.Join(projectDir, "compose.prod.yaml")
+	if err := os.WriteFile(customCompose, []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"COMPOSE_FILE=./compose.prod.yaml",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadBackup(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	if cfg.ComposeFile != customCompose {
+		t.Fatalf("unexpected compose file: %s", cfg.ComposeFile)
+	}
+}
+
 func TestLoadBackupConfigMissingRequiredEnvValue(t *testing.T) {
 	projectDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {

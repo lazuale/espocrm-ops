@@ -200,10 +200,6 @@ func ValidateComposeConfig(cfg ComposeConfig) error {
 }
 
 func runCompose(cfg ComposeConfig, args ...string) (Result, error) {
-	return runComposeWithOptions(commandOptions{}, cfg, args...)
-}
-
-func runComposeWithOptions(opts commandOptions, cfg ComposeConfig, args ...string) (Result, error) {
 	cfg, err := normalizeComposeConfig(cfg)
 	if err != nil {
 		return Result{}, err
@@ -217,7 +213,7 @@ func runComposeWithOptions(opts commandOptions, cfg ComposeConfig, args ...strin
 	}
 	composeArgs = append(composeArgs, args...)
 
-	return runDockerCommandWithOptions(opts, composeArgs...)
+	return runDockerCommand(composeArgs...)
 }
 
 func normalizeComposeConfig(cfg ComposeConfig) (ComposeConfig, error) {

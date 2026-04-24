@@ -41,15 +41,17 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 		return BackupConfig{}, err
 	}
 
-	composeFile := filepath.Join(projectDir, "compose.yaml")
-	if err := requireFile(composeFile, "compose file"); err != nil {
-		return BackupConfig{}, err
-	}
-
 	envFile := filepath.Join(projectDir, ".env."+scope)
 
 	values, err := loadEnvAssignments(envFile)
 	if err != nil {
+		return BackupConfig{}, err
+	}
+	composeFile := filepath.Join(projectDir, "compose.yaml")
+	if configured := strings.TrimSpace(values["COMPOSE_FILE"]); configured != "" {
+		composeFile = resolveProjectPath(projectDir, configured)
+	}
+	if err := requireFile(composeFile, "compose file"); err != nil {
 		return BackupConfig{}, err
 	}
 	if declared := strings.TrimSpace(values["ESPO_CONTOUR"]); declared != "" && declared != scope {

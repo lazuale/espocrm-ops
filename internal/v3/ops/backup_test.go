@@ -156,6 +156,42 @@ func TestBackupFailsWhenFilesArtifactWriteFails(t *testing.T) {
 	}
 }
 
+func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
+	root := t.TempDir()
+	storagePath := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(filepath.Dir(storagePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(storagePath, []byte("not a directory"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table test(id int);\n"),
+	}
+	cfg := backupTestConfig(root, storagePath)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("expected backup failure")
+	}
+	assertVerifyErrorKind(t, err, ErrorKindArchive)
+	for _, path := range []string{
+		result.Manifest,
+		result.DBBackup,
+		result.DBBackup + ".sha256",
+		result.FilesBackup,
+		result.FilesBackup + ".sha256",
+	} {
+		if path == "" {
+			continue
+		}
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Fatalf("expected cleanup for %s, got %v", path, statErr)
+		}
+	}
+}
+
 func backupTestConfig(root, storageDir string) v3config.BackupConfig {
 	return v3config.BackupConfig{
 		Scope:       "prod",

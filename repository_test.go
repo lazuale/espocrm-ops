@@ -134,6 +134,7 @@ func TestProductionProcessEnvAccessSurfaceIsExplicit(t *testing.T) {
 	fset := token.NewFileSet()
 	allowedEnvironOwners := map[string]struct{}{
 		filepath.Join(root, "internal", "platform", "docker", "docker.go"): {},
+		filepath.Join(root, "internal", "v3", "runtime", "docker.go"):      {},
 	}
 
 	for _, path := range productionGoFiles(t, filepath.Join(root, "cmd"), filepath.Join(root, "internal")) {
@@ -173,6 +174,7 @@ func TestProductionShellExecutionSurfaceIsExplicit(t *testing.T) {
 	allowedExecOwners := map[string]struct{}{
 		filepath.Join(root, "internal", "platform", "docker", "docker.go"):     {},
 		filepath.Join(root, "internal", "platform", "fs", "archive_create.go"): {},
+		filepath.Join(root, "internal", "v3", "runtime", "docker.go"):          {},
 	}
 
 	for _, path := range productionGoFiles(t, filepath.Join(root, "cmd"), filepath.Join(root, "internal")) {
