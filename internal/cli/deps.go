@@ -29,7 +29,6 @@ type App struct {
 	runtime              operationtrace.Runtime
 	journalWriterFactory JournalWriterFactory
 	backup               v2app.BackupCommandService
-	backupVerify         v2app.BackupVerifyService
 	doctor               doctorapp.Service
 	restore              v2app.RestoreCommandService
 	migrate              v2app.MigrateCommandService
@@ -66,9 +65,6 @@ func NewApp(deps Dependencies) *App {
 			Store:   v2store.FileStore{},
 		}),
 	})
-	backupVerifyService := v2app.NewBackupVerifyService(v2app.BackupVerifyDependencies{
-		Store: v2store.FileStore{},
-	})
 	restoreCommandService := v2app.NewRestoreCommandService(v2app.RestoreCommandDependencies{
 		Operations: operationService,
 		Env:        envadapter.EnvLoader{},
@@ -104,7 +100,6 @@ func NewApp(deps Dependencies) *App {
 		runtime:              runtime,
 		journalWriterFactory: journalWriterFactory,
 		backup:               backupService,
-		backupVerify:         backupVerifyService,
 		doctor:               doctorService,
 		restore:              restoreCommandService,
 		migrate:              migrateService,

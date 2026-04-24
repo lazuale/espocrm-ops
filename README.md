@@ -104,7 +104,6 @@ Verify a backup:
 
 ```bash
 ./bin/espops backup verify --manifest /path/to/manifest.json
-./bin/espops backup verify --backup-root /path/to/backups/dev
 ```
 
 `backup verify` still requires one complete verified backup set. A manifest produced by `backup --skip-db` or `backup --skip-files` remains valid for the matching restore mode, but not for full backup-set verification.

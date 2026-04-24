@@ -2,7 +2,6 @@ package model
 
 import (
 	"archive/tar"
-	"context"
 	"fmt"
 	"path/filepath"
 	"strings"
@@ -10,33 +9,9 @@ import (
 )
 
 const (
-	CommandBackupVerify      = "backup verify"
-	BackupVerifyFailedCode   = "backup_verification_failed"
 	ManifestInvalidCode      = "manifest_invalid"
-	StepVerifySource         = "source_selection"
-	StepVerifyManifest       = "manifest_contract"
-	StepVerifyDBArtifact     = "db_artifact"
-	StepVerifyFilesArtifact  = "files_artifact"
-	VerifySourceManifest     = "manifest"
-	VerifySourceBackupRoot   = "backup_root"
-	VerifySourceDirectDB     = "direct_db"
-	VerifySourceDirectFiles  = "direct_files"
 	legacyTarRegularTypeflag = byte(0)
 )
-
-type BackupVerifyStore interface {
-	LoadBackupVerifyManifest(ctx context.Context, path string) (BackupVerifyManifest, error)
-	ListBackupVerifyManifestCandidates(ctx context.Context, backupRoot string) ([]string, error)
-	VerifyDBArtifact(ctx context.Context, path, expectedChecksum string) (Artifact, error)
-	VerifyFilesArtifact(ctx context.Context, path, expectedChecksum string) (Artifact, error)
-}
-
-type BackupVerifyRequest struct {
-	ManifestPath string
-	BackupRoot   string
-	DBBackupPath string
-	FilesPath    string
-}
 
 type BackupVerifyManifest struct {
 	Version            int               `json:"version"`
@@ -145,127 +120,6 @@ func ValidateFilesArchiveHeader(header *tar.Header) error {
 	}
 }
 
-type BackupVerifyDetails struct {
-	Ready      bool   `json:"ready"`
-	SourceKind string `json:"source_kind"`
-	Scope      string `json:"scope,omitempty"`
-	CreatedAt  string `json:"created_at,omitempty"`
-	Steps      int    `json:"steps"`
-	Completed  int    `json:"completed,omitempty"`
-	Skipped    int    `json:"skipped,omitempty"`
-	Blocked    int    `json:"blocked,omitempty"`
-	Failed     int    `json:"failed,omitempty"`
-}
-
-type BackupVerifyArtifacts struct {
-	BackupRoot    string `json:"backup_root,omitempty"`
-	Manifest      string `json:"manifest,omitempty"`
-	DBBackup      string `json:"db_backup,omitempty"`
-	DBChecksum    string `json:"db_checksum,omitempty"`
-	FilesBackup   string `json:"files_backup,omitempty"`
-	FilesChecksum string `json:"files_checksum,omitempty"`
-}
-
-type BackupVerifyResult struct {
-	Command         string                `json:"command"`
-	OK              bool                  `json:"ok"`
-	ProcessExitCode int                   `json:"process_exit_code"`
-	Details         BackupVerifyDetails   `json:"details"`
-	Artifacts       BackupVerifyArtifacts `json:"artifacts,omitempty"`
-	Items           []Step                `json:"items"`
-	Error           *BackupError          `json:"error,omitempty"`
-}
-
-func NewBackupVerifyResult(req BackupVerifyRequest) BackupVerifyResult {
-	return BackupVerifyResult{
-		Command:         CommandBackupVerify,
-		ProcessExitCode: ExitIOError,
-		Details: BackupVerifyDetails{
-			SourceKind: verifySourceKind(req),
-		},
-		Artifacts: BackupVerifyArtifacts{
-			BackupRoot:    strings.TrimSpace(req.BackupRoot),
-			Manifest:      strings.TrimSpace(req.ManifestPath),
-			DBBackup:      strings.TrimSpace(req.DBBackupPath),
-			DBChecksum:    checksumPath(req.DBBackupPath),
-			FilesBackup:   strings.TrimSpace(req.FilesPath),
-			FilesChecksum: checksumPath(req.FilesPath),
-		},
-	}
-}
-
-func (r *BackupVerifyResult) AddStep(code, status string) {
-	r.Items = append(r.Items, Step{Code: code, Status: status})
-	r.recount()
-}
-
-func (r *BackupVerifyResult) Succeed() {
-	r.OK = true
-	r.ProcessExitCode = ExitOK
-	r.Error = nil
-	r.recount()
-}
-
-func (r *BackupVerifyResult) Fail(f BackupFailure) {
-	r.OK = false
-	r.ProcessExitCode = f.BackupError.ExitCode
-	errCopy := f.BackupError
-	r.Error = &errCopy
-	r.recount()
-}
-
-func (r *BackupVerifyResult) recount() {
-	var completed, skipped, blocked, failed int
-	for _, step := range r.Items {
-		switch step.Status {
-		case StatusCompleted:
-			completed++
-		case StatusSkipped:
-			skipped++
-		case StatusBlocked:
-			blocked++
-		case StatusFailed:
-			failed++
-		}
-	}
-	r.Details.Steps = len(r.Items)
-	r.Details.Completed = completed
-	r.Details.Skipped = skipped
-	r.Details.Blocked = blocked
-	r.Details.Failed = failed
-	r.Details.Ready = failed == 0 && blocked == 0 && len(r.Items) > 0
-}
-
-type BackupVerifyReport struct {
-	ManifestPath string
-	BackupRoot   string
-	Scope        string
-	CreatedAt    string
-	DBBackup     Artifact
-	FilesBackup  Artifact
-	SourceKind   string
-}
-
-func (r *BackupVerifyResult) ApplyReport(report BackupVerifyReport) {
-	r.Details.SourceKind = report.SourceKind
-	r.Details.Scope = report.Scope
-	r.Details.CreatedAt = report.CreatedAt
-	r.Artifacts.BackupRoot = report.BackupRoot
-	r.Artifacts.Manifest = report.ManifestPath
-	if report.DBBackup.Path != "" {
-		r.Artifacts.DBBackup = report.DBBackup.Path
-		r.Artifacts.DBChecksum = report.DBBackup.ChecksumPath
-	}
-	if report.FilesBackup.Path != "" {
-		r.Artifacts.FilesBackup = report.FilesBackup.Path
-		r.Artifacts.FilesChecksum = report.FilesBackup.ChecksumPath
-	}
-}
-
-func NewBackupVerifyFailure(kind ErrorKind, code, message string, cause error) BackupFailure {
-	return NewCommandFailure(kind, code, message, cause)
-}
-
 type BackupVerifyManifestError struct {
 	Err error
 }
@@ -294,18 +148,6 @@ func (e BackupVerifyArtifactError) Unwrap() error {
 	return e.Err
 }
 
-type BackupVerifySelectionError struct {
-	Err error
-}
-
-func (e BackupVerifySelectionError) Error() string {
-	return e.Err.Error()
-}
-
-func (e BackupVerifySelectionError) Unwrap() error {
-	return e.Err
-}
-
 func NewArtifactFromVerification(path, checksum string, sizeBytes int64) Artifact {
 	return Artifact{
 		Path:         path,
@@ -318,21 +160,6 @@ func NewArtifactFromVerification(path, checksum string, sizeBytes int64) Artifac
 
 func manifestArtifactPresent(name, checksum string) bool {
 	return strings.TrimSpace(name) != "" || strings.TrimSpace(checksum) != ""
-}
-
-func verifySourceKind(req BackupVerifyRequest) string {
-	switch {
-	case strings.TrimSpace(req.ManifestPath) != "":
-		return VerifySourceManifest
-	case strings.TrimSpace(req.BackupRoot) != "":
-		return VerifySourceBackupRoot
-	case strings.TrimSpace(req.DBBackupPath) != "":
-		return VerifySourceDirectDB
-	case strings.TrimSpace(req.FilesPath) != "":
-		return VerifySourceDirectFiles
-	default:
-		return ""
-	}
 }
 
 func checksumPath(path string) string {

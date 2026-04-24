@@ -66,17 +66,15 @@ func TestResultBridgeExportedSurfaceStaysIntentional(t *testing.T) {
 	fset := token.NewFileSet()
 	got := map[string]struct{}{}
 	want := map[string]struct{}{
-		"func BackupResult":           {},
-		"func RenderBackupText":       {},
-		"func BackupVerifyResult":     {},
-		"func RenderBackupVerifyText": {},
-		"func RestoreResult":          {},
-		"func RenderRestoreText":      {},
-		"func MigrateResult":          {},
-		"func RenderMigrateText":      {},
-		"func DoctorResult":           {},
-		"func RenderDoctorText":       {},
-		"func RenderWarnings":         {},
+		"func BackupResult":      {},
+		"func RenderBackupText":  {},
+		"func RestoreResult":     {},
+		"func RenderRestoreText": {},
+		"func MigrateResult":     {},
+		"func RenderMigrateText": {},
+		"func DoctorResult":      {},
+		"func RenderDoctorText":  {},
+		"func RenderWarnings":    {},
 	}
 
 	err := filepath.WalkDir(dir, func(path string, entry os.DirEntry, err error) error {

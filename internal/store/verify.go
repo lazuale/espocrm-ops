@@ -11,7 +11,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"sort"
 	"strings"
 
 	"github.com/lazuale/espocrm-ops/internal/model"
@@ -43,55 +42,6 @@ func (FileStore) LoadBackupVerifyManifest(ctx context.Context, path string) (mod
 	}
 
 	return manifest, nil
-}
-
-func (FileStore) ListBackupVerifyManifestCandidates(ctx context.Context, backupRoot string) ([]string, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	if strings.TrimSpace(backupRoot) == "" {
-		return nil, model.BackupVerifySelectionError{Err: fmt.Errorf("backup root обязателен")}
-	}
-
-	manifestDir := filepath.Join(backupRoot, "manifests")
-	entries, err := os.ReadDir(manifestDir)
-	if os.IsNotExist(err) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, model.BackupVerifySelectionError{Err: fmt.Errorf("прочитать каталог manifests: %w", err)}
-	}
-
-	type candidate struct {
-		path  string
-		group model.BackupGroup
-	}
-	candidates := make([]candidate, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || !strings.HasSuffix(entry.Name(), ".manifest.json") {
-			continue
-		}
-		group, ok := model.ParseBackupGroupName(entry.Name())
-		if !ok {
-			continue
-		}
-		candidates = append(candidates, candidate{
-			path:  filepath.Join(manifestDir, entry.Name()),
-			group: group,
-		})
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].group.Stamp == candidates[j].group.Stamp {
-			return candidates[i].group.Prefix > candidates[j].group.Prefix
-		}
-		return candidates[i].group.Stamp > candidates[j].group.Stamp
-	})
-
-	paths := make([]string, 0, len(candidates))
-	for _, candidate := range candidates {
-		paths = append(paths, candidate.path)
-	}
-	return paths, nil
 }
 
 func (FileStore) VerifyDBArtifact(ctx context.Context, path, expectedChecksum string) (model.Artifact, error) {
