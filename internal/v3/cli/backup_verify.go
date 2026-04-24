@@ -59,7 +59,7 @@ func newBackupVerifyCmd() *cobra.Command {
 func normalizeManifestPath(value string) (string, error) {
 	value = strings.TrimSpace(value)
 	if value == "" {
-		return "", usageError("--manifest is required")
+		return "", backupVerifyUsageError("--manifest is required")
 	}
 
 	abs, err := filepath.Abs(filepath.Clean(value))

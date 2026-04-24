@@ -1,8 +1,8 @@
 # espocrm-ops
 
-`espops` is a Go CLI for strict backup and recovery work around an EspoCRM Docker Compose deployment.
+`espops` is a small Go CLI for strict backup and recovery work around an EspoCRM Docker Compose deployment.
 
-The retained product surface is intentionally small:
+The retained product surface is exactly:
 
 - `doctor`
 - `backup`
@@ -10,41 +10,7 @@ The retained product surface is intentionally small:
 - `restore`
 - `migrate`
 
-## What It Does
-
-`espops` exists to make stateful operations explicit and fail closed:
-
-- resolve and validate operational inputs
-- inspect runtime readiness before stateful work
-- run backup, verification, restore, and migration flows
-- perform explicit post-checks before reporting success
-
-This repository is not a general EspoCRM management toolkit. It is a small operational CLI.
-
-Operational control is explicit:
-
-- use CLI flags
-- use the contour env file
-- do not expect hidden process-env toggles for contour hinting, inherited locks, helper image selection or pulling, or journal location
-
-## Prerequisites
-
-- Go `1.26.x`
-- Docker with Compose v2
-- An EspoCRM project layout that matches `compose.yaml`
-- A contour env file at the repo root such as `.env.dev` or `.env.prod`
-
-Example env files live under `env/`:
-
-- `env/.env.dev.example`
-- `env/.env.prod.example`
-
-The runtime helper contract is explicit:
-
-- `ESPO_HELPER_IMAGE` names the one helper image used for archive fallback and storage-permission reconciliation
-- `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID` declare the EspoCRM runtime file ownership directly
-- `espops` does not auto-select a helper image, pull one implicitly, or probe the runtime image layout to guess ownership
-- `doctor` validates these settings before stateful work
+Every product command writes one structured JSON result to `stdout` on success or failure.
 
 ## Build
 
@@ -54,7 +20,7 @@ make build
 
 That produces `bin/espops`.
 
-You can also run the CLI without a prior build:
+You can also run the CLI directly:
 
 ```bash
 go run ./cmd/espops --help
@@ -62,7 +28,7 @@ go run ./cmd/espops --help
 
 ## Test
 
-The default repository health path is Go-focused:
+The repository health path is:
 
 ```bash
 make ci
@@ -78,6 +44,30 @@ make staticcheck
 make lint
 ```
 
+## Runtime Contract
+
+`espops` expects a project directory that contains:
+
+- `compose.yaml`
+- `.env.dev` and/or `.env.prod`
+
+Required env keys per scope:
+
+- `BACKUP_ROOT`
+- `ESPO_STORAGE_DIR`
+- `DB_USER`
+- `DB_NAME`
+- one of `DB_PASSWORD` or `DB_PASSWORD_FILE`
+
+Optional env keys:
+
+- `COMPOSE_FILE`
+- `APP_SERVICES`
+- `DB_SERVICE`
+- `ESPO_CONTOUR`
+
+Example env files live under `env/`.
+
 ## Command Surface
 
 General help:
@@ -86,58 +76,53 @@ General help:
 ./bin/espops --help
 ```
 
-Check runtime readiness for one contour or both:
+Check runtime readiness:
 
 ```bash
-./bin/espops doctor --scope dev
-./bin/espops doctor --scope all --json
+./bin/espops doctor --scope dev --project-dir /path/to/project
+./bin/espops doctor --scope prod --project-dir /path/to/project
 ```
 
 Create a backup:
 
 ```bash
-./bin/espops backup --scope dev
-./bin/espops backup --scope prod --no-stop
+./bin/espops backup --scope dev --project-dir /path/to/project
+./bin/espops backup --scope prod --project-dir /path/to/project
 ```
 
-Verify a backup:
+Verify a backup set:
 
 ```bash
 ./bin/espops backup verify --manifest /path/to/manifest.json
 ```
 
-`backup verify` still requires one complete verified backup set. A manifest produced by `backup --skip-db` or `backup --skip-files` remains valid for the matching restore mode, but not for full backup-set verification.
-
-Run a restore:
+Restore from a verified manifest:
 
 ```bash
-./bin/espops restore --scope dev --manifest /path/to/manifest.json --force
-./bin/espops restore --scope prod --manifest /path/to/manifest.json --force --confirm-prod prod
+./bin/espops restore --scope dev --project-dir /path/to/project --manifest /path/to/manifest.json
+./bin/espops restore --scope prod --project-dir /path/to/project --manifest /path/to/manifest.json
 ```
 
-When a manifest was created from a partial backup, restore verifies only the requested restore part: `--skip-db` accepts a files-only manifest and `--skip-files` accepts a db-only manifest.
-
-Run a migration:
+Migrate from one scope into another:
 
 ```bash
-./bin/espops migrate --from dev --to prod --force --confirm-prod prod
-./bin/espops migrate --from prod --to dev --db-backup /path/to/db.sql.gz --files-backup /path/to/files.tar.gz --force
+./bin/espops migrate --from-scope dev --to-scope prod --project-dir /path/to/project --manifest /path/to/manifest.json
 ```
 
 ## Repository Layout
 
-- `cmd/espops/`: program entrypoint
-- `internal/cli/`: Cobra command surface, input validation, result rendering
-- `internal/app/`: application workflows and operation lifecycle
-- `internal/domain/`: policy, invariants, and shared operational vocabulary
-- `internal/platform/`: filesystem, Docker, config, backup storage, and lock adapters
-- `internal/opsconfig/`: shared Go authority for path and env-derived runtime semantics
-- `internal/contract/`: JSON/output contract and exit codes
-- `deploy/`: container tuning files used by `compose.yaml`
+- `cmd/espops/`: program entrypoint only
+- `internal/v3/cli/`: root command surface, envelopes, and exit mapping
+- `internal/v3/config/`: env-file loading and config validation
+- `internal/v3/ops/`: retained operation workflows and post-checks
+- `internal/v3/runtime/`: Docker Compose and MariaDB command execution
+- `internal/v3/manifest/`: backup manifest contract and artifact resolution
+- `deploy/`: runtime tuning files used by `compose.yaml`
 - `env/`: example env files
 
 ## More Context
 
-Architecture rules and the layer model live in [ARCHITECTURE.md](ARCHITECTURE.md).
-The binding internal micro-monolith constitution lives in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
-Repository rules and cleanup constraints live in [AGENTS.md](AGENTS.md).
+- Repository rules live in [AGENTS.md](AGENTS.md).
+- Layer rules live in [ARCHITECTURE.md](ARCHITECTURE.md).
+- Retained ownership and caller rules live in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
+- Current retained product notes live in [V3.md](V3.md).

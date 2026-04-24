@@ -13,7 +13,7 @@ func newDoctorCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Check whether v3 backup and restore prerequisites are ready",
+		Short: "Check whether backup and restore prerequisites are ready",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			result, err := ops.Doctor(cmd.Context(), v3config.BackupRequest{

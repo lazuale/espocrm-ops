@@ -143,7 +143,7 @@ func (e *commandError) resultValue() any {
 	return e.result
 }
 
-func usageError(message string) error {
+func backupVerifyUsageError(message string) error {
 	return &commandError{
 		command:  "backup verify",
 		kind:     "usage",

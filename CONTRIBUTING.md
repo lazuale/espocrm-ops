@@ -2,19 +2,25 @@
 
 ## Core Expectation
 
-The Go code is the product.
+The retained Go product lives only in:
 
-Retained product behavior belongs in:
+- `cmd/espops/`
+- `internal/v3/cli/`
+- `internal/v3/config/`
+- `internal/v3/ops/`
+- `internal/v3/runtime/`
+- `internal/v3/manifest/`
 
-- `cmd/espops/` for the binary entrypoint
-- `internal/cli/` for flags, command wiring, and result rendering
-- `internal/app/` for retained workflows and operation lifecycle
-- `internal/domain/` for policy and shared operational meaning
-- `internal/platform/` for side-effecting adapters
-- `internal/opsconfig/` for shared operational semantics that must stay Go-owned
+Do not reintroduce `internal/app`, `internal/cli`, `internal/contract`, `internal/domain`, `internal/platform`, `internal/model`, `internal/runtime`, `internal/store`, or `internal/opsconfig`.
 
-Do not add a second runtime. Do not reintroduce shell-owned behavior.
-Do not change the approved internal micro-monolith map implicitly; the binding micro-monolith constitution lives in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
+Do not add:
+
+- a second runtime
+- compatibility shims
+- fallback paths
+- auto-repair
+- hidden normalization
+- new product commands
 
 ## Local Setup
 
@@ -25,7 +31,7 @@ Recommended prerequisites:
 - `staticcheck`
 - `golangci-lint`
 
-You can install the Go-side health tools with:
+Install the Go-side health tools with:
 
 ```bash
 make install-health-tools
@@ -39,7 +45,7 @@ Build the binary:
 make build
 ```
 
-Run the main Go test suite:
+Run the main test paths:
 
 ```bash
 make test
@@ -47,7 +53,7 @@ make test-race
 make integration
 ```
 
-Run the default repository health check:
+Run the repository health check:
 
 ```bash
 make ci
@@ -55,55 +61,36 @@ make ci
 
 ## Working Rules
 
-- Keep the retained product surface limited to `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
-- Prefer deletion over compatibility shims.
-- Prefer one source of truth over mirrored validation layers.
-- Keep operational semantics in Go.
-- Keep the approved micro-monolith list, caller matrix, access classes, and ownership map aligned with [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
-- Do not add process-env-only switches. Operator-facing behavior must come from flags or the contour env file.
-- Preflight should inspect. Execution should mutate.
-- Keep repo-wide architectural guards in `repository_test.go` and owner-local rules in package-local `architecture_test.go`; do not add guard theatre.
-- Use the proof classes in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md) honestly; better `review-enforced but binding` than fake `machine-enforced`.
-- Mixed packages are acceptable only when the involved semantic slices and bridge files stay explicit, owner-bounded, and exhaustively nameable.
-- Promote a `review-enforced but binding` seam once a stable syntactic anchor and honest cheap guard exist and the constitutional promotion criteria are met.
-- Split packages only when the physical split triggers in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md) fire; do not split for symmetry alone.
-- Do not claim reliability improvements without end-to-end evidence.
+- Keep the product surface limited to `doctor`, `backup`, `backup verify`, `restore`, and `migrate`.
+- `cmd/espops/` owns only the process entrypoint.
+- `internal/v3/cli/` owns command wiring, argument validation, JSON envelopes, and exit mapping.
+- `internal/v3/config/` owns env-file parsing and config loading.
+- `internal/v3/ops/` owns retained operational semantics and explicit post-checks.
+- `internal/v3/runtime/` owns Docker Compose and MariaDB process execution.
+- `internal/v3/manifest/` owns manifest validation and artifact path resolution.
+- Keep shell execution and `os.Environ()` confined to `internal/v3/runtime/docker.go`.
+- Prefer deletion over wrappers.
+- Fail closed when correctness is ambiguous.
+- Keep authority docs and compliance docs in sync with the retained code.
+- Do not claim a reliability improvement without end-to-end evidence.
 
-## Operational Style
+## Review Gate
 
-- CLI is edge-only: validate flags, normalize input, call one usecase boundary, route the boundary result or failure through the canonical journal/result/error path, and render one structured result or structured error output.
-- Mutating app modules expose `Execute(req)`, run a linear workflow, and return structured `Info`, `Warnings`, `Steps`, `Counts()`, and `Ready()`.
-- Final public error meaning belongs to the canonical error path: the boundary owns final app-level wrapping, and the CLI edge owns final transport mapping. Helpers return raw errors or lightweight local typed failures; diagnostic non-ready reports stay report-owned until the CLI maps them to transport semantics.
-- Public `ErrorCode()` ownership belongs to final app/transport carriers only. Adapter/local typed causes may be typed, but must not masquerade as final public error codes.
-- Keep helpers package-local. Do not add framework packages, generic engines, or unnecessary shared helper packages.
-- Prefer explicit request-level injection or small local interfaces in tests. Do not add mutable package-global hooks.
-
-## PR Review Gate
-
-- Reject any PR that expands top-level `internal/app/*` production surface beyond the canonical boundary shape.
-- Reject any PR that adds, removes, splits, or merges an approved micro-monolith without updating [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
-- Reject any PR that introduces a direct caller edge forbidden by the micro-monolith interaction model.
-- Reject any PR that moves privileged access to a weaker access class or introduces a hidden side channel.
-- Reject any PR that reintroduces direct `internal/app -> internal/platform/*` imports.
-- Reject any PR that introduces a second owner for an existing operational semantic.
-- Reject any PR that claims machine-enforcement without an honest syntactic anchor or that adds guard theatre.
-- Reject any PR that introduces unnamed bridge files or package-wide shared-ownership claims inside mixed packages.
-- Reject any PR that leaves a promotion-eligible `review-enforced but binding` seam unpromoted after the criteria in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md) are met.
-- Reject any PR that leaves a split-triggered semantic slice inside a mixed package instead of moving it to a dedicated physical contour.
-- If a change intentionally moves the architecture baseline, require an updated formal audit and an updated [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md).
+- Reject any PR that reintroduces removed legacy packages or a dual-path product root.
+- Reject any PR that expands the command surface beyond the retained five commands.
+- Reject any PR that moves shell ownership outside `internal/v3/runtime/docker.go`.
+- Reject any PR that splits retained ownership without updating [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
+- Reject any PR that leaves stale operator or contributor docs after changing product behavior.
 
 ## Typical Change Flow
 
 1. Make the Go change.
 2. Run the smallest relevant tests while iterating.
-3. Run `make ci` before you call the repository healthy.
-4. Update docs when command behavior, setup, or contributor workflow changes.
+3. Run `make ci` before claiming repository health.
+4. Update `ARCHITECTURE.md`, `MICRO_MONOLITHS.md`, `README.md`, `CONTRIBUTING.md`, and compliance docs when the retained graph or command behavior changes.
 
 ## Repo Notes
 
 - Example contour env files live under `env/`.
-- `compose.yaml` and `deploy/` describe the runtime the tool operates against.
-- Architecture rules and the layer model live in [ARCHITECTURE.md](ARCHITECTURE.md).
-- The binding internal micro-monolith constitution lives in [MICRO_MONOLITHS.md](MICRO_MONOLITHS.md).
-- The current accepted compliance baseline lives in [REPO_COMPLIANCE_BASELINE.md](REPO_COMPLIANCE_BASELINE.md).
-- Repository rules and cleanup constraints live in [AGENTS.md](AGENTS.md).
+- `compose.yaml` and `deploy/` describe the runtime shape the tool operates against.
+- Repo-wide guards live in [repository_test.go](repository_test.go).
