@@ -17,7 +17,6 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
-		"BACKUP_NAME_PREFIX=espocrm-prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
@@ -49,14 +48,52 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	if cfg.DBService != "db" {
 		t.Fatalf("unexpected db service: %s", cfg.DBService)
 	}
+	if cfg.DBPassword != "db-secret" {
+		t.Fatalf("unexpected db password: %q", cfg.DBPassword)
+	}
+}
+
+func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
+	projectDir := t.TempDir()
+	passwordPath := filepath.Join(projectDir, "db.password")
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(passwordPath, []byte("file-secret\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.dev"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=dev",
+		"BACKUP_ROOT=./backups/dev",
+		"ESPO_STORAGE_DIR=./runtime/dev/espo",
+		"DB_USER=espocrm",
+		"DB_PASSWORD_FILE=./db.password",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := LoadBackup(BackupRequest{
+		Scope:      "dev",
+		ProjectDir: projectDir,
+	})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	if cfg.DBPassword != "file-secret" {
+		t.Fatalf("unexpected db password: %q", cfg.DBPassword)
+	}
 }
 
 func TestLoadBackupConfigMissingRequiredEnvValue(t *testing.T) {
 	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	envPath := filepath.Join(projectDir, ".env.dev")
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=dev",
-		"BACKUP_NAME_PREFIX=espocrm-dev",
 		"ESPO_STORAGE_DIR=./runtime/dev/espo",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",

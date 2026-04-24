@@ -27,7 +27,6 @@ func TestBackupCLIJSONSuccess(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
-		"BACKUP_NAME_PREFIX=espocrm-prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
@@ -68,16 +67,36 @@ func TestBackupCLIJSONSuccess(t *testing.T) {
 	if _, err := ops.VerifyBackup(context.Background(), manifestPath); err != nil {
 		t.Fatalf("produced backup did not verify: %v", err)
 	}
+	if requireJSONString(t, obj, "result", "db_backup") == "" {
+		t.Fatal("expected db_backup in result")
+	}
+	if requireJSONString(t, obj, "result", "files_backup") == "" {
+		t.Fatal("expected files_backup in result")
+	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
 }
 
-func TestBackupCLIJSONMissingScope(t *testing.T) {
+func TestBackupCLIJSONFailureForMissingEnv(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
-
-	exitCode := Execute([]string{"backup"}, stdout, stderr)
+	exitCode := Execute([]string{"backup", "--scope", "prod", "--project-dir", projectDir}, stdout, stderr)
 	if exitCode != exitUsage {
 		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
 	}
@@ -98,7 +117,7 @@ func TestBackupCLIJSONMissingScope(t *testing.T) {
 	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
 		t.Fatalf("unexpected error kind: %s", kind)
 	}
-	if errMessage := requireJSONString(t, obj, "error", "message"); errMessage != "--scope is required" {
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "DB_NAME is required") {
 		t.Fatalf("unexpected error message: %s", errMessage)
 	}
 	if stderr.Len() != 0 {
@@ -125,77 +144,47 @@ func prependFakeDocker(t *testing.T) {
 const fakeDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
 
-if [[ "${1:-}" == "compose" ]]; then
-  shift
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      --project-directory|-f|--env-file)
-        shift 2
-        ;;
-      *)
-        break
-        ;;
-    esac
-  done
+if [[ "${1:-}" != "compose" ]]; then
+  printf 'unexpected docker invocation: %s\n' "$*" >&2
+  exit 1
+fi
+shift
 
-  case "${1:-}" in
-    config)
-      exit 0
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --project-directory|-f|--env-file)
+      shift 2
       ;;
-    ps)
-      if [[ "${2:-}" == "--status" && "${3:-}" == "running" && "${4:-}" == "--services" ]]; then
-        printf 'db\nespocrm\n'
-        exit 0
-      fi
-      if [[ "${2:-}" == "-q" && "${3:-}" == "db" ]]; then
-        printf 'db-container\n'
-        exit 0
-      fi
-      ;;
-    stop)
-      exit 0
-      ;;
-    up)
-      exit 0
+    *)
+      break
       ;;
   esac
-fi
+done
 
-if [[ "${1:-}" == "exec" ]]; then
-  shift
-  while [[ $# -gt 0 ]]; do
-    case "$1" in
-      -i)
-        shift
-        ;;
-      -e)
-        shift 2
-        ;;
-      *)
-        break
-        ;;
-    esac
-  done
-
-  container="${1:-}"
-  shift || true
-  command="${1:-}"
-  shift || true
-
-  if [[ "$container" != "db-container" ]]; then
-    printf 'unexpected container: %s\n' "$container" >&2
-    exit 1
-  fi
-
-  if [[ "$command" == "mariadb-dump" && "${1:-}" == "--version" ]]; then
-    printf 'mariadb-dump 10.11\n'
+case "${1:-}" in
+  config)
     exit 0
-  fi
-  if [[ "$command" == "mariadb-dump" ]]; then
+    ;;
+  exec)
+    shift
+    if [[ "${1:-}" != "-T" ]]; then
+      printf 'expected -T, got %s\n' "${1:-}" >&2
+      exit 1
+    fi
+    shift
+    if [[ "${1:-}" != "db" ]]; then
+      printf 'unexpected service: %s\n' "${1:-}" >&2
+      exit 1
+    fi
+    shift
+    if [[ "${1:-}" != "mariadb-dump" ]]; then
+      printf 'unexpected command: %s\n' "${1:-}" >&2
+      exit 1
+    fi
     printf 'create table test(id int);\n'
     exit 0
-  fi
-fi
+    ;;
+esac
 
 printf 'unexpected docker invocation: %s\n' "$*" >&2
 exit 1

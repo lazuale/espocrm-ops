@@ -10,10 +10,8 @@ import (
 )
 
 type BackupRequest struct {
-	Scope       string
-	ProjectDir  string
-	ComposeFile string
-	EnvFile     string
+	Scope      string
+	ProjectDir string
 }
 
 type BackupConfig struct {
@@ -22,7 +20,6 @@ type BackupConfig struct {
 	ComposeFile string
 	EnvFile     string
 	BackupRoot  string
-	NamePrefix  string
 	StorageDir  string
 	DBService   string
 	DBUser      string
@@ -40,20 +37,16 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 	if err != nil {
 		return BackupConfig{}, fmt.Errorf("resolve project dir: %w", err)
 	}
-
-	composeFile := strings.TrimSpace(req.ComposeFile)
-	if composeFile == "" {
-		composeFile = filepath.Join(projectDir, "compose.yaml")
-	} else {
-		composeFile = resolveProjectPath(projectDir, composeFile)
+	if err := requireDirectory(projectDir, "project dir"); err != nil {
+		return BackupConfig{}, err
 	}
 
-	envFile := strings.TrimSpace(req.EnvFile)
-	if envFile == "" {
-		envFile = filepath.Join(projectDir, ".env."+scope)
-	} else {
-		envFile = resolveProjectPath(projectDir, envFile)
+	composeFile := filepath.Join(projectDir, "compose.yaml")
+	if err := requireFile(composeFile, "compose file"); err != nil {
+		return BackupConfig{}, err
 	}
+
+	envFile := filepath.Join(projectDir, ".env."+scope)
 
 	values, err := loadEnvAssignments(envFile)
 	if err != nil {
@@ -65,10 +58,8 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 
 	required := []string{
 		"BACKUP_ROOT",
-		"BACKUP_NAME_PREFIX",
 		"ESPO_STORAGE_DIR",
 		"DB_USER",
-		"DB_PASSWORD",
 		"DB_NAME",
 	}
 	for _, key := range required {
@@ -77,19 +68,45 @@ func LoadBackup(req BackupRequest) (BackupConfig, error) {
 		}
 	}
 
+	password, err := resolveDBPassword(values, projectDir, envFile)
+	if err != nil {
+		return BackupConfig{}, err
+	}
+
 	return BackupConfig{
 		Scope:       scope,
 		ProjectDir:  projectDir,
 		ComposeFile: composeFile,
 		EnvFile:     envFile,
 		BackupRoot:  resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
-		NamePrefix:  strings.TrimSpace(values["BACKUP_NAME_PREFIX"]),
 		StorageDir:  resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
 		DBService:   resolveDBService(values["DB_SERVICE"]),
 		DBUser:      strings.TrimSpace(values["DB_USER"]),
-		DBPassword:  values["DB_PASSWORD"],
+		DBPassword:  password,
 		DBName:      strings.TrimSpace(values["DB_NAME"]),
 	}, nil
+}
+
+func requireDirectory(path, label string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat %s %s: %w", label, path, err)
+	}
+	if !info.IsDir() {
+		return fmt.Errorf("%s %s must be a directory", label, path)
+	}
+	return nil
+}
+
+func requireFile(path, label string) error {
+	info, err := os.Stat(path)
+	if err != nil {
+		return fmt.Errorf("stat %s %s: %w", label, path, err)
+	}
+	if info.IsDir() {
+		return fmt.Errorf("%s %s must be a file", label, path)
+	}
+	return nil
 }
 
 func resolveDBService(value string) string {
@@ -106,6 +123,31 @@ func resolveProjectPath(projectDir, value string) string {
 		return filepath.Clean(value)
 	}
 	return filepath.Join(projectDir, filepath.Clean(value))
+}
+
+func resolveDBPassword(values map[string]string, projectDir, envFile string) (string, error) {
+	inline := strings.TrimSpace(values["DB_PASSWORD"])
+	fileRef := strings.TrimSpace(values["DB_PASSWORD_FILE"])
+
+	switch {
+	case inline != "" && fileRef != "":
+		return "", fmt.Errorf("only one of DB_PASSWORD or DB_PASSWORD_FILE may be set in %s", envFile)
+	case inline != "":
+		return inline, nil
+	case fileRef == "":
+		return "", fmt.Errorf("DB_PASSWORD or DB_PASSWORD_FILE is required in %s", envFile)
+	}
+
+	passwordPath := resolveProjectPath(projectDir, fileRef)
+	raw, err := os.ReadFile(passwordPath)
+	if err != nil {
+		return "", fmt.Errorf("read DB_PASSWORD_FILE %s: %w", passwordPath, err)
+	}
+	password := strings.TrimSpace(string(raw))
+	if password == "" {
+		return "", fmt.Errorf("DB_PASSWORD_FILE %s is empty", passwordPath)
+	}
+	return password, nil
 }
 
 func loadEnvAssignments(path string) (values map[string]string, err error) {

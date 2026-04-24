@@ -20,17 +20,12 @@ import (
 
 type BackupResult struct {
 	Manifest    string
-	Scope       string
-	CreatedAt   string
 	DBBackup    string
 	FilesBackup string
 }
 
 type backupRuntime interface {
 	Validate(ctx context.Context, target v3runtime.Target) error
-	RunningServices(ctx context.Context, target v3runtime.Target) ([]string, error)
-	StopServices(ctx context.Context, target v3runtime.Target, services ...string) error
-	StartServices(ctx context.Context, target v3runtime.Target, services ...string) error
 	DumpDatabase(ctx context.Context, target v3runtime.Target, destPath string) error
 }
 
@@ -44,7 +39,7 @@ type backupLayout struct {
 
 func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
 	if rt == nil {
-		return BackupResult{}, &VerifyError{Kind: ErrorKindRuntime, Message: "backup runtime is required"}
+		return BackupResult{}, runtimeError("backup runtime is required", nil)
 	}
 	if err := validateBackupConfig(cfg); err != nil {
 		return BackupResult{}, &VerifyError{Kind: ErrorKindUsage, Message: err.Error()}
@@ -54,14 +49,29 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 	}
 	now = now.UTC()
 
-	layout := newBackupLayout(cfg.BackupRoot, cfg.NamePrefix, now)
+	layout := newBackupLayout(cfg.BackupRoot, cfg.Scope, now)
 	result = BackupResult{
 		Manifest:    layout.ManifestJSON,
-		Scope:       cfg.Scope,
-		CreatedAt:   now.Format(time.RFC3339),
 		DBBackup:    layout.DBArtifact,
 		FilesBackup: layout.FilesArtifact,
 	}
+
+	cleanupPaths := []string{
+		layout.ManifestJSON,
+		layout.FilesChecksum,
+		layout.FilesArtifact,
+		layout.DBChecksum,
+		layout.DBArtifact,
+	}
+	verified := false
+	defer func() {
+		if verified {
+			return
+		}
+		if cleanupErr := removePaths(cleanupPaths); cleanupErr != nil {
+			err = ioError("failed to remove incomplete backup set", errors.Join(err, cleanupErr))
+		}
+	}()
 
 	target := v3runtime.Target{
 		ProjectDir:  cfg.ProjectDir,
@@ -73,78 +83,78 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 		DBName:      cfg.DBName,
 	}
 
-	verified := false
-	needsRuntimeReturn := false
-	runtimeReturned := false
-	stoppedServices := []string{}
-
-	defer func() {
-		if err != nil && !verified {
-			cleanupErr := cleanupBackupSet(layout)
-			if cleanupErr != nil {
-				err = ioError("failed to remove incomplete backup set", errors.Join(err, cleanupErr))
-			}
-		}
-		if !needsRuntimeReturn || runtimeReturned {
-			return
-		}
-		startErr := rt.StartServices(ctx, target, stoppedServices...)
-		runtimeReturned = true
-		if startErr == nil {
-			return
-		}
-		if err == nil {
-			err = runtimeError("runtime return failed after backup", startErr)
-			return
-		}
-		err = runtimeError("backup failed and runtime return also failed", errors.Join(err, startErr))
-	}()
-
 	if err := rt.Validate(ctx, target); err != nil {
-		return result, runtimeError("compose configuration is invalid", err)
+		return result, runtimeError("docker compose config failed", err)
 	}
 	if err := ensureBackupLayout(layout); err != nil {
 		return result, ioError("failed to prepare backup directories", err)
 	}
 	if err := ensureTargetsAbsent(layout); err != nil {
-		return result, artifactError("backup set already exists", err)
+		return result, artifactError("backup target already exists", err)
 	}
 
-	running, err := rt.RunningServices(ctx, target)
+	dbTmp, err := newTempTarget(layout.DBArtifact)
 	if err != nil {
-		return result, runtimeError("could not inspect running services", err)
+		return result, ioError("failed to allocate db backup temp file", err)
 	}
-	stoppedServices = runningApplicationServices(running)
-	if len(stoppedServices) != 0 {
-		if err := rt.StopServices(ctx, target, stoppedServices...); err != nil {
-			return result, runtimeError("could not stop application services", err)
-		}
-		needsRuntimeReturn = true
-	}
-
-	if err := rt.DumpDatabase(ctx, target, layout.DBArtifact); err != nil {
+	cleanupPaths = append(cleanupPaths, dbTmp)
+	if err := rt.DumpDatabase(ctx, target, dbTmp); err != nil {
 		return result, runtimeError("database backup failed", err)
 	}
-	dbChecksum, err := sha256File(layout.DBArtifact)
+	dbChecksum, err := sha256File(dbTmp)
 	if err != nil {
 		return result, ioError("failed to checksum db backup", err)
 	}
-	if err := writeSHA256Sidecar(layout.DBChecksum, filepath.Base(layout.DBArtifact), dbChecksum); err != nil {
-		return result, ioError("failed to write db checksum sidecar", err)
+	if err := promoteTempFile(dbTmp, layout.DBArtifact); err != nil {
+		return result, ioError("failed to finalize db backup", err)
 	}
 
-	if err := archiveStorageDir(cfg.StorageDir, layout.FilesArtifact); err != nil {
+	dbSidecarTmp, err := newTempTarget(layout.DBChecksum)
+	if err != nil {
+		return result, ioError("failed to allocate db checksum temp file", err)
+	}
+	cleanupPaths = append(cleanupPaths, dbSidecarTmp)
+	if err := writeSHA256Sidecar(dbSidecarTmp, filepath.Base(layout.DBArtifact), dbChecksum); err != nil {
+		return result, ioError("failed to write db checksum sidecar", err)
+	}
+	if err := promoteTempFile(dbSidecarTmp, layout.DBChecksum); err != nil {
+		return result, ioError("failed to finalize db checksum sidecar", err)
+	}
+
+	filesTmp, err := newTempTarget(layout.FilesArtifact)
+	if err != nil {
+		return result, ioError("failed to allocate files backup temp file", err)
+	}
+	cleanupPaths = append(cleanupPaths, filesTmp)
+	if err := archiveStorageDir(cfg.StorageDir, filesTmp); err != nil {
 		return result, archiveError("files backup failed", err)
 	}
-	filesChecksum, err := sha256File(layout.FilesArtifact)
+	filesChecksum, err := sha256File(filesTmp)
 	if err != nil {
 		return result, ioError("failed to checksum files backup", err)
 	}
-	if err := writeSHA256Sidecar(layout.FilesChecksum, filepath.Base(layout.FilesArtifact), filesChecksum); err != nil {
-		return result, ioError("failed to write files checksum sidecar", err)
+	if err := promoteTempFile(filesTmp, layout.FilesArtifact); err != nil {
+		return result, ioError("failed to finalize files backup", err)
 	}
 
-	manifestData := v3manifest.Manifest{
+	filesSidecarTmp, err := newTempTarget(layout.FilesChecksum)
+	if err != nil {
+		return result, ioError("failed to allocate files checksum temp file", err)
+	}
+	cleanupPaths = append(cleanupPaths, filesSidecarTmp)
+	if err := writeSHA256Sidecar(filesSidecarTmp, filepath.Base(layout.FilesArtifact), filesChecksum); err != nil {
+		return result, ioError("failed to write files checksum sidecar", err)
+	}
+	if err := promoteTempFile(filesSidecarTmp, layout.FilesChecksum); err != nil {
+		return result, ioError("failed to finalize files checksum sidecar", err)
+	}
+
+	manifestTmp, err := newTempTarget(layout.ManifestJSON)
+	if err != nil {
+		return result, ioError("failed to allocate manifest temp file", err)
+	}
+	cleanupPaths = append(cleanupPaths, manifestTmp)
+	if err := writeManifestJSON(manifestTmp, v3manifest.Manifest{
 		Version:   1,
 		Scope:     cfg.Scope,
 		CreatedAt: now.Format(time.RFC3339),
@@ -156,29 +166,24 @@ func Backup(ctx context.Context, cfg v3config.BackupConfig, rt backupRuntime, no
 			DBBackup:    dbChecksum,
 			FilesBackup: filesChecksum,
 		},
-	}
-	if err := writeManifestJSON(layout.ManifestJSON, manifestData); err != nil {
+	}); err != nil {
 		return result, ioError("failed to write backup manifest", err)
+	}
+	if err := promoteTempFile(manifestTmp, layout.ManifestJSON); err != nil {
+		return result, ioError("failed to finalize backup manifest", err)
 	}
 
 	verifyResult, verifyErr := VerifyBackup(ctx, layout.ManifestJSON)
 	if verifyErr != nil {
 		return result, verifyErr
 	}
+
 	verified = true
-	result = BackupResult(verifyResult)
-
-	if len(stoppedServices) != 0 {
-		if err := rt.StartServices(ctx, target, stoppedServices...); err != nil {
-			needsRuntimeReturn = false
-			runtimeReturned = true
-			return result, runtimeError("runtime return failed after backup", err)
-		}
-		runtimeReturned = true
-		needsRuntimeReturn = false
-	}
-
-	return result, nil
+	return BackupResult{
+		Manifest:    verifyResult.Manifest,
+		DBBackup:    verifyResult.DBBackup,
+		FilesBackup: verifyResult.FilesBackup,
+	}, nil
 }
 
 func validateBackupConfig(cfg v3config.BackupConfig) error {
@@ -191,7 +196,6 @@ func validateBackupConfig(cfg v3config.BackupConfig) error {
 		{name: "compose file", value: cfg.ComposeFile},
 		{name: "env file", value: cfg.EnvFile},
 		{name: "BACKUP_ROOT", value: cfg.BackupRoot},
-		{name: "BACKUP_NAME_PREFIX", value: cfg.NamePrefix},
 		{name: "ESPO_STORAGE_DIR", value: cfg.StorageDir},
 		{name: "DB_USER", value: cfg.DBUser},
 		{name: "DB_PASSWORD", value: cfg.DBPassword},
@@ -204,16 +208,16 @@ func validateBackupConfig(cfg v3config.BackupConfig) error {
 	return nil
 }
 
-func newBackupLayout(root, prefix string, createdAt time.Time) backupLayout {
-	stamp := createdAt.UTC().Format("2006-01-02_15-04-05")
-	dbArtifact := filepath.Join(root, "db", fmt.Sprintf("%s_%s.sql.gz", prefix, stamp))
-	filesArtifact := filepath.Join(root, "files", fmt.Sprintf("%s_files_%s.tar.gz", prefix, stamp))
+func newBackupLayout(root, scope string, createdAt time.Time) backupLayout {
+	base := fmt.Sprintf("%s_%s", strings.TrimSpace(scope), createdAt.UTC().Format("2006-01-02_15-04-05"))
+	dbArtifact := filepath.Join(root, "db", base+".sql.gz")
+	filesArtifact := filepath.Join(root, "files", base+".tar.gz")
 	return backupLayout{
 		DBArtifact:    dbArtifact,
 		DBChecksum:    dbArtifact + ".sha256",
 		FilesArtifact: filesArtifact,
 		FilesChecksum: filesArtifact + ".sha256",
-		ManifestJSON:  filepath.Join(root, "manifests", fmt.Sprintf("%s_%s.manifest.json", prefix, stamp)),
+		ManifestJSON:  filepath.Join(root, "manifests", base+".manifest.json"),
 	}
 }
 
@@ -249,20 +253,30 @@ func ensureTargetsAbsent(layout backupLayout) error {
 	return nil
 }
 
-func cleanupBackupSet(layout backupLayout) error {
+func removePaths(paths []string) error {
 	var cleanupErr error
-	for _, path := range []string{
-		layout.ManifestJSON,
-		layout.FilesChecksum,
-		layout.FilesArtifact,
-		layout.DBChecksum,
-		layout.DBArtifact,
-	} {
+	for _, path := range paths {
 		if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 			cleanupErr = errors.Join(cleanupErr, err)
 		}
 	}
 	return cleanupErr
+}
+
+func newTempTarget(finalPath string) (string, error) {
+	file, err := os.CreateTemp(filepath.Dir(finalPath), "."+filepath.Base(finalPath)+".tmp-*")
+	if err != nil {
+		return "", err
+	}
+	if err := file.Close(); err != nil {
+		_ = os.Remove(file.Name())
+		return "", err
+	}
+	return file.Name(), nil
+}
+
+func promoteTempFile(tempPath, finalPath string) error {
+	return os.Rename(tempPath, finalPath)
 }
 
 func writeSHA256Sidecar(path, artifactName, checksum string) error {
@@ -358,25 +372,6 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 	}
 
 	return nil
-}
-
-func runningApplicationServices(running []string) []string {
-	seen := map[string]struct{}{}
-	for _, service := range running {
-		service = strings.TrimSpace(service)
-		if service == "" {
-			continue
-		}
-		seen[service] = struct{}{}
-	}
-
-	out := []string{}
-	for _, service := range []string{"espocrm", "espocrm-daemon", "espocrm-websocket"} {
-		if _, ok := seen[service]; ok {
-			out = append(out, service)
-		}
-	}
-	return out
 }
 
 func runtimeError(message string, err error) error {

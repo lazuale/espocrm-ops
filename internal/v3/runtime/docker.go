@@ -26,38 +26,13 @@ func (DockerCompose) Validate(ctx context.Context, target Target) error {
 	return platformdocker.ValidateComposeConfig(composeConfig(target))
 }
 
-func (DockerCompose) RunningServices(ctx context.Context, target Target) ([]string, error) {
-	if err := ctx.Err(); err != nil {
-		return nil, err
-	}
-	return platformdocker.ComposeRunningServices(composeConfig(target))
-}
-
-func (DockerCompose) StopServices(ctx context.Context, target Target, services ...string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return platformdocker.ComposeStop(composeConfig(target), services...)
-}
-
-func (DockerCompose) StartServices(ctx context.Context, target Target, services ...string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	return platformdocker.ComposeUp(composeConfig(target), services...)
-}
-
 func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	service := strings.TrimSpace(target.DBService)
-	if service == "" {
-		service = "db"
-	}
-	return platformdocker.DumpMySQLDumpGz(
+	return platformdocker.DumpMariaDBDumpGzViaCompose(
 		composeConfig(target),
-		service,
+		strings.TrimSpace(target.DBService),
 		target.DBUser,
 		target.DBPassword,
 		target.DBName,

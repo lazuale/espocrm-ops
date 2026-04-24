@@ -16,8 +16,6 @@ var backupNow = func() time.Time {
 
 type backupResult struct {
 	Manifest    string `json:"manifest,omitempty"`
-	Scope       string `json:"scope,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
 	DBBackup    string `json:"db_backup,omitempty"`
 	FilesBackup string `json:"files_backup,omitempty"`
 }
@@ -25,15 +23,13 @@ type backupResult struct {
 func newBackupCmd() *cobra.Command {
 	var scope string
 	var projectDir string
-	var composeFile string
-	var envFile string
 
 	cmd := &cobra.Command{
 		Use:   "backup",
 		Short: "Create full verified backup set",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadBackupConfig(scope, projectDir, composeFile, envFile)
+			cfg, err := loadBackupConfig(scope, projectDir)
 			if err != nil {
 				return &commandError{
 					command:  "backup",
@@ -57,8 +53,6 @@ func newBackupCmd() *cobra.Command {
 				Warnings: []string{},
 				Result: backupResult{
 					Manifest:    result.Manifest,
-					Scope:       result.Scope,
-					CreatedAt:   result.CreatedAt,
 					DBBackup:    result.DBBackup,
 					FilesBackup: result.FilesBackup,
 				},
@@ -68,20 +62,16 @@ func newBackupCmd() *cobra.Command {
 
 	cmd.Flags().StringVar(&scope, "scope", "", "backup contour")
 	cmd.Flags().StringVar(&projectDir, "project-dir", ".", "project directory containing the compose file and env files")
-	cmd.Flags().StringVar(&composeFile, "compose-file", "", "compose file path (defaults to project-dir/compose.yaml)")
-	cmd.Flags().StringVar(&envFile, "env-file", "", "override env file path")
 	return cmd
 }
 
-func loadBackupConfig(scope, projectDir, composeFile, envFile string) (v3config.BackupConfig, error) {
+func loadBackupConfig(scope, projectDir string) (v3config.BackupConfig, error) {
 	if scope == "" {
 		return v3config.BackupConfig{}, fmt.Errorf("--scope is required")
 	}
 	return v3config.LoadBackup(v3config.BackupRequest{
-		Scope:       scope,
-		ProjectDir:  projectDir,
-		ComposeFile: composeFile,
-		EnvFile:     envFile,
+		Scope:      scope,
+		ProjectDir: projectDir,
 	})
 }
 
@@ -96,8 +86,6 @@ func backupCommandError(result ops.BackupResult, err error) error {
 			err:      err,
 			result: backupResult{
 				Manifest:    result.Manifest,
-				Scope:       result.Scope,
-				CreatedAt:   result.CreatedAt,
 				DBBackup:    result.DBBackup,
 				FilesBackup: result.FilesBackup,
 			},
@@ -112,8 +100,6 @@ func backupCommandError(result ops.BackupResult, err error) error {
 		err:      verifyErr,
 		result: backupResult{
 			Manifest:    result.Manifest,
-			Scope:       result.Scope,
-			CreatedAt:   result.CreatedAt,
 			DBBackup:    result.DBBackup,
 			FilesBackup: result.FilesBackup,
 		},

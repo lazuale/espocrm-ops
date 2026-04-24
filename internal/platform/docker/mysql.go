@@ -9,6 +9,52 @@ import (
 	"strings"
 )
 
+func DumpMariaDBDumpGzViaCompose(cfg ComposeConfig, service, user, password, dbName, destPath string) (err error) {
+	service = strings.TrimSpace(service)
+	if service == "" {
+		service = "db"
+	}
+
+	f, err := os.Create(destPath)
+	if err != nil {
+		return fmt.Errorf("create db backup: %w", err)
+	}
+	defer closeMySQLResource(f, fmt.Sprintf("db backup file %s", destPath), &err)
+
+	gz, err := gzip.NewWriterLevel(f, gzip.BestCompression)
+	if err != nil {
+		return fmt.Errorf("create gzip writer: %w", err)
+	}
+	closed := false
+	defer func() {
+		if !closed {
+			closeMySQLResource(gz, fmt.Sprintf("db backup gzip writer for %s", destPath), &err)
+		}
+	}()
+
+	if _, err := runComposeWithOptions(commandOptions{
+		Stdout: gz,
+		Env:    []string{"MYSQL_PWD=" + password},
+	}, cfg,
+		"exec", "-T",
+		service,
+		"mariadb-dump",
+		"--single-transaction",
+		"--quick",
+		"--skip-comments",
+		"-u", user,
+		dbName,
+	); err != nil {
+		return fmt.Errorf("compose exec mariadb-dump for service %s: %w", service, err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("finish db backup gzip: %w", err)
+	}
+	closed = true
+
+	return nil
+}
+
 func DumpMySQLDumpGz(cfg ComposeConfig, service, user, password, dbName, destPath string) (err error) {
 	container, err := composeServiceContainerID(cfg, service)
 	if err != nil {

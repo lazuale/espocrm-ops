@@ -14,7 +14,7 @@ import (
 	v3runtime "github.com/lazuale/espocrm-ops/internal/v3/runtime"
 )
 
-func TestBackupValidFullSet(t *testing.T) {
+func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")
 	if err := os.MkdirAll(filepath.Join(storageDir, "data"), 0o755); err != nil {
@@ -25,38 +25,42 @@ func TestBackupValidFullSet(t *testing.T) {
 	}
 
 	rt := &fakeBackupRuntime{
-		running: []string{"db", "espocrm", "espocrm-daemon"},
-		dbDump:  gzipBytes(t, "create table test(id int);\n"),
+		dbDump: gzipBytes(t, "create table test(id int);\n"),
 	}
-	cfg := v3config.BackupConfig{
-		Scope:       "prod",
-		ProjectDir:  root,
-		ComposeFile: filepath.Join(root, "compose.yaml"),
-		EnvFile:     filepath.Join(root, ".env.prod"),
-		BackupRoot:  filepath.Join(root, "backups", "prod"),
-		NamePrefix:  "espocrm-prod",
-		StorageDir:  storageDir,
-		DBService:   "db",
-		DBUser:      "espocrm",
-		DBPassword:  "db-secret",
-		DBName:      "espocrm",
-	}
+	cfg := backupTestConfig(root, storageDir)
 
 	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	if err != nil {
 		t.Fatalf("Backup failed: %v", err)
 	}
-	if err := rt.requireCalls("validate", "running_services", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "dump_database"); err != nil {
 		t.Fatal(err)
 	}
 	if result.Manifest == "" || result.DBBackup == "" || result.FilesBackup == "" {
 		t.Fatalf("unexpected result: %#v", result)
 	}
-	if _, err := os.Stat(result.Manifest); err != nil {
-		t.Fatalf("manifest missing: %v", err)
+
+	for _, path := range []string{
+		result.Manifest,
+		result.DBBackup,
+		result.DBBackup + ".sha256",
+		result.FilesBackup,
+		result.FilesBackup + ".sha256",
+	} {
+		if _, err := os.Stat(path); err != nil {
+			t.Fatalf("expected artifact %s: %v", path, err)
+		}
 	}
 	if _, err := VerifyBackup(context.Background(), result.Manifest); err != nil {
 		t.Fatalf("VerifyBackup on produced set failed: %v", err)
+	}
+
+	matches, err := filepath.Glob(filepath.Join(cfg.BackupRoot, "*", "*.tmp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("unexpected temporary files after success: %v", matches)
 	}
 }
 
@@ -71,29 +75,22 @@ func TestBackupFailsClosedWhenSelfVerifyFails(t *testing.T) {
 	}
 
 	rt := &fakeBackupRuntime{
-		running: []string{"db", "espocrm"},
-		dbDump:  []byte("not gzip"),
+		dbDump: []byte("not gzip"),
 	}
-	cfg := v3config.BackupConfig{
-		Scope:       "prod",
-		ProjectDir:  root,
-		ComposeFile: filepath.Join(root, "compose.yaml"),
-		EnvFile:     filepath.Join(root, ".env.prod"),
-		BackupRoot:  filepath.Join(root, "backups", "prod"),
-		NamePrefix:  "espocrm-prod",
-		StorageDir:  storageDir,
-		DBService:   "db",
-		DBUser:      "espocrm",
-		DBPassword:  "db-secret",
-		DBName:      "espocrm",
-	}
+	cfg := backupTestConfig(root, storageDir)
 
 	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if err := rt.requireCalls("validate", "running_services", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "dump_database"); err != nil {
 		t.Fatal(err)
 	}
-	for _, path := range []string{result.Manifest, result.DBBackup, result.FilesBackup} {
+	for _, path := range []string{
+		result.Manifest,
+		result.DBBackup,
+		result.DBBackup + ".sha256",
+		result.FilesBackup,
+		result.FilesBackup + ".sha256",
+	} {
 		if path == "" {
 			continue
 		}
@@ -103,43 +100,89 @@ func TestBackupFailsClosedWhenSelfVerifyFails(t *testing.T) {
 	}
 }
 
+func TestBackupFailsWhenFilesArtifactWriteFails(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(filepath.Join(storageDir, "data"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "data", "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	backupRoot := filepath.Join(root, "backups", "prod")
+	for _, dir := range []string{
+		filepath.Join(backupRoot, "db"),
+		filepath.Join(backupRoot, "files"),
+		filepath.Join(backupRoot, "manifests"),
+	} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(backupRoot, "files"), 0o555); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table test(id int);\n"),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	if err == nil {
+		t.Fatal("expected backup failure")
+	}
+	verifyErr, ok := err.(*VerifyError)
+	if !ok {
+		t.Fatalf("expected VerifyError, got %T", err)
+	}
+	if verifyErr.Kind != ErrorKindIO && verifyErr.Kind != ErrorKindArchive {
+		t.Fatalf("unexpected error kind: %s", verifyErr.Kind)
+	}
+	for _, path := range []string{
+		result.Manifest,
+		result.DBBackup,
+		result.DBBackup + ".sha256",
+		result.FilesBackup,
+		result.FilesBackup + ".sha256",
+	} {
+		if path == "" {
+			continue
+		}
+		if _, statErr := os.Stat(path); !os.IsNotExist(statErr) {
+			t.Fatalf("expected cleanup for %s, got %v", path, statErr)
+		}
+	}
+}
+
+func backupTestConfig(root, storageDir string) v3config.BackupConfig {
+	return v3config.BackupConfig{
+		Scope:       "prod",
+		ProjectDir:  root,
+		ComposeFile: filepath.Join(root, "compose.yaml"),
+		EnvFile:     filepath.Join(root, ".env.prod"),
+		BackupRoot:  filepath.Join(root, "backups", "prod"),
+		StorageDir:  storageDir,
+		DBService:   "db",
+		DBUser:      "espocrm",
+		DBPassword:  "db-secret",
+		DBName:      "espocrm",
+	}
+}
+
 type fakeBackupRuntime struct {
-	running      []string
-	dbDump       []byte
-	validateErr  error
-	runningErr   error
-	stopErr      error
-	startErr     error
-	dumpErr      error
-	calls        []string
-	lastTarget   v3runtime.Target
-	lastServices []string
+	dbDump      []byte
+	validateErr error
+	dumpErr     error
+	calls       []string
+	lastTarget  v3runtime.Target
 }
 
 func (f *fakeBackupRuntime) Validate(_ context.Context, target v3runtime.Target) error {
 	f.calls = append(f.calls, "validate")
 	f.lastTarget = target
 	return f.validateErr
-}
-
-func (f *fakeBackupRuntime) RunningServices(_ context.Context, target v3runtime.Target) ([]string, error) {
-	f.calls = append(f.calls, "running_services")
-	f.lastTarget = target
-	return append([]string(nil), f.running...), f.runningErr
-}
-
-func (f *fakeBackupRuntime) StopServices(_ context.Context, target v3runtime.Target, services ...string) error {
-	f.calls = append(f.calls, "stop_services")
-	f.lastTarget = target
-	f.lastServices = append([]string(nil), services...)
-	return f.stopErr
-}
-
-func (f *fakeBackupRuntime) StartServices(_ context.Context, target v3runtime.Target, services ...string) error {
-	f.calls = append(f.calls, "start_services")
-	f.lastTarget = target
-	f.lastServices = append([]string(nil), services...)
-	return f.startErr
 }
 
 func (f *fakeBackupRuntime) DumpDatabase(_ context.Context, target v3runtime.Target, destPath string) error {
