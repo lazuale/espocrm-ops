@@ -68,6 +68,35 @@ Optional env keys:
 
 Example env files live under `env/`.
 
+Operator prerequisites:
+
+- `BACKUP_ROOT` must already exist before running `doctor`, `backup`, `restore`, or `migrate`
+- `BACKUP_ROOT` must be writable by the operator account; `doctor` checks it but does not create or repair it
+- `ESPO_STORAGE_DIR` must already exist and must be the real storage directory for the selected scope
+- MariaDB native tooling target is `11.4 LTS`
+- Native tooling only: `docker compose`, `mariadb-dump`, `mariadb`, and Go stdlib archive/checksum handling
+- No compatibility path, no fallback path, and no service-name guessing
+
+## Minimal Safe Workflow
+
+Prepare the target scope first:
+
+1. Ensure `compose.yaml` and `.env.<scope>` exist.
+2. Ensure `BACKUP_ROOT` already exists and is writable.
+3. Ensure `ESPO_STORAGE_DIR` already exists and points at the correct scope storage.
+4. Run `espops doctor`.
+
+Then use the retained commands in this order:
+
+1. `espops backup`
+   Backup stops app services while it creates a full backup set.
+2. `espops backup verify`
+   Verify the manifest you plan to trust.
+3. `espops restore`
+   Restore is destructive for the target scope. It verifies the source manifest first and creates a target snapshot before mutation.
+4. `espops migrate`
+   Migrate is thin composition over verified restore flow, not a separate engine.
+
 ## Command Surface
 
 General help:
