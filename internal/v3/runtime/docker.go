@@ -65,6 +65,14 @@ func (DockerCompose) StartServices(ctx context.Context, target Target, services 
 	return runCompose(ctx, target, runOptions{}, args...)
 }
 
+func (DockerCompose) UpService(ctx context.Context, target Target, service string) error {
+	service = strings.TrimSpace(service)
+	if service == "" {
+		service = "db"
+	}
+	return runCompose(ctx, target, runOptions{}, "up", "-d", service)
+}
+
 func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath string) (err error) {
 	file, err := os.Create(destPath)
 	if err != nil {
@@ -114,6 +122,23 @@ func (DockerCompose) DBPing(ctx context.Context, target Target) error {
 		"-u", target.DBUser,
 		target.DBName,
 		"-e", "SELECT 1;",
+	)
+}
+
+func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, reader io.Reader) error {
+	service := strings.TrimSpace(target.DBService)
+	if service == "" {
+		service = "db"
+	}
+
+	return runCompose(ctx, target, runOptions{
+		stdin: reader,
+		env:   []string{"MYSQL_PWD=" + target.DBPassword},
+	},
+		"exec", "-T", service,
+		"mariadb",
+		"-u", target.DBUser,
+		target.DBName,
 	)
 }
 
