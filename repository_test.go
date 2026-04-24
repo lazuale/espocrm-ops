@@ -1,6 +1,7 @@
 package repository_test
 
 import (
+	"bufio"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -174,6 +175,39 @@ func TestDocsUseOnlyCurrentInternalLayout(t *testing.T) {
 	}
 }
 
+func TestTrackedFilesDoNotContainHistoricalResidue(t *testing.T) {
+	files := trackedFiles(t)
+	patterns := buildHistoricalResiduePatterns()
+
+	for _, rel := range files {
+		raw, err := os.ReadFile(rel)
+		if err != nil {
+			t.Fatalf("read %s: %v", rel, err)
+		}
+
+		scanner := bufio.NewScanner(strings.NewReader(string(raw)))
+		lineNo := 0
+		for scanner.Scan() {
+			lineNo++
+			line := scanner.Text()
+			if allowedResidueLine(rel, line) {
+				continue
+			}
+			for _, pattern := range patterns {
+				if pattern.MatchString(line) {
+					t.Fatalf("tracked residue match in %s:%d: %q", rel, lineNo, strings.TrimSpace(line))
+				}
+			}
+			if containsDisallowedRecoveryTerms(line) {
+				t.Fatalf("tracked residue match in %s:%d: %q", rel, lineNo, strings.TrimSpace(line))
+			}
+		}
+		if err := scanner.Err(); err != nil {
+			t.Fatalf("scan %s: %v", rel, err)
+		}
+	}
+}
+
 func productionGoFiles(t *testing.T, roots ...string) []string {
 	t.Helper()
 
@@ -211,6 +245,85 @@ func listImportPaths(t *testing.T, args ...string) []string {
 	lines := strings.Fields(string(output))
 	slices.Sort(lines)
 	return slices.Compact(lines)
+}
+
+func trackedFiles(t *testing.T) []string {
+	t.Helper()
+
+	cmd := exec.Command("git", "ls-files")
+	cmd.Dir = repoRoot(t)
+	output, err := cmd.CombinedOutput()
+	if err != nil {
+		t.Fatalf("git ls-files: %v\n%s", err, output)
+	}
+
+	lines := strings.Fields(string(output))
+	slices.Sort(lines)
+	return slices.Compact(lines)
+}
+
+func buildHistoricalResiduePatterns() []*regexp.Regexp {
+	terms := []string{
+		joinParts("v", "3"),
+		joinParts("le", "gacy"),
+		joinParts("cut", "over"),
+		joinParts("fr", "eeze"),
+		joinParts("re", "tained"),
+		joinParts("or", "acle"),
+		joinParts("ref", "erence"),
+		joinParts("gold", "en"),
+		joinParts("accept", "ance"),
+		joinParts("result", "bridge"),
+		joinParts("contract", "/", "result"),
+		joinParts("journal", "bridge"),
+		joinParts("error", "transport"),
+		joinParts("arch", "itecture"),
+		joinParts("repo", "_", "compliance"),
+		joinParts("mi", "gration"),
+		joinParts("sh", "im"),
+		joinParts("old", " ", "world"),
+		joinParts("old", "-", "world"),
+		joinParts("dual", "-", "path"),
+		joinParts("dual", " ", "path"),
+	}
+
+	patterns := make([]*regexp.Regexp, 0, len(terms)+2)
+	for _, term := range terms {
+		patterns = append(patterns, regexp.MustCompile(`(?i)\b`+regexp.QuoteMeta(term)+`\b`))
+	}
+	patterns = append(patterns,
+		regexp.MustCompile(`(?i)\b`+joinParts("micro")+`[_ -]?`+joinParts("monolith")+`\b`),
+		regexp.MustCompile(`(?i)\b`+joinParts("repo")+`[_ -]?`+joinParts("compliance")+`\b`),
+	)
+	return patterns
+}
+
+func allowedResidueLine(path, line string) bool {
+	lower := strings.ToLower(strings.TrimSpace(line))
+	if strings.HasPrefix(path, "go.sum") {
+		return strings.Contains(lower, joinParts("/", "v", "2", " ")) || strings.Contains(lower, joinParts("yaml.", "v", "3"))
+	}
+	if path == "Makefile" {
+		return strings.Contains(lower, joinParts("golangci-lint/", "v", "2")) || strings.Contains(lower, joinParts("v", "2", ".11.4"))
+	}
+	return false
+}
+
+func containsDisallowedRecoveryTerms(line string) bool {
+	lower := strings.ToLower(line)
+	compatTerm := joinParts("compat", "ibility")
+	if strings.Contains(lower, compatTerm) && !strings.Contains(lower, joinParts("no ", compatTerm)) {
+		return true
+	}
+	altPathTerm := joinParts("fall", "back")
+	if strings.Contains(lower, altPathTerm) && !strings.Contains(lower, joinParts("no ", altPathTerm)) {
+		return true
+	}
+	return false
+}
+
+func joinParts(parts ...string) string {
+	return strings.Join(parts, "")
 }
 
 func repoRoot(t *testing.T) string {
