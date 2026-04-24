@@ -67,6 +67,7 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newDoctorCmd())
 	cmd.AddCommand(backupCmd)
 	cmd.AddCommand(newRestoreCmd())
+	cmd.AddCommand(newMigrateCmd())
 
 	return cmd
 }
