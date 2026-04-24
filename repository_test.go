@@ -18,7 +18,7 @@ import (
 const modulePath = "github.com/lazuale/espocrm-ops"
 
 const (
-	expectedMariaDBTag         = "11.4"
+	expectedMariaDBImage       = "mariadb:11.4"
 	expectedRuntimeAppServices = "espocrm,espocrm-daemon,espocrm-websocket"
 )
 
@@ -255,8 +255,11 @@ func TestMakefileIntegrationTargetIsReal(t *testing.T) {
 	}
 	for _, needle := range []string{
 		"integration-preflight:",
+		"pull-images: integration-preflight",
+		"integration: pull-images",
 		"docker info >/dev/null",
 		"docker compose version >/dev/null",
+		"docker pull $$image",
 		"go test -count=1 -p 1 -tags=integration $(INTEGRATION_PKGS)",
 		"ci: build mod-verify test-readonly test-race vet staticcheck lint integration mod-clean-check",
 	} {
@@ -279,10 +282,31 @@ func TestCIWorkflowRunsExplicitHealthChecks(t *testing.T) {
 		"git diff --exit-code -- go.mod go.sum",
 		"docker info",
 		"docker compose version",
+		"make pull-images",
 		"make integration",
 	} {
 		if !strings.Contains(text, needle) {
 			t.Fatalf("workflow missing required health command %q", needle)
+		}
+	}
+}
+
+func TestReadmeImageContractMentionsPinningAndPullRequirements(t *testing.T) {
+	readme := string(readRepoFile(t, "README.md"))
+	for _, needle := range []string{
+		"## Images And Supply-Chain Contract",
+		"`ESPOCRM_IMAGE`",
+		"`MARIADB_IMAGE`",
+		"tag-based",
+		"digest-pinned",
+		"docker pull \"<ESPOCRM_IMAGE from your env file>\"",
+		"docker pull \"<MARIADB_IMAGE from your env file>\"",
+		"`make pull-images`",
+		"Docker Hub",
+		"does not by itself prove that the Go code is broken",
+	} {
+		if !strings.Contains(readme, needle) {
+			t.Fatalf("README image contract must mention %q", needle)
 		}
 	}
 }
@@ -374,22 +398,33 @@ func TestReadmeRuntimeContractMentionsComposeAndGoKeys(t *testing.T) {
 	}
 }
 
-func TestMariaDBContractIsConsistent(t *testing.T) {
+func TestImageContractIsConsistent(t *testing.T) {
 	compose := string(readRepoFile(t, "compose.yaml"))
-	if !strings.Contains(compose, "image: mariadb:${MARIADB_TAG}") {
-		t.Fatal("compose.yaml must consume MARIADB_TAG for the database image")
+	for _, needle := range []string{
+		"image: ${ESPOCRM_IMAGE}",
+		"image: ${MARIADB_IMAGE}",
+	} {
+		if !strings.Contains(compose, needle) {
+			t.Fatalf("compose.yaml must consume documented image env key %q", needle)
+		}
+	}
+	if strings.Contains(compose, "MARIADB_TAG") {
+		t.Fatal("compose.yaml must not keep MARIADB_TAG after moving to MARIADB_IMAGE")
 	}
 
 	for _, rel := range exampleEnvFiles {
 		env := readEnvAssignmentsFile(t, rel)
-		if env["MARIADB_TAG"] != expectedMariaDBTag {
-			t.Fatalf("%s must set MARIADB_TAG=%s, got %q", rel, expectedMariaDBTag, env["MARIADB_TAG"])
+		if env["MARIADB_IMAGE"] != expectedMariaDBImage {
+			t.Fatalf("%s must set MARIADB_IMAGE=%s, got %q", rel, expectedMariaDBImage, env["MARIADB_IMAGE"])
+		}
+		if _, ok := env["MARIADB_TAG"]; ok {
+			t.Fatalf("%s must not contain deprecated MARIADB_TAG", rel)
 		}
 	}
 
 	readme := string(readRepoFile(t, "README.md"))
-	if !strings.Contains(readme, "MARIADB_TAG=11.4") {
-		t.Fatal("README must document MARIADB_TAG=11.4")
+	if !strings.Contains(readme, "MARIADB_IMAGE=mariadb:11.4") {
+		t.Fatal("README must document MARIADB_IMAGE=mariadb:11.4")
 	}
 
 	integration := string(readRepoFile(t, "internal/runtime/docker_integration_test.go"))

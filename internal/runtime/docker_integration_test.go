@@ -288,6 +288,19 @@ func requireDockerIntegration(t *testing.T) {
 			t.Fatalf("integration requires %s to succeed: %v\n%s", strings.Join(command, " "), err, strings.TrimSpace(string(output)))
 		}
 	}
+
+	for _, image := range []string{integrationMariaDBImage, integrationAppImage} {
+		exists, err := dockerImageExists(ctx, image)
+		if err != nil {
+			t.Fatalf("integration could not check local image %s: %v", image, err)
+		}
+		if !exists {
+			t.Fatalf(
+				"integration requires local image %s; run `make pull-images` first or restore Docker Hub access. Missing local images means the registry path is not proven, not that Go code is broken.",
+				image,
+			)
+		}
+	}
 }
 
 func integrationPreexistingImages(t *testing.T) map[string]bool {

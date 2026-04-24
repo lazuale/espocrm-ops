@@ -19,7 +19,7 @@ x-espocrm-runtime-env: &espocrm_runtime_env
 
 services:
   db:
-    image: mariadb:${MARIADB_TAG}
+    image: ${MARIADB_IMAGE}
     restart: unless-stopped
     mem_limit: ${DB_MEM_LIMIT}
     cpus: ${DB_CPUS}

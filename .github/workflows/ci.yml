@@ -80,5 +80,8 @@ jobs:
       - name: Verify Docker Compose Plugin
         run: docker compose version
 
+      - name: Pull Required Integration Images
+        run: make pull-images
+
       - name: Run Docker Integration Tests
         run: make integration

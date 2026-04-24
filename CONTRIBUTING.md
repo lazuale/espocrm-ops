@@ -61,7 +61,8 @@ make ci
 Contract:
 
 - `make test` is the fast unit layer and may use fake docker scripts inside tests where command wiring or failure shaping is the subject under test.
-- `make integration` is the real Docker integration layer. It requires a live Docker daemon, the Compose plugin, and network/image pull capability. It must not pass by running zero real integration tests.
+- `make pull-images` is the Docker integration image preflight. It must fail closed when required images cannot be pulled or are not available locally.
+- `make integration` is the real Docker integration layer. It requires a live Docker daemon, the Compose plugin, and required images available locally. It must not pass by running zero real integration tests.
 - `make ci` is the repository health claim. It covers build, module verification, readonly tests, race tests, `go vet`, `staticcheck`, `golangci-lint`, real Docker integration, and a clean `go.mod`/`go.sum` check.
 
 ## Working Rules
@@ -80,11 +81,13 @@ Contract:
 - Keep `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID` explicit for restore-capable flows; do not guess runtime ownership from the image, container user, or current operator account.
 - Keep `compose.yaml`, `env/.env.*.example`, `README.md`, and `internal/config/` on one literal runtime contract; when one changes, update the others and the repository guards in `repository_test.go`.
 - Do not add decorative env keys to examples.
+- Do not call mutable image tags production-safe unless the deployed image refs are digest-pinned.
 - Prefer deletion over wrappers.
 - Fail closed when correctness is ambiguous.
 - Keep `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` in sync with the code.
 - Do not claim a reliability improvement without end-to-end evidence.
 - Do not claim integration coverage from fake docker tests; integration evidence must come from the tagged real Docker layer.
+- Do not claim `integration` green unless the required images were successfully pulled or were already available locally.
 
 ## Review Gate
 
