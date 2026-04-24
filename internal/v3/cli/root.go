@@ -91,10 +91,14 @@ func writeJSON(w io.Writer, value any) error {
 func renderExecutionError(w io.Writer, err error) int {
 	var cmdErr *commandError
 	if errors.As(err, &cmdErr) {
+		message := cmdErr.message
+		if message == "" {
+			message = "command failed"
+		}
 		_ = writeJSON(w, envelope{
 			Command:  cmdErr.command,
 			OK:       false,
-			Message:  "backup verify failed",
+			Message:  message,
 			Error:    &errorPayload{Kind: cmdErr.kind, Message: cmdErr.messageForOperator()},
 			Warnings: []string{},
 			Result:   cmdErr.resultValue(),
@@ -138,6 +142,7 @@ func usageError(message string) error {
 		command:  "backup verify",
 		kind:     "usage",
 		exitCode: exitUsage,
-		message:  message,
+		message:  "backup verify failed",
+		err:      errors.New(message),
 	}
 }
