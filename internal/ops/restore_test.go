@@ -6,10 +6,12 @@ import (
 	"compress/gzip"
 	"context"
 	"errors"
+	"fmt"
 	"io"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"testing"
 	"time"
 
@@ -388,6 +390,48 @@ func TestRestoreFilePhaseFailureAfterDatabaseImportStillReturnsServices(t *testi
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestRestoreOwnershipFailureAfterDatabaseImportAndFileCopyStillReturnsServices(t *testing.T) {
+	sourceManifest, wantSQL, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+	oldApply := restoreApplyOwnership
+	restoreApplyOwnership = func(root string, uid, gid int) error {
+		if root != storageDir {
+			t.Fatalf("unexpected ownership root: %s", root)
+		}
+		if _, err := os.Stat(filepath.Join(storageDir, "restored.txt")); err != nil {
+			t.Fatalf("expected restored file before ownership phase: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); !os.IsNotExist(err) {
+			t.Fatalf("expected old file removed before ownership phase, got %v", err)
+		}
+		return errf("simulated ownership failure")
+	}
+	defer func() {
+		restoreApplyOwnership = oldApply
+	}()
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files ownership restore failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != wantSQL {
+		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+}
+
 func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 	sourceManifest, wantSQL, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
@@ -419,7 +463,7 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 }
 
 func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
-	_, storageDir := restoreTargetConfig(t)
+	cfg, storageDir := restoreTargetConfig(t)
 	probe := useRestoreStagingProbe(t)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchiveEntries(t, archivePath, []restoreArchiveEntry{
@@ -427,7 +471,7 @@ func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 		{name: "../escape.txt", body: "bad\n"},
 	})
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 	if !strings.Contains(err.Error(), "unsafe") {
 		t.Fatalf("unexpected error: %v", err)
@@ -438,12 +482,12 @@ func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 }
 
 func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
-	_, storageDir := restoreTargetConfig(t)
+	cfg, storageDir := restoreTargetConfig(t)
 	probe := useRestoreStagingProbe(t)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeBrokenRestoreFilesArchive(t, archivePath, "restored.txt", "restored\n")
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 	if !strings.Contains(err.Error(), "unreadable") {
 		t.Fatalf("unexpected error: %v", err)
@@ -454,7 +498,7 @@ func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
 }
 
 func TestRestoreFilesBackupTargetSymlinkFailsAfterSuccessfulStaging(t *testing.T) {
-	_, storageDir := restoreTargetConfig(t)
+	cfg, storageDir := restoreTargetConfig(t)
 	probe := useRestoreStagingProbe(t)
 	linkTarget := filepath.Join(t.TempDir(), "outside.txt")
 	if err := os.WriteFile(linkTarget, []byte("outside\n"), 0o644); err != nil {
@@ -468,7 +512,7 @@ func TestRestoreFilesBackupTargetSymlinkFailsAfterSuccessfulStaging(t *testing.T
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 	assertVerifyErrorKind(t, err, ErrorKindIO)
 	if !strings.Contains(err.Error(), "files replace failed before target clear") {
 		t.Fatalf("unexpected error: %v", err)
@@ -482,7 +526,7 @@ func TestRestoreFilesBackupTargetSymlinkFailsAfterSuccessfulStaging(t *testing.T
 }
 
 func TestRestoreFilesBackupStagingExtractionFailureDoesNotClearStorage(t *testing.T) {
-	_, storageDir := restoreTargetConfig(t)
+	cfg, storageDir := restoreTargetConfig(t)
 	probe := useRestoreStagingProbe(t)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
@@ -498,7 +542,7 @@ func TestRestoreFilesBackupStagingExtractionFailureDoesNotClearStorage(t *testin
 		restoreExtractTarEntry = oldExtract
 	}()
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir)
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 	assertVerifyErrorKind(t, err, ErrorKindIO)
 	if !strings.Contains(err.Error(), "files staging extraction failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -509,7 +553,7 @@ func TestRestoreFilesBackupStagingExtractionFailureDoesNotClearStorage(t *testin
 }
 
 func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
-	_, storageDir := restoreTargetConfig(t)
+	cfg, storageDir := restoreTargetConfig(t)
 	probe := useRestoreStagingProbe(t)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{
@@ -517,12 +561,60 @@ func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
 		"nested/child.txt": "child\n",
 	})
 
-	if err := restoreFilesBackup(context.Background(), archivePath, storageDir); err != nil {
+	if err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
 		t.Fatalf("restoreFilesBackup failed: %v", err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
 	assertFileContains(t, filepath.Join(storageDir, "nested", "child.txt"), "child\n")
+	probe.assertClean(t)
+}
+
+func TestRestoreFilesBackupAppliesOwnershipAfterReplaceBeforeFinalPostCheck(t *testing.T) {
+	cfg, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
+
+	oldValidate := restoreValidateStorageTree
+	oldApply := restoreApplyOwnership
+	steps := []string{}
+	restoreValidateStorageTree = func(path string) error {
+		switch path {
+		case storageDir:
+			steps = append(steps, "validate_target")
+		default:
+			steps = append(steps, "validate_staging")
+		}
+		return oldValidate(path)
+	}
+	restoreApplyOwnership = func(root string, uid, gid int) error {
+		steps = append(steps, "apply_ownership")
+		if root != storageDir {
+			t.Fatalf("unexpected ownership root: %s", root)
+		}
+		if uid != cfg.RuntimeUID || gid != cfg.RuntimeGID {
+			t.Fatalf("unexpected ownership target: %d:%d", uid, gid)
+		}
+		if _, err := os.Stat(filepath.Join(storageDir, "restored.txt")); err != nil {
+			t.Fatalf("expected restored file before ownership phase: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); !os.IsNotExist(err) {
+			t.Fatalf("expected old file removed before ownership phase, got %v", err)
+		}
+		return nil
+	}
+	defer func() {
+		restoreValidateStorageTree = oldValidate
+		restoreApplyOwnership = oldApply
+	}()
+
+	if err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
+		t.Fatalf("restoreFilesBackup failed: %v", err)
+	}
+	if strings.Join(steps, ",") != "validate_staging,apply_ownership,validate_target" {
+		t.Fatalf("unexpected restore steps: %v", steps)
+	}
 	probe.assertClean(t)
 }
 
@@ -548,6 +640,114 @@ func TestValidateRestoredStorageTreeRejectsEmptyDirectory(t *testing.T) {
 	err := validateRestoredStorageTree(root)
 	if err == nil || !strings.Contains(err.Error(), "empty") {
 		t.Fatalf("expected empty validation error, got %v", err)
+	}
+}
+
+func TestApplyRestoreOwnershipAppliesToDirectoriesAndRegularFiles(t *testing.T) {
+	root := t.TempDir()
+	nestedDir := filepath.Join(root, "nested")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for path, body := range map[string]string{
+		filepath.Join(root, "root.txt"):       "root\n",
+		filepath.Join(nestedDir, "child.txt"): "child\n",
+	} {
+		if err := os.WriteFile(path, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	ops := restoreOwnershipOps{
+		lstat: func(path string) (os.FileInfo, error) {
+			info, err := os.Lstat(path)
+			if err != nil {
+				return nil, err
+			}
+			return ownershipFileInfo{
+				FileInfo: info,
+				sys: &syscall.Stat_t{
+					Uid: 123,
+					Gid: 456,
+				},
+			}, nil
+		},
+	}
+	var paths []string
+	ops.lchown = func(path string, uid, gid int) error {
+		paths = append(paths, fmt.Sprintf("%s:%d:%d", filepath.ToSlash(path), uid, gid))
+		return nil
+	}
+
+	if err := applyRestoreOwnershipWithOps(root, 33, 44, ops); err != nil {
+		t.Fatalf("applyRestoreOwnershipWithOps failed: %v", err)
+	}
+	want := []string{
+		filepath.ToSlash(root) + ":33:44",
+		filepath.ToSlash(filepath.Join(root, "nested")) + ":33:44",
+		filepath.ToSlash(filepath.Join(root, "nested", "child.txt")) + ":33:44",
+		filepath.ToSlash(filepath.Join(root, "root.txt")) + ":33:44",
+	}
+	if strings.Join(paths, ",") != strings.Join(want, ",") {
+		t.Fatalf("unexpected chown calls: got %v want %v", paths, want)
+	}
+}
+
+func TestApplyRestoreOwnershipRejectsSymlink(t *testing.T) {
+	root := t.TempDir()
+	linkTarget := filepath.Join(t.TempDir(), "outside.txt")
+	if err := os.WriteFile(linkTarget, []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(linkTarget, filepath.Join(root, "linked")); err != nil {
+		t.Fatal(err)
+	}
+
+	err := applyRestoreOwnershipWithOps(root, 33, 33, restoreOwnershipOps{
+		lstat:  os.Lstat,
+		lchown: func(string, int, int) error { return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "symlink") {
+		t.Fatalf("expected symlink ownership error, got %v", err)
+	}
+}
+
+func TestApplyRestoreOwnershipChownFailureIncludesPath(t *testing.T) {
+	root := t.TempDir()
+	filePath := filepath.Join(root, "restored.txt")
+	if err := os.WriteFile(filePath, []byte("restored\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := applyRestoreOwnershipWithOps(root, 33, 44, restoreOwnershipOps{
+		lstat: func(path string) (os.FileInfo, error) {
+			info, statErr := os.Lstat(path)
+			if statErr != nil {
+				return nil, statErr
+			}
+			return ownershipFileInfo{
+				FileInfo: info,
+				sys: &syscall.Stat_t{
+					Uid: 1,
+					Gid: 2,
+				},
+			}, nil
+		},
+		lchown: func(path string, uid, gid int) error {
+			if path == filePath {
+				return errf("operation not permitted")
+			}
+			return nil
+		},
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), filepath.ToSlash(filePath)) {
+		t.Fatalf("expected path in error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), "uid=33 gid=44") {
+		t.Fatalf("expected target ownership in error, got %v", err)
 	}
 }
 
@@ -791,6 +991,15 @@ func writeBrokenRestoreFilesArchive(t *testing.T, path, name, body string) {
 type restoreStagingProbe struct {
 	root    string
 	created []string
+}
+
+type ownershipFileInfo struct {
+	os.FileInfo
+	sys any
+}
+
+func (i ownershipFileInfo) Sys() any {
+	return i.sys
 }
 
 func useRestoreStagingProbe(t *testing.T) *restoreStagingProbe {

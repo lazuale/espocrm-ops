@@ -65,6 +65,8 @@ Required env keys per scope:
 Additional required env keys for `restore`, `migrate`, and `smoke`:
 
 - one of `DB_ROOT_PASSWORD` or `DB_ROOT_PASSWORD_FILE`
+- `ESPO_RUNTIME_UID`
+- `ESPO_RUNTIME_GID`
 
 Optional env keys:
 
@@ -87,6 +89,8 @@ Operator prerequisites:
 - `restore` fails closed unless `manifest.scope` matches `--scope`; use `migrate` for intentional cross-scope restore
 - `restore`, `migrate`, and `smoke` reset the target database as MariaDB root before importing the dump
 - `restore` and `migrate` restore files through staged extraction: the archive is validated, extracted into staging, the staged tree is validated, and target storage is cleared only after staging succeeds
+- `espops` never guesses `ESPO_RUNTIME_UID` or `ESPO_RUNTIME_GID` from the image or the container runtime
+- `restore`, `migrate`, and `smoke` apply the restored storage tree to the explicit runtime uid/gid and fail closed if the operator cannot apply that ownership
 
 ## Minimal Safe Workflow
 
@@ -104,7 +108,7 @@ Then use the commands in this order:
 2. `espops backup verify`
    Verify the manifest you plan to trust.
 3. `espops restore`
-   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction and clears target storage only after staging succeeds.
+   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction, clears target storage only after staging succeeds, and applies the explicit runtime uid/gid before the final file post-check.
 4. `espops migrate`
    Migrate is thin composition over verified restore flow, not a separate engine. It is the only supported cross-scope restore path.
 

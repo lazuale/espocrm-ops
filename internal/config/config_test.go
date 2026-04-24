@@ -56,6 +56,9 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	if cfg.DBPassword != "db-secret" {
 		t.Fatalf("unexpected db password: %q", cfg.DBPassword)
 	}
+	if cfg.RuntimeOwnershipConfigured {
+		t.Fatal("expected runtime ownership to be optional for backup config")
+	}
 }
 
 func TestLoadBackupConfigReadsDBPasswordFile(t *testing.T) {
@@ -102,6 +105,8 @@ func TestLoadRestoreConfigRequiresDBRootPassword(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=33",
+		"ESPO_RUNTIME_GID=33",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -137,6 +142,8 @@ func TestLoadRestoreConfigReadsDBRootPasswordFile(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=33",
+		"ESPO_RUNTIME_GID=44",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -158,6 +165,12 @@ func TestLoadRestoreConfigReadsDBRootPasswordFile(t *testing.T) {
 	if cfg.DBRootPassword != "root-secret" {
 		t.Fatalf("unexpected db root password: %q", cfg.DBRootPassword)
 	}
+	if !cfg.RuntimeOwnershipConfigured {
+		t.Fatal("expected runtime ownership to be configured")
+	}
+	if cfg.RuntimeUID != 33 || cfg.RuntimeGID != 44 {
+		t.Fatalf("unexpected runtime ownership: %d:%d", cfg.RuntimeUID, cfg.RuntimeGID)
+	}
 }
 
 func TestLoadRestoreConfigRejectsInlineAndFileDBRootPassword(t *testing.T) {
@@ -173,6 +186,8 @@ func TestLoadRestoreConfigRejectsInlineAndFileDBRootPassword(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=33",
+		"ESPO_RUNTIME_GID=33",
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -193,6 +208,106 @@ func TestLoadRestoreConfigRejectsInlineAndFileDBRootPassword(t *testing.T) {
 		t.Fatal("expected error")
 	}
 	if !strings.Contains(err.Error(), "only one of DB_ROOT_PASSWORD or DB_ROOT_PASSWORD_FILE may be set") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRestoreConfigRequiresRuntimeOwnership(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRestore(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "ESPO_RUNTIME_UID and ESPO_RUNTIME_GID are required") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRestoreConfigRejectsNegativeRuntimeUID(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=-1",
+		"ESPO_RUNTIME_GID=33",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRestore(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "ESPO_RUNTIME_UID") || !strings.Contains(err.Error(), "integer >= 0") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestLoadRestoreConfigRejectsNonNumericRuntimeGID(t *testing.T) {
+	projectDir := t.TempDir()
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=33",
+		"ESPO_RUNTIME_GID=group",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	_, err := LoadRestore(BackupRequest{
+		Scope:      "prod",
+		ProjectDir: projectDir,
+	})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "ESPO_RUNTIME_GID") || !strings.Contains(err.Error(), "integer >= 0") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 }

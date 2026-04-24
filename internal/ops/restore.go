@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 	"time"
 
 	config "github.com/lazuale/espocrm-ops/internal/config"
@@ -43,9 +44,20 @@ type restoreOptions struct {
 const restoreStagingDirPattern = "espops-restore-staging-*"
 
 var (
-	createRestoreStagingDir = defaultCreateRestoreStagingDir
-	restoreExtractTarEntry  = extractTarEntry
+	createRestoreStagingDir    = defaultCreateRestoreStagingDir
+	restoreExtractTarEntry     = extractTarEntry
+	restoreValidateStorageTree = validateRestoredStorageTree
+	restoreApplyOwnership      = applyRestoreOwnership
+	restoreOwnershipFS         = restoreOwnershipOps{
+		lstat:  os.Lstat,
+		lchown: os.Lchown,
+	}
 )
+
+type restoreOwnershipOps struct {
+	lstat  func(string) (os.FileInfo, error)
+	lchown func(string, int, int) error
+}
 
 func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, opts restoreOptions) (result RestoreResult, err error) {
 	if rt == nil {
@@ -122,7 +134,7 @@ func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPa
 	if err := restoreDatabaseBackup(ctx, verifyResult.DBBackup, rt, target); err != nil {
 		return result, err
 	}
-	if err := restoreFilesBackup(ctx, verifyResult.FilesBackup, cfg.StorageDir); err != nil {
+	if err := restoreFilesBackup(ctx, verifyResult.FilesBackup, cfg.StorageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
 		return result, err
 	}
 
@@ -148,6 +160,15 @@ func validateRestoreInputs(cfg config.BackupConfig, manifestPath string) error {
 	}
 	if strings.TrimSpace(cfg.DBRootPassword) == "" {
 		return fmt.Errorf("DB_ROOT_PASSWORD is required")
+	}
+	if !cfg.RuntimeOwnershipConfigured {
+		return fmt.Errorf("ESPO_RUNTIME_UID and ESPO_RUNTIME_GID are required")
+	}
+	if cfg.RuntimeUID < 0 {
+		return fmt.Errorf("ESPO_RUNTIME_UID must be >= 0")
+	}
+	if cfg.RuntimeGID < 0 {
+		return fmt.Errorf("ESPO_RUNTIME_GID must be >= 0")
 	}
 	if strings.TrimSpace(manifestPath) == "" {
 		return fmt.Errorf("manifest path is required")
@@ -213,7 +234,7 @@ func restoreDatabaseBackup(ctx context.Context, artifactPath string, rt restoreR
 	return nil
 }
 
-func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string) (err error) {
+func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string, runtimeUID, runtimeGID int) (err error) {
 	if err := ctx.Err(); err != nil {
 		return ioError("restore interrupted", err)
 	}
@@ -239,13 +260,16 @@ func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string) (e
 	if err := extractFilesArchiveToStaging(ctx, artifactPath, stagingDir); err != nil {
 		return err
 	}
-	if err := validateRestoredStorageTree(stagingDir); err != nil {
+	if err := restoreValidateStorageTree(stagingDir); err != nil {
 		return archiveError("files restore staging is invalid", err)
 	}
 	if err := replaceRestoreStorageFromStaging(ctx, stagingDir, storageDir); err != nil {
 		return err
 	}
-	if err := validateRestoredStorageTree(storageDir); err != nil {
+	if err := restoreApplyOwnership(storageDir, runtimeUID, runtimeGID); err != nil {
+		return ioError("files ownership restore failed", err)
+	}
+	if err := restoreValidateStorageTree(storageDir); err != nil {
 		return ioError("files restore post-check failed", err)
 	}
 
@@ -449,6 +473,66 @@ func validateRestoredStorageTree(path string) error {
 	}
 
 	return nil
+}
+
+func applyRestoreOwnership(root string, uid, gid int) error {
+	return applyRestoreOwnershipWithOps(root, uid, gid, restoreOwnershipFS)
+}
+
+func applyRestoreOwnershipWithOps(root string, uid, gid int, fs restoreOwnershipOps) error {
+	if err := ensureRestoreStorageDir(root); err != nil {
+		return err
+	}
+	if fs.lstat == nil {
+		return fmt.Errorf("restore ownership lstat is required")
+	}
+	if fs.lchown == nil {
+		return fmt.Errorf("restore ownership lchown is required")
+	}
+
+	return filepath.WalkDir(root, func(current string, entry os.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+
+		info, err := fs.lstat(current)
+		if err != nil {
+			return err
+		}
+		mode := info.Mode()
+		if mode&os.ModeSymlink != 0 {
+			return fmt.Errorf("restore ownership path %s is a symlink", current)
+		}
+		if !info.IsDir() && !mode.IsRegular() {
+			return fmt.Errorf("restore ownership path %s has unsupported type", current)
+		}
+
+		currentUID, currentGID, err := fileOwner(info)
+		if err != nil {
+			return fmt.Errorf("restore ownership path %s owner metadata is unavailable: %w", current, err)
+		}
+		if currentUID == uid && currentGID == gid {
+			return nil
+		}
+		if err := fs.lchown(current, uid, gid); err != nil {
+			return fmt.Errorf(
+				"restore ownership path %s to uid=%d gid=%d failed: %w",
+				current,
+				uid,
+				gid,
+				err,
+			)
+		}
+		return nil
+	})
+}
+
+func fileOwner(info os.FileInfo) (int, int, error) {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat == nil {
+		return 0, 0, fmt.Errorf("unsupported stat payload")
+	}
+	return int(stat.Uid), int(stat.Gid), nil
 }
 
 func replaceRestoreStorageFromStaging(ctx context.Context, stagingDir, storageDir string) error {

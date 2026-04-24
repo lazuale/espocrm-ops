@@ -298,18 +298,21 @@ func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
 
 func backupTestConfig(root, storageDir string) config.BackupConfig {
 	return config.BackupConfig{
-		Scope:          "prod",
-		ProjectDir:     root,
-		ComposeFile:    filepath.Join(root, "compose.yaml"),
-		EnvFile:        filepath.Join(root, ".env.prod"),
-		BackupRoot:     filepath.Join(root, "backups", "prod"),
-		StorageDir:     storageDir,
-		AppServices:    []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},
-		DBService:      "db",
-		DBUser:         "espocrm",
-		DBPassword:     "db-secret",
-		DBRootPassword: "root-secret",
-		DBName:         "espocrm",
+		Scope:                      "prod",
+		ProjectDir:                 root,
+		ComposeFile:                filepath.Join(root, "compose.yaml"),
+		EnvFile:                    filepath.Join(root, ".env.prod"),
+		BackupRoot:                 filepath.Join(root, "backups", "prod"),
+		StorageDir:                 storageDir,
+		AppServices:                []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},
+		DBService:                  "db",
+		DBUser:                     "espocrm",
+		DBPassword:                 "db-secret",
+		DBRootPassword:             "root-secret",
+		DBName:                     "espocrm",
+		RuntimeUID:                 os.Getuid(),
+		RuntimeGID:                 os.Getgid(),
+		RuntimeOwnershipConfigured: true,
 	}
 }
 

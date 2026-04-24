@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -30,6 +31,8 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
+		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -112,6 +115,8 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
+		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -173,6 +178,8 @@ func TestRestoreCLIJSONRejectsManifestFromDifferentScope(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
+		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -224,6 +231,8 @@ func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 		"ESPO_CONTOUR=prod",
 		"BACKUP_ROOT=./backups/prod",
 		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
+		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
 		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
 		"DB_SERVICE=db",
 		"DB_USER=espocrm",
@@ -256,6 +265,122 @@ func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 	}
 	if !strings.Contains(errMessage, "MYSQL_PWD=<redacted>") {
 		t.Fatalf("expected redacted json error message, got %s", errMessage)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONUsageFailureWhenRuntimeOwnershipMissing(t *testing.T) {
+	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
+
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitUsage {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitUsage, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "ESPO_RUNTIME_UID and ESPO_RUNTIME_GID are required") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONOwnershipFailureDoesNotRevealSecrets(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("ownership failure test requires non-root operator")
+	}
+
+	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
+
+	projectDir := t.TempDir()
+	storageDir := filepath.Join(projectDir, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=" + strconv.Itoa(os.Geteuid()+1),
+		"ESPO_RUNTIME_GID=" + strconv.Itoa(os.Getegid()+1),
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	prependRestoreFakeDocker(t)
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitIO {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitIO, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "io" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if !strings.Contains(errMessage, "files ownership restore failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	if strings.Contains(errMessage, "root-secret") || strings.Contains(errMessage, "db-secret") {
+		t.Fatalf("ownership error leaked secret: %s", errMessage)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
@@ -319,6 +444,14 @@ func prependRestoreFakeDocker(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+}
+
+func currentRuntimeUIDString() string {
+	return strconv.Itoa(os.Getuid())
+}
+
+func currentRuntimeGIDString() string {
+	return strconv.Itoa(os.Getgid())
 }
 
 const restoreFakeDockerScript = `#!/usr/bin/env bash

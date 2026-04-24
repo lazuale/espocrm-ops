@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 )
 
@@ -15,29 +16,40 @@ type BackupRequest struct {
 }
 
 type BackupConfig struct {
-	Scope          string
-	ProjectDir     string
-	ComposeFile    string
-	EnvFile        string
-	BackupRoot     string
-	StorageDir     string
-	AppServices    []string
-	DBService      string
-	DBUser         string
-	DBPassword     string
-	DBRootPassword string
-	DBName         string
+	Scope                      string
+	ProjectDir                 string
+	ComposeFile                string
+	EnvFile                    string
+	BackupRoot                 string
+	StorageDir                 string
+	AppServices                []string
+	DBService                  string
+	DBUser                     string
+	DBPassword                 string
+	DBRootPassword             string
+	DBName                     string
+	RuntimeUID                 int
+	RuntimeGID                 int
+	RuntimeOwnershipConfigured bool
 }
 
 func LoadBackup(req BackupRequest) (BackupConfig, error) {
-	return load(req, false)
+	return load(req, loadOptions{})
 }
 
 func LoadRestore(req BackupRequest) (BackupConfig, error) {
-	return load(req, true)
+	return load(req, loadOptions{
+		requireRootPassword:     true,
+		requireRuntimeOwnership: true,
+	})
 }
 
-func load(req BackupRequest, requireRootPassword bool) (BackupConfig, error) {
+type loadOptions struct {
+	requireRootPassword     bool
+	requireRuntimeOwnership bool
+}
+
+func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	scope := strings.TrimSpace(req.Scope)
 	if scope != "dev" && scope != "prod" {
 		return BackupConfig{}, fmt.Errorf("--scope must be dev or prod")
@@ -86,7 +98,11 @@ func load(req BackupRequest, requireRootPassword bool) (BackupConfig, error) {
 	if err != nil {
 		return BackupConfig{}, err
 	}
-	rootPassword, err := resolveEnvSecret(values, projectDir, envFile, "DB_ROOT_PASSWORD", "DB_ROOT_PASSWORD_FILE", requireRootPassword)
+	rootPassword, err := resolveEnvSecret(values, projectDir, envFile, "DB_ROOT_PASSWORD", "DB_ROOT_PASSWORD_FILE", opts.requireRootPassword)
+	if err != nil {
+		return BackupConfig{}, err
+	}
+	runtimeUID, runtimeGID, runtimeOwnershipConfigured, err := resolveRuntimeOwnership(values, envFile, opts.requireRuntimeOwnership)
 	if err != nil {
 		return BackupConfig{}, err
 	}
@@ -96,18 +112,21 @@ func load(req BackupRequest, requireRootPassword bool) (BackupConfig, error) {
 	}
 
 	return BackupConfig{
-		Scope:          scope,
-		ProjectDir:     projectDir,
-		ComposeFile:    composeFile,
-		EnvFile:        envFile,
-		BackupRoot:     resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
-		StorageDir:     resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
-		AppServices:    appServices,
-		DBService:      strings.TrimSpace(values["DB_SERVICE"]),
-		DBUser:         strings.TrimSpace(values["DB_USER"]),
-		DBPassword:     password,
-		DBRootPassword: rootPassword,
-		DBName:         strings.TrimSpace(values["DB_NAME"]),
+		Scope:                      scope,
+		ProjectDir:                 projectDir,
+		ComposeFile:                composeFile,
+		EnvFile:                    envFile,
+		BackupRoot:                 resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
+		StorageDir:                 resolveProjectPath(projectDir, values["ESPO_STORAGE_DIR"]),
+		AppServices:                appServices,
+		DBService:                  strings.TrimSpace(values["DB_SERVICE"]),
+		DBUser:                     strings.TrimSpace(values["DB_USER"]),
+		DBPassword:                 password,
+		DBRootPassword:             rootPassword,
+		DBName:                     strings.TrimSpace(values["DB_NAME"]),
+		RuntimeUID:                 runtimeUID,
+		RuntimeGID:                 runtimeGID,
+		RuntimeOwnershipConfigured: runtimeOwnershipConfigured,
 	}, nil
 }
 
@@ -185,6 +204,49 @@ func resolveAppServices(raw string) ([]string, error) {
 		services = append(services, service)
 	}
 	return services, nil
+}
+
+func resolveRuntimeOwnership(values map[string]string, envFile string, required bool) (int, int, bool, error) {
+	rawUID, uidPresent := values["ESPO_RUNTIME_UID"]
+	rawGID, gidPresent := values["ESPO_RUNTIME_GID"]
+
+	if !uidPresent && !gidPresent {
+		if required {
+			return 0, 0, false, fmt.Errorf("ESPO_RUNTIME_UID and ESPO_RUNTIME_GID are required in %s", envFile)
+		}
+		return 0, 0, false, nil
+	}
+
+	rawUID = strings.TrimSpace(rawUID)
+	rawGID = strings.TrimSpace(rawGID)
+	switch {
+	case rawUID == "" && rawGID == "":
+		return 0, 0, false, fmt.Errorf("ESPO_RUNTIME_UID and ESPO_RUNTIME_GID are required in %s", envFile)
+	case rawUID == "" || rawGID == "":
+		return 0, 0, false, fmt.Errorf("ESPO_RUNTIME_UID and ESPO_RUNTIME_GID must both be set in %s", envFile)
+	}
+
+	uid, err := parseNonNegativeEnvInt("ESPO_RUNTIME_UID", rawUID, envFile)
+	if err != nil {
+		return 0, 0, false, err
+	}
+	gid, err := parseNonNegativeEnvInt("ESPO_RUNTIME_GID", rawGID, envFile)
+	if err != nil {
+		return 0, 0, false, err
+	}
+
+	return uid, gid, true, nil
+}
+
+func parseNonNegativeEnvInt(key, raw, envFile string) (int, error) {
+	value, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil {
+		return 0, fmt.Errorf("%s in %s must be an integer >= 0", key, envFile)
+	}
+	if value < 0 {
+		return 0, fmt.Errorf("%s in %s must be an integer >= 0", key, envFile)
+	}
+	return value, nil
 }
 
 func loadEnvAssignments(path string) (values map[string]string, err error) {
