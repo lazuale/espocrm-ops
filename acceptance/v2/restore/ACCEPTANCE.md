@@ -20,7 +20,7 @@
 - отсутствие ложного success
 
 После закрытия parity blockers выполнен `cutover-safe wiring` real CLI path для parity-покрытых destructive restore scenarios.
-Legacy path остаётся только как regression oracle и временный compatibility shim для явно вынесенных legacy-only случаев.
+Legacy path остаётся только как regression oracle для явно вынесенных legacy-only случаев.
 
 ## Источник истины
 

@@ -619,10 +619,16 @@ Forbidden callers:
 `Restore Execution Monolith`
 
 #### B. Purpose
-Own the legacy destructive restore workflow for oracle/reference and emergency work, including source resolution, optional emergency recovery point, runtime preparation and return, DB restore, files restore, and dry-run planning.
+Own the production destructive restore workflow through the CLI `restore` command boundary, including source resolution, optional emergency recovery point, runtime preparation and return, DB restore, files restore, dry-run planning, and explicit post-check before success. Legacy restore remains test-only oracle/reference work outside the default `NewApp` graph.
 
 #### C. Contour
 Inside this unit:
+
+- `internal/app/restore_command.go`
+- `internal/app/restore_v2.go`
+- `internal/model/restore.go`
+
+Legacy-only oracle/reference material kept outside the production path:
 
 - `internal/app/restore/`
 - `internal/app/internal/restoreflow/`
@@ -641,16 +647,15 @@ Allowed internal mechanisms:
 #### D. External Inputs
 This unit may accept:
 
-- `restore.ExecuteRequest`
-- `restoreflow.DBRequest`
-- `restoreflow.FilesRequest`
+- `RestoreCommandRequest`
+- `model.RestoreRequest`
 - `OperationContext`
 - manifest-backed or direct backup source paths
 
 #### E. External Outputs
 This unit may emit:
 
-- `restore.ExecuteInfo`
+- `model.RestoreResult`
 - snapshot artifacts when snapshot is enabled
 - DB and files restore plans
 - workflow steps and warnings
@@ -680,8 +685,8 @@ Forbidden:
 #### G. Availability
 Allowed callers:
 
-- explicit legacy-only oracle/reference harness; not through default `NewApp`
-- `Migration Execution Monolith` through the shared restore kernel
+- CLI `restore` path through `internal/app/restore_command.go` and the default `NewApp` graph
+- explicit legacy-only oracle/reference harness for test-only reference work; not through default `NewApp`
 
 Allowed callees:
 
