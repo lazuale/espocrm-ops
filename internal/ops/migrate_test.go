@@ -171,8 +171,9 @@ func TestMigrateBusyTargetLockFailsBeforeMutation(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
-func TestMigrateBusyKnownSourceLockFailsBeforeTargetMutation(t *testing.T) {
-	sourceManifest, _, cfg, storageDir := writeKnownSourceMigrateBackupSet(t)
+func TestMigrateBusySourceLockFailsBeforeTargetMutation(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
 	lock := mustAcquireScopeOperationLock(t, cfg.ProjectDir, "dev")
 	defer func() {
 		if err := lock.Release(); err != nil {
@@ -345,8 +346,6 @@ func writeKnownSourceMigrateBackupSet(t *testing.T) (manifestPath, dbSQL string,
 	if err := os.WriteFile(filepath.Join(sourceStorageDir, "restored.txt"), []byte("restored\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	writeMigrateSourceEnv(t, root)
-
 	sourceCfg := backupTestConfig(root, sourceStorageDir)
 	sourceCfg.Scope = "dev"
 	sourceCfg.EnvFile = filepath.Join(root, ".env.dev")
@@ -370,30 +369,6 @@ func writeKnownSourceMigrateBackupSet(t *testing.T) (manifestPath, dbSQL string,
 
 	targetCfg = backupTestConfig(root, targetStorageDir)
 	return result.Manifest, dbSQL, targetCfg, targetStorageDir
-}
-
-func writeMigrateSourceEnv(t *testing.T, root string) {
-	t.Helper()
-
-	body := strings.Join([]string{
-		"ESPO_CONTOUR=dev",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
-		"BACKUP_ROOT=./backups/dev",
-		"BACKUP_NAME_PREFIX=espocrm-dev",
-		"BACKUP_RETENTION_DAYS=7",
-		"MIN_FREE_DISK_MB=1",
-		"ESPO_STORAGE_DIR=./runtime/dev/espo",
-		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
-		"DB_SERVICE=db",
-		"DB_USER=espocrm",
-		"DB_PASSWORD=db-secret",
-		"DB_NAME=espocrm",
-		"",
-	}, "\n")
-	if err := os.WriteFile(filepath.Join(root, ".env.dev"), []byte(body), 0o644); err != nil {
-		t.Fatal(err)
-	}
 }
 
 func writeVersionOneScopedRestoreSourceBackupSet(t *testing.T, scope string) (manifestPath, dbSQL, storageDir string) {

@@ -30,7 +30,7 @@ Run `espops` against a project directory containing:
 
 Start from `env/.env.dev.example` and `env/.env.prod.example`.
 
-For `prod`, `.env.prod` must be a regular file, not a symlink, with permissions no broader than `0600` or `0640`.
+For `prod`, `.env.prod` must be a regular file, not a symlink, with mode exactly `0600`.
 
 ```bash
 chmod 600 .env.prod
@@ -80,7 +80,7 @@ The env examples use readable tag-based images:
 - `ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache`
 - `MARIADB_IMAGE=mariadb:11.4`
 
-Mutable tags are not production-safe. For `--scope prod`, `espops` requires digest-pinned image refs such as `repo@sha256:<64-hex-digest>` and does not resolve digests for you.
+Mutable tags are not production-safe. For `--scope prod`, `espops` requires digest-pinned image refs such as `prefix@sha256:<64-lower-hex-digest>` and does not resolve digests for you.
 
 Before first production use, pre-pull the exact `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs from the env file you intend to trust.
 
@@ -93,7 +93,7 @@ Mutating commands use cross-process operation locks under `PROJECT_DIR/.espops/l
 - `doctor` is read-only and does not lock.
 - `backup` locks its scope before runtime validation, disk checks, service stop, and artifact creation.
 - `restore` locks the target scope before manifest verify, snapshot backup, service stop, database reset, and storage mutation.
-- `migrate` locks the target scope and also locks the source scope when the manifest is inside the known source `BACKUP_ROOT`.
+- `migrate` locks both the source scope and target scope.
 - `smoke` locks both scopes for the full fixed flow.
 
 Success requires explicit health or post-check evidence. A MariaDB ping alone is not success.
@@ -130,7 +130,7 @@ Retention cleanup runs only after the new set self-verifies. It deletes only com
 
 `restore` is same-scope only: `manifest.scope` must match `--scope`, and the manifest runtime block must match the target runtime contract.
 
-`migrate` is the supported cross-scope restore path. It requires manifest version `2` and checks the recorded image, service, and storage contract before target mutation.
+`migrate` is the supported cross-scope restore path. It requires manifest version `2` and checks the recorded image, service, and storage contract before target mutation. For `dev` to `prod` migration, both scopes must use the same digest-pinned `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs.
 
 Both flows create a target snapshot before mutation, reset the target database as MariaDB root, import into a clean database, restore files through staged extraction next to target storage, apply `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`, switch storage by same-parent rename, and run final post-checks before reporting success.
 

@@ -15,8 +15,9 @@
 - `DB_SERVICE` and every service in `APP_SERVICES` must expose a Docker Compose healthcheck.
 - Success requires explicit health or post-check evidence; MariaDB reachability alone is not success.
 - The shipped Compose/env contract uses inline `DB_PASSWORD` and `DB_ROOT_PASSWORD`; do not advertise file-based password env keys.
-- For `prod`, `.env.prod` must stay a regular non-symlink file with permissions no broader than `0600` or `0640`.
+- For `prod`, `.env.prod` must stay a regular non-symlink file with mode exactly `0600`.
 - Do not claim mutable image tags are production-safe unless deployed image refs are digest-pinned.
+- For `migrate` from `dev` to `prod`, both scopes must use the same digest-pinned `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs.
 - `restore`, `migrate`, and `smoke` require explicit `DB_ROOT_PASSWORD`, `ESPO_RUNTIME_UID`, and `ESPO_RUNTIME_GID`; do not fall back to `DB_USER` or infer ownership.
 
 ## Operation Safety

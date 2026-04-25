@@ -89,7 +89,7 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	}
 }
 
-func TestLoadBackupConfigAllowsProdEnvMode0640(t *testing.T) {
+func TestLoadBackupConfigRejectsProdEnvMode0640(t *testing.T) {
 	projectDir := t.TempDir()
 	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
 		"ESPO_CONTOUR=prod",
@@ -109,8 +109,14 @@ func TestLoadBackupConfigAllowsProdEnvMode0640(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	if _, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir}); err != nil {
-		t.Fatalf("LoadBackup failed: %v", err)
+	_, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	for _, want := range []string{"prod env file", "unsafe permissions", "0640", "chmod 600"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Fatalf("expected error to contain %q, got %v", want, err)
+		}
 	}
 }
 
@@ -119,6 +125,8 @@ func TestLoadBackupConfigRejectsUnsafeProdEnvMode(t *testing.T) {
 		name string
 		mode os.FileMode
 	}{
+		{name: "owner_read_only", mode: 0o400},
+		{name: "owner_write_only", mode: 0o200},
 		{name: "world_readable", mode: 0o644},
 		{name: "world_writable", mode: 0o602},
 		{name: "group_writable", mode: 0o660},
@@ -248,6 +256,35 @@ func TestLoadBackupConfigAllowsDevTagBasedImageRefs(t *testing.T) {
 	}
 }
 
+func TestLoadBackupConfigAllowsProdTaggedDigestImageRefs(t *testing.T) {
+	projectDir := t.TempDir()
+	espoImage := "registry.example.com:5000/espocrm/espocrm:9.3.4@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	mariadbImage := "registry.example.com:5000/mariadb:11.4@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=" + espoImage,
+		"MARIADB_IMAGE=" + mariadbImage,
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+
+	cfg, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	if cfg.EspoCRMImage != espoImage || cfg.MariaDBImage != mariadbImage {
+		t.Fatalf("unexpected prod image refs: %s %s", cfg.EspoCRMImage, cfg.MariaDBImage)
+	}
+}
+
 func TestLoadBackupConfigRejectsProdImageRefsWithoutDigest(t *testing.T) {
 	for _, tc := range []struct {
 		name string
@@ -261,7 +298,7 @@ func TestLoadBackupConfigRejectsProdImageRefsWithoutDigest(t *testing.T) {
 		{name: "wrong_algorithm", line: "ESPOCRM_IMAGE=espocrm/espocrm@sha512:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", key: "ESPOCRM_IMAGE"},
 		{name: "short_digest", line: "MARIADB_IMAGE=mariadb@sha256:abc123", key: "MARIADB_IMAGE"},
 		{name: "non_hex_digest", line: "ESPOCRM_IMAGE=espocrm/espocrm@sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg", key: "ESPOCRM_IMAGE"},
-		{name: "tag_plus_digest", line: "MARIADB_IMAGE=mariadb:11.4@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", key: "MARIADB_IMAGE"},
+		{name: "upper_hex_digest", line: "MARIADB_IMAGE=mariadb@sha256:BBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBBB", key: "MARIADB_IMAGE"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			projectDir := t.TempDir()
@@ -284,7 +321,7 @@ func TestLoadBackupConfigRejectsProdImageRefsWithoutDigest(t *testing.T) {
 			if err == nil {
 				t.Fatal("expected error")
 			}
-			for _, want := range []string{tc.key, "digest-pinned", "repo@sha256:<64-hex-digest>", "prod"} {
+			for _, want := range []string{tc.key, "digest-pinned", "prefix@sha256:<64-lower-hex-digest>", "prod"} {
 				if !strings.Contains(err.Error(), want) {
 					t.Fatalf("expected error to contain %q, got %v", want, err)
 				}

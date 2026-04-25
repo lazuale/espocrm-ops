@@ -3,7 +3,6 @@ package ops
 import (
 	"context"
 	"fmt"
-	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,7 +27,10 @@ func Migrate(ctx context.Context, fromScope string, targetCfg config.BackupConfi
 	}
 	now = now.UTC()
 
-	lockSpecs := migrateLockSpecs(fromScope, targetCfg, manifestPath)
+	lockSpecs := []operationLockSpec{
+		{ProjectDir: targetCfg.ProjectDir, Scope: fromScope},
+		{ProjectDir: targetCfg.ProjectDir, Scope: targetCfg.Scope},
+	}
 	restoreResult, restoreErr := withOperationLocks(ctx, lockSpecs, "migrate lock failed", func(lockedCtx context.Context) (RestoreResult, error) {
 		return restoreWithOptionsLocked(lockedCtx, targetCfg, manifestPath, rt, now, restoreOptions{
 			allowedSourceScope: fromScope,
@@ -65,39 +67,4 @@ func validateMigrateInputs(fromScope string, targetCfg config.BackupConfig, mani
 	}
 
 	return nil
-}
-
-func migrateLockSpecs(fromScope string, targetCfg config.BackupConfig, manifestPath string) []operationLockSpec {
-	specs := []operationLockSpec{{
-		ProjectDir: targetCfg.ProjectDir,
-		Scope:      targetCfg.Scope,
-	}}
-
-	sourceCfg, err := config.LoadBackup(config.BackupRequest{
-		Scope:      fromScope,
-		ProjectDir: targetCfg.ProjectDir,
-	})
-	if err != nil {
-		return specs
-	}
-	if !pathInsideRoot(manifestPath, sourceCfg.BackupRoot) {
-		return specs
-	}
-
-	return append(specs, operationLockSpec{
-		ProjectDir: sourceCfg.ProjectDir,
-		Scope:      sourceCfg.Scope,
-	})
-}
-
-func pathInsideRoot(path, root string) bool {
-	pathAbs, err := filepath.Abs(filepath.Clean(strings.TrimSpace(path)))
-	if err != nil {
-		return false
-	}
-	rootAbs, err := filepath.Abs(filepath.Clean(strings.TrimSpace(root)))
-	if err != nil {
-		return false
-	}
-	return pathWithinRoot(rootAbs, pathAbs)
 }

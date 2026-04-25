@@ -202,9 +202,7 @@ func TestMakefileKeepsBasicHealthCommands(t *testing.T) {
 	for _, dep := range []string{"build", "mod-verify", "test-readonly", "test-race", "vet", "staticcheck", "lint", "mod-clean-check"} {
 		assertMakefileTargetDependsOn(t, text, "ci-fast", dep)
 	}
-	for _, dep := range []string{"pull-images", "integration"} {
-		assertMakefileTargetDependsOn(t, text, "ci-integration", dep)
-	}
+	assertMakefileTargetDependsOn(t, text, "ci-integration", "integration")
 	for _, dep := range []string{"ci-fast", "ci-integration"} {
 		assertMakefileTargetDependsOn(t, text, "ci", dep)
 	}

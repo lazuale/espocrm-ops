@@ -70,7 +70,7 @@ lint:
 
 ci-fast: build mod-verify test-readonly test-race vet staticcheck lint mod-clean-check
 
-ci-integration: pull-images integration
+ci-integration: integration
 
 ci: ci-fast ci-integration
 

@@ -204,33 +204,26 @@ func requireSecureProdEnvFile(path string) error {
 		return fmt.Errorf("prod env file %s must be a regular file", path)
 	}
 
-	mode := info.Mode().Perm()
-	if mode&^0o640 != 0 {
-		return fmt.Errorf("prod env file %s has unsafe permissions %04o; run chmod 600 %s, or chmod 640 %s when group read access is required", path, mode, path, path)
+	mode := info.Mode()
+	if mode != 0o600 {
+		return fmt.Errorf("prod env file %s has unsafe permissions %04o; run chmod 600 %s", path, mode.Perm(), path)
 	}
 	return nil
 }
 
 func requireDigestPinnedImage(key, ref, envFile string) error {
 	if ref == "" {
-		return fmt.Errorf("%s is required in %s and must be digest-pinned as repo@sha256:<64-hex-digest> for prod", key, envFile)
+		return fmt.Errorf("%s is required in %s and must be digest-pinned as prefix@sha256:<64-lower-hex-digest> for prod", key, envFile)
 	}
 	if !isDigestPinnedImageRef(ref) {
-		return fmt.Errorf("%s in %s must be digest-pinned as repo@sha256:<64-hex-digest> for prod, got %q", key, envFile, ref)
+		return fmt.Errorf("%s in %s must be digest-pinned as prefix@sha256:<64-lower-hex-digest> for prod, got %q", key, envFile, ref)
 	}
 	return nil
 }
 
 func isDigestPinnedImageRef(ref string) bool {
-	repo, digest, ok := strings.Cut(ref, "@sha256:")
-	if !ok || repo == "" || digest == "" {
-		return false
-	}
-	if strings.Contains(repo, "@") || strings.Contains(digest, "@") || strings.Contains(digest, ":") {
-		return false
-	}
-	lastSlash := strings.LastIndex(repo, "/")
-	if strings.Contains(repo[lastSlash+1:], ":") {
+	prefix, digest, ok := strings.Cut(ref, "@sha256:")
+	if !ok || prefix == "" {
 		return false
 	}
 	if len(digest) != sha256DigestHexLen {
