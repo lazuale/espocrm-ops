@@ -81,6 +81,7 @@ Contract:
 - Keep `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID` explicit for restore-capable flows; do not guess runtime ownership from the image, container user, or current operator account.
 - Keep health/post-check success strict: contract services must be explicitly listed, `running`, and `healthy`; MariaDB reachability alone is not success.
 - Do not ship a mutating operation path without the per-scope cross-process operation lock.
+- Keep backup manifests on the explicit runtime contract. New backups must write manifest version `2`, and `restore`/`migrate` must block manifest version `1` before mutation.
 - Keep `compose.yaml`, `env/.env.*.example`, `README.md`, and `internal/config/` on one literal runtime contract; when one changes, update the others and the repository guards in `repository_test.go`.
 - Do not add decorative env keys to examples.
 - Do not call mutable image tags production-safe unless the deployed image refs are digest-pinned.
@@ -104,6 +105,7 @@ Contract:
 2. Run the smallest relevant tests while iterating.
    Health/post-check changes must include `internal/runtime/` and `internal/ops/` test coverage; do not rely on CLI JSON tests alone.
    Locking/concurrency changes must include real `internal/ops/` lock tests plus flow tests that prove lock acquisition happens before mutation.
+   Manifest/runtime-contract changes must include `internal/manifest/` and `internal/ops/` tests, plus flow tests that prove `restore` and `migrate` block before mutation when the manifest runtime block does not match.
 3. Run `make ci` before claiming repository health.
 4. Update `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` when the graph or command behavior changes.
 

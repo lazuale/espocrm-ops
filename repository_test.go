@@ -537,6 +537,32 @@ func TestOperationLockContractIsDocumented(t *testing.T) {
 	}
 }
 
+func TestManifestRuntimeContractIsDocumented(t *testing.T) {
+	readme := string(readRepoFile(t, "README.md"))
+	for _, needle := range []string{
+		"manifest version `2`",
+		"`backup verify` can still diagnose a valid manifest version `1` backup set",
+		"`restore`, `migrate`, and `smoke` require manifest version `2`",
+		"`espops backup`",
+		"`espops restore`",
+		"`espops migrate`",
+	} {
+		if !strings.Contains(readme, needle) {
+			t.Fatalf("README must document manifest runtime contract %q", needle)
+		}
+	}
+
+	contributing := string(readRepoFile(t, "CONTRIBUTING.md"))
+	if !strings.Contains(contributing, "New backups must write manifest version `2`, and `restore`/`migrate` must block manifest version `1` before mutation.") {
+		t.Fatal("CONTRIBUTING.md must require manifest version 2 on mutating flows")
+	}
+
+	agents := string(readRepoFile(t, "AGENTS.md"))
+	if !strings.Contains(agents, "No restore or migrate success from manifest version `1` or from a manifest that lacks explicit runtime metadata.") {
+		t.Fatal("AGENTS.md must require explicit runtime metadata on restore-capable flows")
+	}
+}
+
 func TestTrackedFilesDoNotContainHistoricalResidue(t *testing.T) {
 	files := trackedFiles(t)
 	patterns := buildHistoricalResiduePatterns()

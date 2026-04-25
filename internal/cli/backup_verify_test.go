@@ -10,6 +10,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	manifestpkg "github.com/lazuale/espocrm-ops/internal/manifest"
 )
 
 func TestBackupVerifyCLIJSONSuccess(t *testing.T) {
@@ -38,14 +40,54 @@ func TestBackupVerifyCLIJSONSuccess(t *testing.T) {
 	if errValue, exists := obj["error"]; !exists || errValue != nil {
 		t.Fatalf("expected error=null, got %#v", errValue)
 	}
+	if warnings := requireJSONArray(t, obj, "warnings"); len(warnings) != 0 {
+		t.Fatalf("unexpected warnings: %#v", warnings)
+	}
 	if manifest := requireJSONString(t, obj, "result", "manifest"); manifest != manifestPath {
 		t.Fatalf("unexpected manifest: %s", manifest)
+	}
+	if version := requireJSONNumber(t, obj, "result", "manifest_version"); version != 2 {
+		t.Fatalf("unexpected manifest version: %v", version)
 	}
 	if dbBackup := requireJSONString(t, obj, "result", "db_backup"); dbBackup != dbPath {
 		t.Fatalf("unexpected db_backup: %s", dbBackup)
 	}
 	if filesBackup := requireJSONString(t, obj, "result", "files_backup"); filesBackup != filesPath {
 		t.Fatalf("unexpected files_backup: %s", filesBackup)
+	}
+	if image := requireJSONString(t, obj, "result", "runtime", "espo_crm_image"); image != "espocrm/espocrm:9.3.4-apache" {
+		t.Fatalf("unexpected runtime image: %s", image)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestBackupVerifyCLIJSONVersionOneManifestWarns(t *testing.T) {
+	manifestPath, _, _ := writeVerifiedVersionOneBackupSet(t)
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+
+	exitCode := Execute([]string{"backup", "verify", "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != 0 {
+		t.Fatalf("expected exit code 0, got %d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if !requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=true")
+	}
+	if warnings := requireJSONArray(t, obj, "warnings"); len(warnings) != 1 {
+		t.Fatalf("unexpected warnings: %#v", warnings)
+	}
+	if version := requireJSONNumber(t, obj, "result", "manifest_version"); version != 1 {
+		t.Fatalf("unexpected manifest version: %v", version)
+	}
+	if runtimeValue := requireJSONPath(t, obj, "result", "runtime"); runtimeValue != nil {
+		t.Fatalf("expected runtime=null for version 1 manifest, got %#v", runtimeValue)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
@@ -105,6 +147,26 @@ func requireJSONBool(t *testing.T, obj map[string]any, path ...string) bool {
 	return value
 }
 
+func requireJSONNumber(t *testing.T, obj map[string]any, path ...string) float64 {
+	t.Helper()
+	raw := requireJSONPath(t, obj, path...)
+	value, ok := raw.(float64)
+	if !ok {
+		t.Fatalf("expected number at %v, got %#v", path, raw)
+	}
+	return value
+}
+
+func requireJSONArray(t *testing.T, obj map[string]any, path ...string) []any {
+	t.Helper()
+	raw := requireJSONPath(t, obj, path...)
+	value, ok := raw.([]any)
+	if !ok {
+		t.Fatalf("expected array at %v, got %#v", path, raw)
+	}
+	return value
+}
+
 func requireJSONPath(t *testing.T, obj map[string]any, path ...string) any {
 	t.Helper()
 	current := any(obj)
@@ -123,6 +185,36 @@ func requireJSONPath(t *testing.T, obj map[string]any, path ...string) any {
 }
 
 func writeVerifiedBackupSet(t *testing.T) (manifestPath, dbPath, filesPath string) {
+	t.Helper()
+
+	root := t.TempDir()
+	dbPath = filepath.Join(root, "db", "espocrm-prod_2026-04-24_12-00-00.sql.gz")
+	filesPath = filepath.Join(root, "files", "espocrm-prod_files_2026-04-24_12-00-00.tar.gz")
+	manifestPath = filepath.Join(root, "manifests", "espocrm-prod_2026-04-24_12-00-00.manifest.json")
+
+	for _, dir := range []string{filepath.Dir(dbPath), filepath.Dir(filesPath), filepath.Dir(manifestPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeGzipFile(t, dbPath, []byte("select 1;\n"))
+	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
+	rewriteSidecar(t, dbPath)
+	rewriteSidecar(t, filesPath)
+
+	raw, err := json.MarshalIndent(v2ManifestDocument(filepath.Base(dbPath), filepath.Base(filesPath), sha256OfFile(t, dbPath), sha256OfFile(t, filesPath)), "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(manifestPath, append(raw, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	return manifestPath, dbPath, filesPath
+}
+
+func writeVerifiedVersionOneBackupSet(t *testing.T) (manifestPath, dbPath, filesPath string) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -162,6 +254,31 @@ func writeVerifiedBackupSet(t *testing.T) (manifestPath, dbPath, filesPath strin
 	}
 
 	return manifestPath, dbPath, filesPath
+}
+
+func v2ManifestDocument(dbBase, filesBase, dbChecksum, filesChecksum string) map[string]any {
+	return map[string]any{
+		"version":    2,
+		"scope":      "prod",
+		"created_at": "2026-04-24T12:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    dbBase,
+			"files_backup": filesBase,
+		},
+		"checksums": map[string]any{
+			"db_backup":    dbChecksum,
+			"files_backup": filesChecksum,
+		},
+		"runtime": map[string]any{
+			"espo_crm_image":     "espocrm/espocrm:9.3.4-apache",
+			"mariadb_image":      "mariadb:11.4",
+			"db_name":            "espocrm",
+			"db_service":         "db",
+			"app_services":       []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},
+			"backup_name_prefix": "espocrm-prod",
+			"storage_contract":   manifestpkg.StorageContractEspoCRMFullStorageV1,
+		},
+	}
 }
 
 func writeGzipFile(t *testing.T, path string, body []byte) {

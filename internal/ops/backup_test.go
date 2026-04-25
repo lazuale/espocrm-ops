@@ -7,11 +7,13 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	config "github.com/lazuale/espocrm-ops/internal/config"
+	manifestpkg "github.com/lazuale/espocrm-ops/internal/manifest"
 	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
@@ -57,6 +59,23 @@ func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
 	}
 	if _, err := VerifyBackup(context.Background(), result.Manifest); err != nil {
 		t.Fatalf("VerifyBackup on produced set failed: %v", err)
+	}
+	loadedManifest, err := manifestpkg.Load(result.Manifest)
+	if err != nil {
+		t.Fatalf("Load manifest failed: %v", err)
+	}
+	if loadedManifest.Version != manifestpkg.VersionCurrent {
+		t.Fatalf("unexpected manifest version: %d", loadedManifest.Version)
+	}
+	wantRuntime := backupManifestRuntime(cfg)
+	if loadedManifest.Runtime.EspoCRMImage != wantRuntime.EspoCRMImage ||
+		loadedManifest.Runtime.MariaDBImage != wantRuntime.MariaDBImage ||
+		loadedManifest.Runtime.DBName != wantRuntime.DBName ||
+		loadedManifest.Runtime.DBService != wantRuntime.DBService ||
+		loadedManifest.Runtime.BackupNamePrefix != wantRuntime.BackupNamePrefix ||
+		loadedManifest.Runtime.StorageContract != wantRuntime.StorageContract ||
+		!slices.Equal(loadedManifest.Runtime.AppServices, wantRuntime.AppServices) {
+		t.Fatalf("unexpected manifest runtime: %#v", loadedManifest.Runtime)
 	}
 
 	matches, err := filepath.Glob(filepath.Join(cfg.BackupRoot, "*", "*.tmp-*"))
@@ -605,6 +624,8 @@ func backupTestConfig(root, storageDir string) config.BackupConfig {
 		ProjectDir:                 root,
 		ComposeFile:                filepath.Join(root, "compose.yaml"),
 		EnvFile:                    filepath.Join(root, ".env.prod"),
+		EspoCRMImage:               "espocrm/espocrm:9.3.4-apache",
+		MariaDBImage:               "mariadb:11.4",
 		BackupRoot:                 filepath.Join(root, "backups", "prod"),
 		BackupNamePrefix:           "espocrm-prod",
 		BackupRetentionDays:        7,

@@ -16,6 +16,8 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	}
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
+		"MARIADB_IMAGE=mariadb:11.4",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -43,6 +45,12 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	}
 	if cfg.EnvFile != envPath {
 		t.Fatalf("unexpected env file: %s", cfg.EnvFile)
+	}
+	if cfg.EspoCRMImage != "espocrm/espocrm:9.3.4-apache" {
+		t.Fatalf("unexpected espo image: %s", cfg.EspoCRMImage)
+	}
+	if cfg.MariaDBImage != "mariadb:11.4" {
+		t.Fatalf("unexpected mariadb image: %s", cfg.MariaDBImage)
 	}
 	if cfg.BackupRoot != filepath.Join(projectDir, "backups", "prod") {
 		t.Fatalf("unexpected backup root: %s", cfg.BackupRoot)
@@ -113,6 +121,8 @@ func TestLoadRestoreConfigRequiresDBRootPassword(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
+		"MARIADB_IMAGE=mariadb:11.4",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -149,6 +159,8 @@ func TestLoadRestoreConfigReadsInlineDBRootPassword(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
+		"MARIADB_IMAGE=mariadb:11.4",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -176,6 +188,12 @@ func TestLoadRestoreConfigReadsInlineDBRootPassword(t *testing.T) {
 	}
 	if cfg.DBRootPassword != "root-secret" {
 		t.Fatalf("unexpected db root password: %q", cfg.DBRootPassword)
+	}
+	if cfg.EspoCRMImage != "espocrm/espocrm:9.3.4-apache" {
+		t.Fatalf("unexpected espo image: %s", cfg.EspoCRMImage)
+	}
+	if cfg.MariaDBImage != "mariadb:11.4" {
+		t.Fatalf("unexpected mariadb image: %s", cfg.MariaDBImage)
 	}
 	if !cfg.RuntimeOwnershipConfigured {
 		t.Fatal("expected runtime ownership to be configured")

@@ -28,11 +28,13 @@ const (
 const tarRegularTypeflagZero = byte(0)
 
 type VerifyResult struct {
-	Manifest    string
-	Scope       string
-	CreatedAt   string
-	DBBackup    string
-	FilesBackup string
+	Manifest        string
+	ManifestVersion int
+	Scope           string
+	CreatedAt       string
+	DBBackup        string
+	FilesBackup     string
+	Runtime         manifest.Runtime
 }
 
 type VerifyError struct {
@@ -90,11 +92,13 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 	}
 
 	return VerifyResult{
-		Manifest:    manifestPath,
-		Scope:       loadedManifest.Scope,
-		CreatedAt:   loadedManifest.CreatedAt,
-		DBBackup:    paths.DBPath,
-		FilesBackup: paths.FilesPath,
+		Manifest:        manifestPath,
+		ManifestVersion: loadedManifest.Version,
+		Scope:           loadedManifest.Scope,
+		CreatedAt:       loadedManifest.CreatedAt,
+		DBBackup:        paths.DBPath,
+		FilesBackup:     paths.FilesPath,
+		Runtime:         loadedManifest.Runtime,
 	}, nil
 }
 

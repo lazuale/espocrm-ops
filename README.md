@@ -187,7 +187,11 @@ Operator prerequisites:
 - `APP_SERVICES` must list the exact Compose application services as a comma-separated contract
 - `DB_SERVICE` and every service in `APP_SERVICES` must expose a Docker Compose healthcheck; a merely running service without health status does not satisfy the success contract
 - Retention cleanup runs only after the freshly created backup set passes self-verify, deletes only complete same-prefix sets from the current `BACKUP_ROOT` layout, and refuses incomplete or suspicious sets instead of deleting them automatically
+- `backup` writes manifest version `2`. Version `2` manifest records artifact checksums plus a runtime block with `ESPOCRM_IMAGE`, `MARIADB_IMAGE`, `DB_NAME`, `DB_SERVICE`, `APP_SERVICES`, `BACKUP_NAME_PREFIX`, and the fixed storage contract `espocrm-full-storage-v1`
+- `backup verify` can still diagnose a valid manifest version `1` backup set, but `restore`, `migrate`, and `smoke` require manifest version `2` with explicit runtime metadata
 - `restore` fails closed unless `manifest.scope` matches `--scope`; use `migrate` for intentional cross-scope restore
+- `restore` fails closed unless the manifest runtime block matches the target runtime contract. Same-scope `restore` also requires `runtime.db_name` to match the target `DB_NAME`
+- `migrate` fails closed unless the manifest version `2` runtime block matches the shared target stack contract for images, service names, and storage contract. Source and target `DB_NAME` may differ across scopes, so `runtime.db_name` is recorded in the manifest but is not used to block cross-scope `migrate`
 - `restore`, `migrate`, and `smoke` reset the target database as MariaDB root before importing the dump
 - `restore` and `migrate` restore files through staged extraction: the archive is validated, extracted into staging, the staged tree is validated, and target storage is cleared only after staging succeeds
 - `espops` never guesses `ESPO_RUNTIME_UID` or `ESPO_RUNTIME_GID` from the image or the container runtime
@@ -215,13 +219,13 @@ Prepare the target scope first:
 Then use the commands in this order:
 
 1. `espops backup`
-   Backup checks `MIN_FREE_DISK_MB`, stops app services only after that guard passes, writes prefix-based artifacts under `BACKUP_ROOT`, self-verifies the new set, then applies strict same-prefix retention if `BACKUP_RETENTION_DAYS` is greater than zero.
+   Backup checks `MIN_FREE_DISK_MB`, stops app services only after that guard passes, writes prefix-based artifacts under `BACKUP_ROOT`, writes manifest version `2` with the explicit runtime block, self-verifies the new set, then applies strict same-prefix retention if `BACKUP_RETENTION_DAYS` is greater than zero.
 2. `espops backup verify`
-   Verify the manifest you plan to trust.
+   Verify the manifest you plan to trust. Version `1` remains a verify-only diagnostic path; destructive commands require manifest version `2`.
 3. `espops restore`
-   Restore is destructive for the target scope. It verifies the source manifest first, requires a same-scope manifest, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction, clears target storage only after staging succeeds, applies the explicit runtime uid/gid before the final file post-check, starts the contract services, waits for Docker Compose health to go green, and only then accepts MariaDB `SELECT 1` as the final post-check.
+   Restore is destructive for the target scope. It verifies the source manifest first, requires manifest version `2`, requires a same-scope manifest, blocks if the manifest runtime block does not match the target runtime contract, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction, clears target storage only after staging succeeds, applies the explicit runtime uid/gid before the final file post-check, starts the contract services, waits for Docker Compose health to go green, and only then accepts MariaDB `SELECT 1` as the final post-check.
 4. `espops migrate`
-   Migrate is thin composition over verified restore flow, not a separate engine. It inherits the same final health contract and is the only supported cross-scope restore path.
+   Migrate is thin composition over verified restore flow, not a separate engine. It requires manifest version `2`, inherits the same final health contract, checks the recorded image and service contract before mutation, and is the only supported cross-scope restore path.
 
 For one explicit fixed-path operator check across both scopes:
 
@@ -260,6 +264,8 @@ Verify a backup set:
 ./bin/espops backup verify --manifest /path/to/manifest.json
 ```
 
+`backup verify` proves manifest/artifact/checksum integrity. A version `1` result is still diagnostic only; it is not a restore-ready result.
+
 Restore from a verified manifest:
 
 ```bash
@@ -268,6 +274,8 @@ Restore from a verified manifest:
 ```
 
 Success here means staged files passed validation, Docker Compose contract services came back `running` and `healthy`, and MariaDB answered the final ping. It does not claim a full browser/login flow.
+
+`restore` requires manifest version `2` with explicit runtime metadata and blocks before snapshot or mutation if the recorded runtime contract does not match the target scope.
 
 If another mutating `espops` process already owns the same scope lock, `restore` fails fast before snapshot, database reset, or storage mutation.
 
@@ -280,6 +288,8 @@ Migrate from one scope into another:
 `migrate` uses the same post-check contract as `restore`: storage checks plus Compose service health plus DB ping.
 
 `migrate` locks only the target scope, because the source manifest is read-only input and the target scope is the one being reset and rewritten.
+
+`migrate` also requires manifest version `2`. It checks the recorded image and service contract before touching the target scope and blocks version `1` manifests.
 
 Run the fixed smoke path:
 

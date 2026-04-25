@@ -15,7 +15,7 @@ func TestManifestValid(t *testing.T) {
 	}
 
 	raw, err := json.Marshal(map[string]any{
-		"version":    1,
+		"version":    2,
 		"scope":      "prod",
 		"created_at": "2026-04-24T12:00:00Z",
 		"artifacts": map[string]any{
@@ -25,6 +25,15 @@ func TestManifestValid(t *testing.T) {
 		"checksums": map[string]any{
 			"db_backup":    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
 			"files_backup": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		},
+		"runtime": map[string]any{
+			"espo_crm_image":     "espocrm/espocrm:9.3.4-apache",
+			"mariadb_image":      "mariadb:11.4",
+			"db_name":            "espocrm",
+			"db_service":         "db",
+			"app_services":       []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},
+			"backup_name_prefix": "espocrm-prod",
+			"storage_contract":   StorageContractEspoCRMFullStorageV1,
 		},
 	})
 	if err != nil {
@@ -54,11 +63,52 @@ func TestManifestValid(t *testing.T) {
 	}
 }
 
+func TestManifestVersionOneStillValidForVerify(t *testing.T) {
+	manifest := Manifest{
+		Version:   VersionOne,
+		Scope:     "prod",
+		CreatedAt: "2026-04-24T12:00:00Z",
+		Artifacts: Artifacts{
+			DBBackup:    "db.sql.gz",
+			FilesBackup: "files.tar.gz",
+		},
+		Checksums: Checksums{
+			DBBackup:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			FilesBackup: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		},
+	}
+	if err := Validate("/tmp/manifests/set.manifest.json", manifest); err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+	if err := RequireRestoreRuntimeContract(manifest); err == nil {
+		t.Fatal("expected restore runtime contract error")
+	}
+}
+
 func TestManifestInvalid(t *testing.T) {
 	manifest := Manifest{
-		Version:   2,
+		Version:   VersionCurrent,
 		Scope:     "",
 		CreatedAt: "nope",
+	}
+	if err := Validate("/tmp/manifests/set.manifest.json", manifest); err == nil {
+		t.Fatal("expected validation error")
+	}
+}
+
+func TestManifestVersionTwoRequiresRuntime(t *testing.T) {
+	manifest := Manifest{
+		Version:   VersionCurrent,
+		Scope:     "prod",
+		CreatedAt: "2026-04-24T12:00:00Z",
+		Artifacts: Artifacts{
+			DBBackup:    "db.sql.gz",
+			FilesBackup: "files.tar.gz",
+		},
+		Checksums: Checksums{
+			DBBackup:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			FilesBackup: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		},
 	}
 	if err := Validate("/tmp/manifests/set.manifest.json", manifest); err == nil {
 		t.Fatal("expected validation error")

@@ -219,7 +219,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	}
 	cleanupPaths = append(cleanupPaths, manifestTmp)
 	if err := writeManifestJSON(manifestTmp, manifest.Manifest{
-		Version:   1,
+		Version:   manifest.VersionCurrent,
 		Scope:     cfg.Scope,
 		CreatedAt: now.Format(time.RFC3339),
 		Artifacts: manifest.Artifacts{
@@ -230,6 +230,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 			DBBackup:    dbChecksum,
 			FilesBackup: filesChecksum,
 		},
+		Runtime: backupManifestRuntime(cfg),
 	}); err != nil {
 		return result, ioError("failed to write backup manifest", err)
 	}
@@ -263,6 +264,8 @@ func validateBackupConfig(cfg config.BackupConfig) error {
 		{name: "project dir", value: cfg.ProjectDir},
 		{name: "compose file", value: cfg.ComposeFile},
 		{name: "env file", value: cfg.EnvFile},
+		{name: "ESPOCRM_IMAGE", value: cfg.EspoCRMImage},
+		{name: "MARIADB_IMAGE", value: cfg.MariaDBImage},
 		{name: "BACKUP_ROOT", value: cfg.BackupRoot},
 		{name: "BACKUP_NAME_PREFIX", value: cfg.BackupNamePrefix},
 		{name: "ESPO_STORAGE_DIR", value: cfg.StorageDir},

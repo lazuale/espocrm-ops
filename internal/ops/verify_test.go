@@ -9,8 +9,11 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
+
+	manifestpkg "github.com/lazuale/espocrm-ops/internal/manifest"
 )
 
 func TestVerifyBackupValid(t *testing.T) {
@@ -28,6 +31,36 @@ func TestVerifyBackupValid(t *testing.T) {
 	}
 	if result.FilesBackup != filesPath {
 		t.Fatalf("unexpected files path: %s", result.FilesBackup)
+	}
+	if result.ManifestVersion != manifestpkg.VersionCurrent {
+		t.Fatalf("unexpected manifest version: %d", result.ManifestVersion)
+	}
+	if result.Runtime.EspoCRMImage != "espocrm/espocrm:9.3.4-apache" {
+		t.Fatalf("unexpected runtime image: %#v", result.Runtime)
+	}
+	if !slices.Equal(result.Runtime.AppServices, []string{"espocrm", "espocrm-daemon", "espocrm-websocket"}) {
+		t.Fatalf("unexpected runtime app services: %#v", result.Runtime.AppServices)
+	}
+}
+
+func TestVerifyBackupVersionOneManifestRemainsDiagnostic(t *testing.T) {
+	manifestPath, _, _ := writeVerifiedVersionOneBackupSet(t)
+
+	result, err := VerifyBackup(context.Background(), manifestPath)
+	if err != nil {
+		t.Fatalf("VerifyBackup failed: %v", err)
+	}
+	if result.ManifestVersion != manifestpkg.VersionOne {
+		t.Fatalf("unexpected manifest version: %d", result.ManifestVersion)
+	}
+	if result.Runtime.EspoCRMImage != "" ||
+		result.Runtime.MariaDBImage != "" ||
+		result.Runtime.DBName != "" ||
+		result.Runtime.DBService != "" ||
+		len(result.Runtime.AppServices) != 0 ||
+		result.Runtime.BackupNamePrefix != "" ||
+		result.Runtime.StorageContract != "" {
+		t.Fatalf("expected zero runtime metadata, got %#v", result.Runtime)
 	}
 }
 
@@ -59,19 +92,7 @@ func TestVerifyBackupManifestOutsideManifestsDirectory(t *testing.T) {
 	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
 	rewriteSidecar(t, dbPath)
 	rewriteSidecar(t, filesPath)
-	writeManifest(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-24T12:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(dbPath),
-			"files_backup": filepath.Base(filesPath),
-		},
-		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, dbPath),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
+	writeManifest(t, manifestPath, v2ManifestDocument(filepath.Base(dbPath), filepath.Base(filesPath), sha256OfFile(t, dbPath), sha256OfFile(t, filesPath)))
 
 	_, err := VerifyBackup(context.Background(), manifestPath)
 	assertVerifyErrorKind(t, err, ErrorKindManifest)
@@ -89,19 +110,12 @@ func TestVerifyBackupMissingArtifact(t *testing.T) {
 
 func TestVerifyBackupChecksumMismatch(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
-	writeManifest(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-24T12:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(dbPath),
-			"files_backup": filepath.Base(filesPath),
-		},
-		"checksums": map[string]any{
-			"db_backup":    strings.Repeat("0", 64),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
+	writeManifest(t, manifestPath, v2ManifestDocument(
+		filepath.Base(dbPath),
+		filepath.Base(filesPath),
+		strings.Repeat("0", 64),
+		sha256OfFile(t, filesPath),
+	))
 
 	_, err := VerifyBackup(context.Background(), manifestPath)
 	assertVerifyErrorKind(t, err, ErrorKindChecksum)
@@ -113,19 +127,12 @@ func TestVerifyBackupBrokenDBGzip(t *testing.T) {
 		t.Fatal(err)
 	}
 	rewriteSidecar(t, dbPath)
-	writeManifest(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-24T12:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(dbPath),
-			"files_backup": filepath.Base(filesPath),
-		},
-		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, dbPath),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
+	writeManifest(t, manifestPath, v2ManifestDocument(
+		filepath.Base(dbPath),
+		filepath.Base(filesPath),
+		sha256OfFile(t, dbPath),
+		sha256OfFile(t, filesPath),
+	))
 
 	_, err := VerifyBackup(context.Background(), manifestPath)
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
@@ -135,19 +142,12 @@ func TestVerifyBackupBrokenTarGz(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
 	writeGzipFile(t, filesPath, []byte("not a tar stream"))
 	rewriteSidecar(t, filesPath)
-	writeManifest(t, manifestPath, map[string]any{
-		"version":    1,
-		"scope":      "prod",
-		"created_at": "2026-04-24T12:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    filepath.Base(dbPath),
-			"files_backup": filepath.Base(filesPath),
-		},
-		"checksums": map[string]any{
-			"db_backup":    sha256OfFile(t, dbPath),
-			"files_backup": sha256OfFile(t, filesPath),
-		},
-	})
+	writeManifest(t, manifestPath, v2ManifestDocument(
+		filepath.Base(dbPath),
+		filepath.Base(filesPath),
+		sha256OfFile(t, dbPath),
+		sha256OfFile(t, filesPath),
+	))
 
 	_, err := VerifyBackup(context.Background(), manifestPath)
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
@@ -157,8 +157,35 @@ func TestVerifyBackupTarTraversal(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
 	writeTraversalTarGzFile(t, filesPath)
 	rewriteSidecar(t, filesPath)
+	writeManifest(t, manifestPath, v2ManifestDocument(
+		filepath.Base(dbPath),
+		filepath.Base(filesPath),
+		sha256OfFile(t, dbPath),
+		sha256OfFile(t, filesPath),
+	))
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindArchive)
+}
+
+func TestVerifyBackupVersionTwoRejectsMissingRuntimeMetadata(t *testing.T) {
+	root := t.TempDir()
+	dbPath := filepath.Join(root, "db", "espocrm-prod_2026-04-24_12-00-00.sql.gz")
+	filesPath := filepath.Join(root, "files", "espocrm-prod_files_2026-04-24_12-00-00.tar.gz")
+	manifestPath := filepath.Join(root, "manifests", "espocrm-prod_2026-04-24_12-00-00.manifest.json")
+
+	for _, dir := range []string{filepath.Dir(dbPath), filepath.Dir(filesPath), filepath.Dir(manifestPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeGzipFile(t, dbPath, []byte("select 1;\n"))
+	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
+	rewriteSidecar(t, dbPath)
+	rewriteSidecar(t, filesPath)
 	writeManifest(t, manifestPath, map[string]any{
-		"version":    1,
+		"version":    2,
 		"scope":      "prod",
 		"created_at": "2026-04-24T12:00:00Z",
 		"artifacts": map[string]any{
@@ -172,7 +199,7 @@ func TestVerifyBackupTarTraversal(t *testing.T) {
 	})
 
 	_, err := VerifyBackup(context.Background(), manifestPath)
-	assertVerifyErrorKind(t, err, ErrorKindArchive)
+	assertVerifyErrorKind(t, err, ErrorKindManifest)
 }
 
 func assertVerifyErrorKind(t *testing.T, err error, want string) {
@@ -207,6 +234,34 @@ func writeVerifiedBackupSet(t *testing.T) (manifestPath, dbPath, filesPath strin
 	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
 	rewriteSidecar(t, dbPath)
 	rewriteSidecar(t, filesPath)
+	writeManifest(t, manifestPath, v2ManifestDocument(
+		filepath.Base(dbPath),
+		filepath.Base(filesPath),
+		sha256OfFile(t, dbPath),
+		sha256OfFile(t, filesPath),
+	))
+
+	return manifestPath, dbPath, filesPath
+}
+
+func writeVerifiedVersionOneBackupSet(t *testing.T) (manifestPath, dbPath, filesPath string) {
+	t.Helper()
+
+	root := t.TempDir()
+	dbPath = filepath.Join(root, "db", "espocrm-prod_2026-04-24_12-00-00.sql.gz")
+	filesPath = filepath.Join(root, "files", "espocrm-prod_files_2026-04-24_12-00-00.tar.gz")
+	manifestPath = filepath.Join(root, "manifests", "espocrm-prod_2026-04-24_12-00-00.manifest.json")
+
+	for _, dir := range []string{filepath.Dir(dbPath), filepath.Dir(filesPath), filepath.Dir(manifestPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeGzipFile(t, dbPath, []byte("select 1;\n"))
+	writeTarGzFile(t, filesPath, map[string]string{"storage/a.txt": "hello\n"})
+	rewriteSidecar(t, dbPath)
+	rewriteSidecar(t, filesPath)
 	writeManifest(t, manifestPath, map[string]any{
 		"version":    1,
 		"scope":      "prod",
@@ -222,6 +277,31 @@ func writeVerifiedBackupSet(t *testing.T) (manifestPath, dbPath, filesPath strin
 	})
 
 	return manifestPath, dbPath, filesPath
+}
+
+func v2ManifestDocument(dbBase, filesBase, dbChecksum, filesChecksum string) map[string]any {
+	return map[string]any{
+		"version":    2,
+		"scope":      "prod",
+		"created_at": "2026-04-24T12:00:00Z",
+		"artifacts": map[string]any{
+			"db_backup":    dbBase,
+			"files_backup": filesBase,
+		},
+		"checksums": map[string]any{
+			"db_backup":    dbChecksum,
+			"files_backup": filesChecksum,
+		},
+		"runtime": map[string]any{
+			"espo_crm_image":     "espocrm/espocrm:9.3.4-apache",
+			"mariadb_image":      "mariadb:11.4",
+			"db_name":            "espocrm",
+			"db_service":         "db",
+			"app_services":       []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},
+			"backup_name_prefix": "espocrm-prod",
+			"storage_contract":   manifestpkg.StorageContractEspoCRMFullStorageV1,
+		},
+	}
 }
 
 func writeManifest(t *testing.T, path string, value any) {

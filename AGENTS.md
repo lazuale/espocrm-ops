@@ -30,6 +30,7 @@
 - No ambiguous success.
 - Success requires explicit health/post-check evidence; MariaDB reachability alone is not success.
 - No mutating operation without the explicit operation lock.
+- No restore or migrate success from manifest version `1` or from a manifest that lacks explicit runtime metadata.
 - No shell-owned product, contract, validation, or recovery semantics.
 - No guard theatre.
 - No fake machine-enforcement.

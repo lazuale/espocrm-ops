@@ -20,6 +20,8 @@ type BackupConfig struct {
 	ProjectDir                 string
 	ComposeFile                string
 	EnvFile                    string
+	EspoCRMImage               string
+	MariaDBImage               string
 	BackupRoot                 string
 	BackupNamePrefix           string
 	BackupRetentionDays        int
@@ -133,6 +135,8 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 		ProjectDir:                 projectDir,
 		ComposeFile:                composeFile,
 		EnvFile:                    envFile,
+		EspoCRMImage:               strings.TrimSpace(values["ESPOCRM_IMAGE"]),
+		MariaDBImage:               strings.TrimSpace(values["MARIADB_IMAGE"]),
 		BackupRoot:                 resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
 		BackupNamePrefix:           backupNamePrefix,
 		BackupRetentionDays:        backupRetentionDays,

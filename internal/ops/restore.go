@@ -91,6 +91,9 @@ func restoreWithOptionsLocked(ctx context.Context, cfg config.BackupConfig, mani
 	if err := validateRestoreSourceScope(cfg.Scope, verifyResult.Scope, opts); err != nil {
 		return result, err
 	}
+	if err := requireRestoreRuntimeContract(cfg, verifyResult); err != nil {
+		return result, err
+	}
 	if err := ensureRestoreStorageClearable(cfg.StorageDir); err != nil {
 		return result, ioError("restore storage target is not clearable", err)
 	}

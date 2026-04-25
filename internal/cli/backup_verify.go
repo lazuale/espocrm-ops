@@ -5,16 +5,29 @@ import (
 	"path/filepath"
 	"strings"
 
+	manifestpkg "github.com/lazuale/espocrm-ops/internal/manifest"
 	"github.com/lazuale/espocrm-ops/internal/ops"
 	"github.com/spf13/cobra"
 )
 
+type backupVerifyRuntimeResult struct {
+	EspoCRMImage     string   `json:"espo_crm_image,omitempty"`
+	MariaDBImage     string   `json:"mariadb_image,omitempty"`
+	DBName           string   `json:"db_name,omitempty"`
+	DBService        string   `json:"db_service,omitempty"`
+	AppServices      []string `json:"app_services,omitempty"`
+	BackupNamePrefix string   `json:"backup_name_prefix,omitempty"`
+	StorageContract  string   `json:"storage_contract,omitempty"`
+}
+
 type backupVerifyResult struct {
-	Manifest    string `json:"manifest,omitempty"`
-	Scope       string `json:"scope,omitempty"`
-	CreatedAt   string `json:"created_at,omitempty"`
-	DBBackup    string `json:"db_backup,omitempty"`
-	FilesBackup string `json:"files_backup,omitempty"`
+	Manifest        string                     `json:"manifest,omitempty"`
+	ManifestVersion int                        `json:"manifest_version,omitempty"`
+	Scope           string                     `json:"scope,omitempty"`
+	CreatedAt       string                     `json:"created_at,omitempty"`
+	DBBackup        string                     `json:"db_backup,omitempty"`
+	FilesBackup     string                     `json:"files_backup,omitempty"`
+	Runtime         *backupVerifyRuntimeResult `json:"runtime"`
 }
 
 func newBackupVerifyCmd() *cobra.Command {
@@ -35,18 +48,25 @@ func newBackupVerifyCmd() *cobra.Command {
 				return backupVerifyError(path, verifyErr)
 			}
 
+			warnings := []string{}
+			if result.ManifestVersion == manifestpkg.VersionOne {
+				warnings = append(warnings, "manifest version 1 is checksum-valid, but restore and migrate require manifest version 2 with runtime metadata")
+			}
+
 			return writeJSON(cmd.OutOrStdout(), envelope{
 				Command:  "backup verify",
 				OK:       true,
 				Message:  "backup verified",
 				Error:    nil,
-				Warnings: []string{},
+				Warnings: warnings,
 				Result: backupVerifyResult{
-					Manifest:    result.Manifest,
-					Scope:       result.Scope,
-					CreatedAt:   result.CreatedAt,
-					DBBackup:    result.DBBackup,
-					FilesBackup: result.FilesBackup,
+					Manifest:        result.Manifest,
+					ManifestVersion: result.ManifestVersion,
+					Scope:           result.Scope,
+					CreatedAt:       result.CreatedAt,
+					DBBackup:        result.DBBackup,
+					FilesBackup:     result.FilesBackup,
+					Runtime:         backupVerifyRuntimeResultPtr(result),
 				},
 			})
 		},
@@ -116,5 +136,27 @@ func backupVerifyExitCode(kind string) int {
 		return exitIO
 	default:
 		return exitInternal
+	}
+}
+
+func backupVerifyRuntimeResultPtr(result ops.VerifyResult) *backupVerifyRuntimeResult {
+	if result.Runtime.EspoCRMImage == "" &&
+		result.Runtime.MariaDBImage == "" &&
+		result.Runtime.DBName == "" &&
+		result.Runtime.DBService == "" &&
+		len(result.Runtime.AppServices) == 0 &&
+		result.Runtime.BackupNamePrefix == "" &&
+		result.Runtime.StorageContract == "" {
+		return nil
+	}
+
+	return &backupVerifyRuntimeResult{
+		EspoCRMImage:     result.Runtime.EspoCRMImage,
+		MariaDBImage:     result.Runtime.MariaDBImage,
+		DBName:           result.Runtime.DBName,
+		DBService:        result.Runtime.DBService,
+		AppServices:      append([]string(nil), result.Runtime.AppServices...),
+		BackupNamePrefix: result.Runtime.BackupNamePrefix,
+		StorageContract:  result.Runtime.StorageContract,
 	}
 }

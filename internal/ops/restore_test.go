@@ -16,6 +16,7 @@ import (
 	"time"
 
 	config "github.com/lazuale/espocrm-ops/internal/config"
+	manifestpkg "github.com/lazuale/espocrm-ops/internal/manifest"
 	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
@@ -76,6 +77,63 @@ func TestRestoreRejectsDifferentManifestScopeBeforeMutation(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindUsage)
 	if !strings.Contains(err.Error(), "restore source scope is invalid") {
 		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != sourceManifest {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreVersionOneManifestFailsBeforeMutation(t *testing.T) {
+	sourceManifest, _, _ := writeVersionOneRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindManifest)
+	if !strings.Contains(err.Error(), "manifest version 1") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != sourceManifest {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreRuntimeMismatchFailsBeforeMutation(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	loadedManifest, err := manifestpkg.Load(sourceManifest)
+	if err != nil {
+		t.Fatalf("Load manifest failed: %v", err)
+	}
+	loadedManifest.Runtime.MariaDBImage = "mariadb:12.0"
+	writeManifest(t, sourceManifest, loadedManifest)
+
+	result, restoreErr := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, restoreErr, ErrorKindManifest)
+	if !strings.Contains(restoreErr.Error(), "runtime.mariadb_image") {
+		t.Fatalf("unexpected error: %v", restoreErr)
 	}
 	if result.Manifest != sourceManifest {
 		t.Fatalf("unexpected manifest: %s", result.Manifest)
@@ -909,6 +967,49 @@ func writeRestoreSourceBackupSet(t *testing.T) (manifestPath, dbSQL, storageDir 
 		t.Fatalf("write source backup set: %v", err)
 	}
 	return result.Manifest, dbSQL, storageDir
+}
+
+func writeVersionOneRestoreSourceBackupSet(t *testing.T) (manifestPath, dbSQL, storageDir string) {
+	t.Helper()
+
+	root := t.TempDir()
+	storageDir = filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "restored.txt"), []byte("restored\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	dbSQL = "create table restored(id int);\n"
+	dbPath := filepath.Join(root, "db", "restore-source.sql.gz")
+	filesPath := filepath.Join(root, "files", "restore-source.tar.gz")
+	manifestPath = filepath.Join(root, "manifests", "restore-source.manifest.json")
+	for _, dir := range []string{filepath.Dir(dbPath), filepath.Dir(filesPath), filepath.Dir(manifestPath)} {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	writeGzipFile(t, dbPath, []byte(dbSQL))
+	writeTarGzFile(t, filesPath, map[string]string{"restored.txt": "restored\n"})
+	rewriteSidecar(t, dbPath)
+	rewriteSidecar(t, filesPath)
+	writeManifest(t, manifestPath, map[string]any{
+		"version":    1,
+		"scope":      "prod",
+		"created_at": restoreTestTime().Format(time.RFC3339),
+		"artifacts": map[string]any{
+			"db_backup":    filepath.Base(dbPath),
+			"files_backup": filepath.Base(filesPath),
+		},
+		"checksums": map[string]any{
+			"db_backup":    sha256OfFile(t, dbPath),
+			"files_backup": sha256OfFile(t, filesPath),
+		},
+	})
+
+	return manifestPath, dbSQL, storageDir
 }
 
 func restoreTestTime() time.Time {
