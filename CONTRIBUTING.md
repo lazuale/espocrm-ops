@@ -49,10 +49,11 @@ Run the main test paths:
 make test
 make test-race
 make test-readonly
+make ci-fast
 make integration
 ```
 
-Run the repository health check:
+Run the full repository health check when Docker integration is available:
 
 ```bash
 make ci
@@ -61,9 +62,11 @@ make ci
 Contract:
 
 - `make test` is the fast unit layer and may use fake docker scripts inside tests where command wiring or failure shaping is the subject under test.
+- `make ci-fast` covers build, module verification, readonly tests, race tests, `go vet`, `staticcheck`, `golangci-lint`, and a clean `go.mod`/`go.sum` check. It is the pull-request CI path and must not pull Docker images.
 - `make pull-images` is the Docker integration image preflight. It must fail closed when required images cannot be pulled or are not available locally.
 - `make integration` is the real Docker integration layer. It requires a live Docker daemon, the Compose plugin, and required images available locally. It must not pass by running zero real integration tests.
-- `make ci` is the repository health claim. It covers build, module verification, readonly tests, race tests, `go vet`, `staticcheck`, `golangci-lint`, real Docker integration, and a clean `go.mod`/`go.sum` check.
+- `make ci-integration` is the Docker-only CI path. It runs image preflight plus real Docker integration and must not silently skip Docker failures.
+- `make ci` is the full repository health claim. It runs `make ci-fast` and then `make ci-integration`.
 
 ## Working Rules
 
@@ -107,7 +110,7 @@ Contract:
    Health/post-check changes must include `internal/runtime/` and `internal/ops/` test coverage; do not rely on CLI JSON tests alone.
    Locking/concurrency changes must include real `internal/ops/` lock tests plus flow tests that prove lock acquisition happens before mutation.
    Manifest/runtime-contract changes must include `internal/manifest/` and `internal/ops/` tests, plus flow tests that prove `restore` and `migrate` block before mutation when the manifest runtime block does not match.
-3. Run `make ci` before claiming repository health.
+3. Run `make ci-fast` before claiming pull-request health, and `make ci` before claiming full repository health.
 4. Update `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` when the graph or command behavior changes.
 
 ## Repo Notes

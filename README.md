@@ -39,13 +39,21 @@ go run ./cmd/espops --help
 
 It does not silently skip when Docker is unavailable; it fails closed instead.
 
-The repository health path is:
+The fast CI path is:
+
+```bash
+make ci-fast
+```
+
+`make ci-fast` runs build, `go mod verify`, `go test -mod=readonly ./...`, race tests, `go vet`, `staticcheck`, `golangci-lint`, and a clean `go.mod`/`go.sum` check. This is the default pull-request path and does not pull Docker images.
+
+The full repository health path is:
 
 ```bash
 make ci
 ```
 
-`make ci` runs build, `go mod verify`, `go test -mod=readonly ./...`, race tests, `go vet`, `staticcheck`, `golangci-lint`, the real Docker integration target, and a clean `go.mod`/`go.sum` check.
+`make ci` runs `make ci-fast` and then the strict Docker integration path. `make ci-integration` is the Docker-only CI path: image preflight plus the real integration tests.
 
 Useful individual targets:
 
@@ -53,6 +61,8 @@ Useful individual targets:
 make test
 make test-race
 make test-readonly
+make ci-fast
+make ci-integration
 make integration
 make pull-images
 make vet
@@ -93,7 +103,7 @@ make integration
 
 `make pull-images` pre-pulls the minimal integration fixture images (`mariadb:11.4` and `alpine:3.20`) and fails closed with a clearer diagnosis when Docker Hub, auth, rate-limit, or missing-image problems block the pull.
 
-`make integration` proves Docker daemon access, Compose plugin access, required integration images available locally, and then the real Docker integration tests. A Docker Hub or network timeout does not by itself prove that the Go code is broken; it proves only that the registry path was not available.
+`make integration` proves Docker daemon access, Compose plugin access, required integration images available locally, and then the real Docker integration tests. `make ci-integration` runs the same strict path for CI. A Docker Hub or network timeout does not by itself prove that the Go code is broken; it proves only that the registry path was not available.
 
 ## Runtime Contract
 

@@ -7,7 +7,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 INTEGRATION_PKGS := ./internal/runtime
 INTEGRATION_IMAGES := mariadb:11.4 alpine:3.20
 
-.PHONY: build test test-race test-readonly integration integration-preflight pull-images ci staticcheck lint fmt vet mod-verify mod-clean-check coverage clean install-health-tools install-ci-health-tools
+.PHONY: build test test-race test-readonly integration integration-preflight pull-images ci-fast ci-integration ci staticcheck lint fmt vet mod-verify mod-clean-check coverage clean install-health-tools install-ci-health-tools
 
 build:
 	mkdir -p bin
@@ -68,7 +68,11 @@ staticcheck:
 lint:
 	golangci-lint run --no-config ./...
 
-ci: build mod-verify test-readonly test-race vet staticcheck lint integration mod-clean-check
+ci-fast: build mod-verify test-readonly test-race vet staticcheck lint mod-clean-check
+
+ci-integration: pull-images integration
+
+ci: ci-fast ci-integration
 
 fmt:
 	go fmt ./...

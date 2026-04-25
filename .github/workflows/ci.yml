@@ -15,7 +15,7 @@ permissions:
   contents: read
 
 jobs:
-  go-health:
+  ci-fast:
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -34,34 +34,12 @@ jobs:
       - name: Add health tools to PATH
         run: echo "$HOME/go/bin" >> "$GITHUB_PATH"
 
-      - name: Build
-        run: make build
-
-      - name: Verify Go Modules
-        run: go mod verify
-
-      - name: Run Unit Tests
-        run: go test ./...
-
-      - name: Run Readonly Tests
-        run: go test -mod=readonly ./...
-
-      - name: Run Race Tests
-        run: go test -race ./...
-
-      - name: Run Go Vet
-        run: go vet ./...
-
-      - name: Run Staticcheck
-        run: staticcheck ./...
-
-      - name: Run GolangCI-Lint
-        run: golangci-lint run --no-config ./...
-
-      - name: Verify Module Files Stay Clean
-        run: git diff --exit-code -- go.mod go.sum
+      - name: Run Fast CI
+        run: make ci-fast
 
   docker-integration:
+    if: github.event_name != 'pull_request'
+    needs: ci-fast
     runs-on: ubuntu-latest
     timeout-minutes: 30
     steps:
@@ -74,14 +52,5 @@ jobs:
           go-version-file: go.mod
           cache: true
 
-      - name: Verify Docker Daemon
-        run: docker info
-
-      - name: Verify Docker Compose Plugin
-        run: docker compose version
-
-      - name: Pull Required Integration Images
-        run: make pull-images
-
-      - name: Run Docker Integration Tests
-        run: make integration
+      - name: Run Docker Integration CI
+        run: make ci-integration

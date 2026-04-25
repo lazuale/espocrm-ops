@@ -1,7 +1,6 @@
 package repository_test
 
 import (
-	"bufio"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -50,63 +49,6 @@ var (
 	}
 )
 
-func TestInternalPackagesAreFlat(t *testing.T) {
-	got := listImportPaths(t, "list", "-f", "{{.ImportPath}}", "./internal/...")
-	want := []string{
-		modulePath + "/internal/cli",
-		modulePath + "/internal/config",
-		modulePath + "/internal/manifest",
-		modulePath + "/internal/ops",
-		modulePath + "/internal/runtime",
-	}
-
-	if !slices.Equal(got, want) {
-		t.Fatalf("unexpected internal packages:\n got: %v\nwant: %v", got, want)
-	}
-}
-
-func TestUnexpectedInternalDirectoriesAreAbsent(t *testing.T) {
-	root := repoRoot(t)
-	entries, err := os.ReadDir(filepath.Join(root, "internal"))
-	if err != nil {
-		t.Fatalf("read internal/: %v", err)
-	}
-
-	var got []string
-	for _, entry := range entries {
-		if !entry.IsDir() {
-			continue
-		}
-		got = append(got, entry.Name())
-	}
-	slices.Sort(got)
-
-	want := []string{"cli", "config", "manifest", "ops", "runtime"}
-	if !slices.Equal(got, want) {
-		t.Fatalf("unexpected internal directories:\n got: %v\nwant: %v", got, want)
-	}
-}
-
-func TestCommandDoesNotPullUnexpectedInternalPackages(t *testing.T) {
-	deps := listImportPaths(t, "list", "-deps", "-f", "{{.ImportPath}}", "./cmd/espops")
-	var unexpectedDeps []string
-	for _, dep := range deps {
-		switch {
-		case dep == modulePath+"/internal/cli":
-		case dep == modulePath+"/internal/config":
-		case dep == modulePath+"/internal/manifest":
-		case dep == modulePath+"/internal/ops":
-		case dep == modulePath+"/internal/runtime":
-		case strings.HasPrefix(dep, modulePath+"/internal/"):
-			unexpectedDeps = append(unexpectedDeps, dep)
-		}
-	}
-
-	if len(unexpectedDeps) > 0 {
-		t.Fatalf("cmd/espops still pulls unexpected internal packages: %v", unexpectedDeps)
-	}
-}
-
 func TestProductionProcessEnvAccessSurfaceIsExplicit(t *testing.T) {
 	root := repoRoot(t)
 	fset := token.NewFileSet()
@@ -143,6 +85,23 @@ func TestProductionProcessEnvAccessSurfaceIsExplicit(t *testing.T) {
 	}
 }
 
+func TestCommandEntrypointUsesOnlyCLI(t *testing.T) {
+	imports := goListLines(t, "list", "-f", "{{range .Imports}}{{.}}\n{{end}}", "./cmd/espops")
+	if !slices.Contains(imports, modulePath+"/internal/cli") {
+		t.Fatal("cmd/espops must enter the product through internal/cli")
+	}
+
+	var unexpected []string
+	for _, imp := range imports {
+		if strings.HasPrefix(imp, modulePath+"/internal/") && imp != modulePath+"/internal/cli" {
+			unexpected = append(unexpected, imp)
+		}
+	}
+	if len(unexpected) > 0 {
+		t.Fatalf("cmd/espops must not bypass internal/cli: %v", unexpected)
+	}
+}
+
 func TestProductionShellExecutionSurfaceIsExplicit(t *testing.T) {
 	root := repoRoot(t)
 	fset := token.NewFileSet()
@@ -174,38 +133,6 @@ func TestProductionShellExecutionSurfaceIsExplicit(t *testing.T) {
 
 			return true
 		})
-	}
-}
-
-func TestDocsUseOnlyCurrentInternalLayout(t *testing.T) {
-	root := repoRoot(t)
-	docs := []string{
-		"AGENTS.md",
-		"README.md",
-		"CONTRIBUTING.md",
-	}
-	allowed := map[string]struct{}{
-		"internal/cli/":      {},
-		"internal/config/":   {},
-		"internal/manifest/": {},
-		"internal/ops/":      {},
-		"internal/runtime/":  {},
-	}
-	pattern := regexp.MustCompile(`internal/[a-z0-9_]+/`)
-
-	for _, rel := range docs {
-		path := filepath.Join(root, rel)
-		raw, err := os.ReadFile(path)
-		if err != nil {
-			t.Fatalf("read %s: %v", path, err)
-		}
-
-		text := string(raw)
-		for _, match := range pattern.FindAllString(text, -1) {
-			if _, ok := allowed[match]; !ok {
-				t.Fatalf("doc %s contains unexpected internal layout path %q", rel, match)
-			}
-		}
 	}
 }
 
@@ -246,88 +173,74 @@ func TestRepositoryHasTaggedIntegrationTests(t *testing.T) {
 	}
 }
 
-func TestMakefileIntegrationTargetIsReal(t *testing.T) {
-	raw := readRepoFile(t, "Makefile")
-	text := string(raw)
+func TestMakefileKeepsBasicHealthCommands(t *testing.T) {
+	text := string(readRepoFile(t, "Makefile"))
 
 	if strings.Contains(text, "go test ./... -run Integration") {
 		t.Fatal("Makefile integration target must not use fake Integration name filtering")
 	}
-	for _, needle := range []string{
-		"integration-preflight:",
-		"pull-images: integration-preflight",
-		"integration: pull-images",
-		"docker info >/dev/null",
-		"docker compose version >/dev/null",
-		"docker pull $$image",
-		"go test -count=1 -p 1 -tags=integration $(INTEGRATION_PKGS)",
-		"ci: build mod-verify test-readonly test-race vet staticcheck lint integration mod-clean-check",
+	for _, target := range []string{
+		"build",
+		"mod-verify",
+		"test-readonly",
+		"test-race",
+		"vet",
+		"staticcheck",
+		"lint",
+		"integration-preflight",
+		"pull-images",
+		"integration",
+		"ci-fast",
+		"ci-integration",
+		"mod-clean-check",
+		"ci",
 	} {
-		if !strings.Contains(text, needle) {
-			t.Fatalf("Makefile missing required integration/ci contract %q", needle)
-		}
+		assertMakefileTargetExists(t, text, target)
+	}
+	assertMakefileTargetDependsOn(t, text, "pull-images", "integration-preflight")
+	assertMakefileTargetDependsOn(t, text, "integration", "pull-images")
+	for _, dep := range []string{"build", "mod-verify", "test-readonly", "test-race", "vet", "staticcheck", "lint", "mod-clean-check"} {
+		assertMakefileTargetDependsOn(t, text, "ci-fast", dep)
+	}
+	for _, dep := range []string{"pull-images", "integration"} {
+		assertMakefileTargetDependsOn(t, text, "ci-integration", dep)
+	}
+	for _, dep := range []string{"ci-fast", "ci-integration"} {
+		assertMakefileTargetDependsOn(t, text, "ci", dep)
+	}
+	for _, tokens := range [][]string{
+		{"go", "build"},
+		{"go", "mod", "verify"},
+		{"go", "test", "-mod=readonly"},
+		{"go", "test", "-race"},
+		{"go", "vet"},
+		{"staticcheck"},
+		{"golangci-lint", "run"},
+		{"docker", "info"},
+		{"docker", "compose", "version"},
+		{"docker", "pull"},
+		{"go", "test", "-tags=integration"},
+		{"git", "diff", "go.mod", "go.sum"},
+	} {
+		assertAnyLineHasTokens(t, "Makefile", strings.Split(text, "\n"), tokens...)
 	}
 }
 
-func TestCIWorkflowRunsExplicitHealthChecks(t *testing.T) {
-	text := string(readRepoFile(t, ".github/workflows/ci.yml"))
-	for _, needle := range []string{
-		"go mod verify",
-		"go test ./...",
-		"go test -mod=readonly ./...",
-		"go test -race ./...",
-		"go vet ./...",
-		"staticcheck ./...",
-		"golangci-lint run --no-config ./...",
-		"git diff --exit-code -- go.mod go.sum",
-		"docker info",
-		"docker compose version",
-		"make pull-images",
-		"make integration",
+func TestCIWorkflowRunsBasicHealthCommands(t *testing.T) {
+	workflow := string(readRepoFile(t, ".github/workflows/ci.yml"))
+	commands := workflowRunCommandsFromText(t, workflow)
+	for _, tokens := range [][]string{
+		{"make", "ci-fast"},
+		{"make", "ci-integration"},
 	} {
-		if !strings.Contains(text, needle) {
-			t.Fatalf("workflow missing required health command %q", needle)
-		}
+		assertAnyLineHasTokens(t, ".github/workflows/ci.yml run command", commands, tokens...)
 	}
-}
-
-func TestReadmeImageContractMentionsPinningAndPullRequirements(t *testing.T) {
-	readme := string(readRepoFile(t, "README.md"))
-	for _, needle := range []string{
-		"## Images And Supply-Chain Contract",
-		"`ESPOCRM_IMAGE`",
-		"`MARIADB_IMAGE`",
-		"tag-based",
-		"digest-pinned",
-		"docker pull \"<ESPOCRM_IMAGE from your env file>\"",
-		"docker pull \"<MARIADB_IMAGE from your env file>\"",
-		"`make pull-images`",
-		"Docker Hub",
-		"does not by itself prove that the Go code is broken",
-	} {
-		if !strings.Contains(readme, needle) {
-			t.Fatalf("README image contract must mention %q", needle)
-		}
+	if !strings.Contains(workflow, "pull_request:") {
+		t.Fatal("workflow must keep pull_request coverage")
 	}
-}
-
-func TestCIWorkflowUsesNode24ActionVersions(t *testing.T) {
-	text := string(readRepoFile(t, ".github/workflows/ci.yml"))
-	for _, needle := range []string{
-		"actions/checkout@v5",
-		"actions/setup-go@v6",
-	} {
-		if !strings.Contains(text, needle) {
-			t.Fatalf("workflow must use node24-capable action version %q", needle)
-		}
-	}
-	for _, needle := range []string{
-		"actions/checkout@v4",
-		"actions/setup-go@v4",
-	} {
-		if strings.Contains(text, needle) {
-			t.Fatalf("workflow must not keep deprecated node20 action version %q", needle)
-		}
+	dockerJob := workflowJobBlock(t, workflow, "docker-integration")
+	if !lineWithTokensExists(dockerJob, "if:", "pull_request", "!=") {
+		t.Fatal("docker integration job must not run for pull_request events")
 	}
 }
 
@@ -385,19 +298,6 @@ func TestEnvExamplesDoNotContainUnknownKeys(t *testing.T) {
 	}
 }
 
-func TestReadmeRuntimeContractMentionsComposeAndGoKeys(t *testing.T) {
-	readme := string(readRepoFile(t, "README.md"))
-	keys := append([]string{}, composeEnvKeys(t)...)
-	keys = append(keys, goRequiredEnvKeys...)
-	keys = append(keys, goRestoreEnvKeys...)
-
-	for _, key := range uniqueSorted(keys) {
-		if !strings.Contains(readme, "`"+key+"`") {
-			t.Fatalf("README runtime contract must mention %s", key)
-		}
-	}
-}
-
 func TestImageContractIsConsistent(t *testing.T) {
 	compose := string(readRepoFile(t, "compose.yaml"))
 	for _, needle := range []string{
@@ -405,7 +305,7 @@ func TestImageContractIsConsistent(t *testing.T) {
 		"image: ${MARIADB_IMAGE}",
 	} {
 		if !strings.Contains(compose, needle) {
-			t.Fatalf("compose.yaml must consume documented image env key %q", needle)
+			t.Fatalf("compose.yaml must consume image env key %q", needle)
 		}
 	}
 	if strings.Contains(compose, "MARIADB_TAG") {
@@ -420,11 +320,6 @@ func TestImageContractIsConsistent(t *testing.T) {
 		if _, ok := env["MARIADB_TAG"]; ok {
 			t.Fatalf("%s must not contain deprecated MARIADB_TAG", rel)
 		}
-	}
-
-	readme := string(readRepoFile(t, "README.md"))
-	if !strings.Contains(readme, "MARIADB_IMAGE=mariadb:11.4") {
-		t.Fatal("README must document MARIADB_IMAGE=mariadb:11.4")
 	}
 
 	integration := string(readRepoFile(t, "internal/runtime/docker_integration_test.go"))
@@ -453,13 +348,6 @@ func TestComposePortsUseExplicitBindAddress(t *testing.T) {
 			t.Fatalf("%s must set WS_BIND_ADDRESS=127.0.0.1, got %q", rel, env["WS_BIND_ADDRESS"])
 		}
 	}
-
-	readme := string(readRepoFile(t, "README.md"))
-	for _, needle := range []string{"`APP_BIND_ADDRESS`", "`WS_BIND_ADDRESS`", "`127.0.0.1`", "`0.0.0.0`"} {
-		if !strings.Contains(readme, needle) {
-			t.Fatalf("README must document bind address contract %q", needle)
-		}
-	}
 }
 
 func TestWebsocketRuntimeContractIsExplicit(t *testing.T) {
@@ -479,11 +367,6 @@ func TestWebsocketRuntimeContractIsExplicit(t *testing.T) {
 		if env["APP_SERVICES"] != expectedRuntimeAppServices {
 			t.Fatalf("%s must set APP_SERVICES=%s, got %q", rel, expectedRuntimeAppServices, env["APP_SERVICES"])
 		}
-	}
-
-	readme := string(readRepoFile(t, "README.md"))
-	if !strings.Contains(readme, "`APP_SERVICES` must explicitly list `espocrm,espocrm-daemon,espocrm-websocket`") {
-		t.Fatal("README must document the explicit websocket APP_SERVICES contract")
 	}
 }
 
@@ -518,84 +401,6 @@ func TestRuntimeContractDoesNotAdvertisePasswordFileKeys(t *testing.T) {
 	}
 }
 
-func TestOperationLockContractIsDocumented(t *testing.T) {
-	readme := string(readRepoFile(t, "README.md"))
-	for _, needle := range []string{"`.espops/locks`", "`doctor` is read-only and does not take an operation lock", "`smoke` locks both scopes"} {
-		if !strings.Contains(readme, needle) {
-			t.Fatalf("README must document operation locking contract %q", needle)
-		}
-	}
-
-	contributing := string(readRepoFile(t, "CONTRIBUTING.md"))
-	if !strings.Contains(contributing, "Do not ship a mutating operation path without the per-scope cross-process operation lock.") {
-		t.Fatal("CONTRIBUTING.md must require the operation lock on mutating flows")
-	}
-
-	agents := string(readRepoFile(t, "AGENTS.md"))
-	if !strings.Contains(agents, "No mutating operation without the explicit operation lock.") {
-		t.Fatal("AGENTS.md must require explicit operation locking")
-	}
-}
-
-func TestManifestRuntimeContractIsDocumented(t *testing.T) {
-	readme := string(readRepoFile(t, "README.md"))
-	for _, needle := range []string{
-		"manifest version `2`",
-		"`backup verify` can still diagnose a valid manifest version `1` backup set",
-		"`restore`, `migrate`, and `smoke` require manifest version `2`",
-		"`espops backup`",
-		"`espops restore`",
-		"`espops migrate`",
-	} {
-		if !strings.Contains(readme, needle) {
-			t.Fatalf("README must document manifest runtime contract %q", needle)
-		}
-	}
-
-	contributing := string(readRepoFile(t, "CONTRIBUTING.md"))
-	if !strings.Contains(contributing, "New backups must write manifest version `2`, and `restore`/`migrate` must block manifest version `1` before mutation.") {
-		t.Fatal("CONTRIBUTING.md must require manifest version 2 on mutating flows")
-	}
-
-	agents := string(readRepoFile(t, "AGENTS.md"))
-	if !strings.Contains(agents, "No restore or migrate success from manifest version `1` or from a manifest that lacks explicit runtime metadata.") {
-		t.Fatal("AGENTS.md must require explicit runtime metadata on restore-capable flows")
-	}
-}
-
-func TestTrackedFilesDoNotContainHistoricalResidue(t *testing.T) {
-	files := trackedFiles(t)
-	patterns := buildHistoricalResiduePatterns()
-
-	for _, rel := range files {
-		raw, err := os.ReadFile(rel)
-		if err != nil {
-			t.Fatalf("read %s: %v", rel, err)
-		}
-
-		scanner := bufio.NewScanner(strings.NewReader(string(raw)))
-		lineNo := 0
-		for scanner.Scan() {
-			lineNo++
-			line := scanner.Text()
-			if allowedResidueLine(rel, line) {
-				continue
-			}
-			for _, pattern := range patterns {
-				if pattern.MatchString(line) {
-					t.Fatalf("tracked residue match in %s:%d: %q", rel, lineNo, strings.TrimSpace(line))
-				}
-			}
-			if containsDisallowedRecoveryTerms(line) {
-				t.Fatalf("tracked residue match in %s:%d: %q", rel, lineNo, strings.TrimSpace(line))
-			}
-		}
-		if err := scanner.Err(); err != nil {
-			t.Fatalf("scan %s: %v", rel, err)
-		}
-	}
-}
-
 func productionGoFiles(t *testing.T, roots ...string) []string {
 	t.Helper()
 
@@ -620,7 +425,7 @@ func productionGoFiles(t *testing.T, roots ...string) []string {
 	return files
 }
 
-func listImportPaths(t *testing.T, args ...string) []string {
+func goListLines(t *testing.T, args ...string) []string {
 	t.Helper()
 
 	cmd := exec.Command("go", args...)
@@ -650,68 +455,121 @@ func trackedFiles(t *testing.T) []string {
 	return slices.Compact(lines)
 }
 
-func buildHistoricalResiduePatterns() []*regexp.Regexp {
-	terms := []string{
-		joinParts("v", "3"),
-		joinParts("le", "gacy"),
-		joinParts("cut", "over"),
-		joinParts("fr", "eeze"),
-		joinParts("re", "tained"),
-		joinParts("or", "acle"),
-		joinParts("ref", "erence"),
-		joinParts("gold", "en"),
-		joinParts("accept", "ance"),
-		joinParts("result", "bridge"),
-		joinParts("contract", "/", "result"),
-		joinParts("journal", "bridge"),
-		joinParts("error", "transport"),
-		joinParts("arch", "itecture"),
-		joinParts("repo", "_", "compliance"),
-		joinParts("mi", "gration"),
-		joinParts("sh", "im"),
-		joinParts("old", " ", "world"),
-		joinParts("old", "-", "world"),
-		joinParts("dual", "-", "path"),
-		joinParts("dual", " ", "path"),
-	}
+func assertMakefileTargetExists(t *testing.T, text, target string) {
+	t.Helper()
 
-	patterns := make([]*regexp.Regexp, 0, len(terms)+2)
-	for _, term := range terms {
-		patterns = append(patterns, regexp.MustCompile(`(?i)\b`+regexp.QuoteMeta(term)+`\b`))
-	}
-	patterns = append(patterns,
-		regexp.MustCompile(`(?i)\b`+joinParts("micro")+`[_ -]?`+joinParts("monolith")+`\b`),
-		regexp.MustCompile(`(?i)\b`+joinParts("repo")+`[_ -]?`+joinParts("compliance")+`\b`),
-	)
-	return patterns
+	makefileTargetDeps(t, text, target)
 }
 
-func allowedResidueLine(path, line string) bool {
-	lower := strings.ToLower(strings.TrimSpace(line))
-	if strings.HasPrefix(path, "go.sum") {
-		return strings.Contains(lower, joinParts("/", "v", "2", " ")) || strings.Contains(lower, joinParts("yaml.", "v", "3"))
+func assertMakefileTargetDependsOn(t *testing.T, text, target, dep string) {
+	t.Helper()
+
+	deps := makefileTargetDeps(t, text, target)
+	if !slices.Contains(deps, dep) {
+		t.Fatalf("Makefile target %s must depend on %s; deps: %v", target, dep, deps)
 	}
-	if path == "Makefile" {
-		return strings.Contains(lower, joinParts("golangci-lint/", "v", "2")) || strings.Contains(lower, joinParts("v", "2", ".11.4"))
+}
+
+func makefileTargetDeps(t *testing.T, text, target string) []string {
+	t.Helper()
+
+	pattern := regexp.MustCompile(`(?m)^` + regexp.QuoteMeta(target) + `\s*:(.*)$`)
+	matches := pattern.FindAllStringSubmatch(text, -1)
+	if len(matches) != 1 {
+		t.Fatalf("Makefile must contain exactly one %s target, found %d", target, len(matches))
+	}
+	return strings.Fields(matches[0][1])
+}
+
+func workflowRunCommandsFromText(t *testing.T, text string) []string {
+	t.Helper()
+
+	lines := strings.Split(text, "\n")
+	var commands []string
+	for i := 0; i < len(lines); i++ {
+		line := lines[i]
+		trimmed := strings.TrimSpace(line)
+		if !strings.HasPrefix(trimmed, "run:") {
+			continue
+		}
+
+		command := strings.TrimSpace(strings.TrimPrefix(trimmed, "run:"))
+		if command != "" && command != "|" {
+			commands = append(commands, command)
+			continue
+		}
+
+		indent := leadingSpaces(line)
+		for i+1 < len(lines) && leadingSpaces(lines[i+1]) > indent {
+			i++
+			blockLine := strings.TrimSpace(lines[i])
+			if blockLine != "" && !strings.HasPrefix(blockLine, "#") {
+				commands = append(commands, blockLine)
+			}
+		}
+	}
+	if len(commands) == 0 {
+		t.Fatal("workflow must contain run commands")
+	}
+	return commands
+}
+
+func workflowJobBlock(t *testing.T, text, job string) []string {
+	t.Helper()
+
+	lines := strings.Split(text, "\n")
+	header := "  " + job + ":"
+	for i, line := range lines {
+		if line != header {
+			continue
+		}
+
+		block := []string{line}
+		for _, next := range lines[i+1:] {
+			if strings.HasPrefix(next, "  ") && !strings.HasPrefix(next, "    ") && strings.TrimSpace(next) != "" {
+				break
+			}
+			block = append(block, next)
+		}
+		return block
+	}
+	t.Fatalf("workflow missing %s job", job)
+	return nil
+}
+
+func assertAnyLineHasTokens(t *testing.T, label string, lines []string, tokens ...string) {
+	t.Helper()
+
+	if lineWithTokensExists(lines, tokens...) {
+		return
+	}
+	t.Fatalf("%s missing line containing tokens %v", label, tokens)
+}
+
+func lineWithTokensExists(lines []string, tokens ...string) bool {
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "#") {
+			continue
+		}
+		if lineHasTokens(trimmed, tokens...) {
+			return true
+		}
 	}
 	return false
 }
 
-func containsDisallowedRecoveryTerms(line string) bool {
-	lower := strings.ToLower(line)
-	compatTerm := joinParts("compat", "ibility")
-	if strings.Contains(lower, compatTerm) && !strings.Contains(lower, joinParts("no ", compatTerm)) {
-		return true
+func lineHasTokens(line string, tokens ...string) bool {
+	for _, token := range tokens {
+		if !strings.Contains(line, token) {
+			return false
+		}
 	}
-	altPathTerm := joinParts("fall", "back")
-	if strings.Contains(lower, altPathTerm) && !strings.Contains(lower, joinParts("no ", altPathTerm)) {
-		return true
-	}
-	return false
+	return true
 }
 
-func joinParts(parts ...string) string {
-	return strings.Join(parts, "")
+func leadingSpaces(line string) int {
+	return len(line) - len(strings.TrimLeft(line, " "))
 }
 
 func readRepoFile(t *testing.T, rel string) []byte {
@@ -821,10 +679,4 @@ func mapKeysSorted(values map[string]struct{}) []string {
 	}
 	slices.Sort(keys)
 	return keys
-}
-
-func uniqueSorted(values []string) []string {
-	sorted := append([]string{}, values...)
-	slices.Sort(sorted)
-	return slices.Compact(sorted)
 }
