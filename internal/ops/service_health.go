@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"strings"
 	"time"
 
 	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
@@ -108,5 +109,16 @@ func sleepWithContext(ctx context.Context, delay time.Duration) error {
 
 func isRetryableServiceHealthError(err error) bool {
 	var healthErr *runtime.ServiceHealthError
-	return errors.As(err, &healthErr) && healthErr.Retryable
+	if !errors.As(err, &healthErr) {
+		return false
+	}
+	if strings.ToLower(strings.TrimSpace(healthErr.State)) != "running" {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(healthErr.Health)) {
+	case "starting", "unhealthy":
+		return true
+	default:
+		return false
+	}
 }

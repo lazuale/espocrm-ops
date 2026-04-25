@@ -266,7 +266,7 @@ func TestRestoreCLIJSONHealthFailureIsRuntimeFailure(t *testing.T) {
 	}
 
 	fakeDockerRoot := prependRestoreFakeDocker(t)
-	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-ps-output", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-ps-output", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"exited","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}

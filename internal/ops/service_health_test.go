@@ -55,7 +55,102 @@ func TestWaitForRuntimeServiceHealthRetriesUntilHealthy(t *testing.T) {
 	}
 }
 
-func TestWaitForRuntimeServiceHealthTimeoutIncludesServiceName(t *testing.T) {
+func TestWaitForRuntimeServiceHealthRetriesUnhealthyUntilHealthy(t *testing.T) {
+	rt := &fakeServiceHealthRuntime{
+		errors: map[int]error{
+			1: &runtime.ServiceHealthError{
+				Service: "espocrm",
+				State:   "running",
+				Health:  "unhealthy",
+				Message: `service "espocrm" health is "unhealthy" (want "healthy")`,
+			},
+		},
+	}
+
+	oldSleep := serviceHealthSleep
+	sleepCalls := 0
+	serviceHealthSleep = func(context.Context, time.Duration) error {
+		sleepCalls++
+		return nil
+	}
+	defer func() {
+		serviceHealthSleep = oldSleep
+	}()
+
+	err := waitForRuntimeServiceHealth(context.Background(), runtime.Target{}, "db", []string{"espocrm"}, rt)
+	if err != nil {
+		t.Fatalf("waitForRuntimeServiceHealth failed: %v", err)
+	}
+	if rt.calls != 2 {
+		t.Fatalf("unexpected health calls: got %d want 2", rt.calls)
+	}
+	if sleepCalls != 1 {
+		t.Fatalf("unexpected sleep calls: got %d want 1", sleepCalls)
+	}
+}
+
+func TestWaitForRuntimeServiceHealthTerminalFailuresDoNotRetry(t *testing.T) {
+	tests := []struct {
+		name string
+		err  error
+	}{
+		{
+			name: "not found",
+			err: &runtime.ServiceHealthError{
+				Service: "db",
+				Message: `service "db" not found in docker compose ps output`,
+			},
+		},
+		{
+			name: "exited",
+			err: &runtime.ServiceHealthError{
+				Service: "db",
+				State:   "exited",
+				Health:  "unhealthy",
+				Message: `service "db" state is "exited" (want "running")`,
+			},
+		},
+		{
+			name: "no healthcheck",
+			err: &runtime.ServiceHealthError{
+				Service: "db",
+				State:   "running",
+				Message: `service "db" has no docker compose health status`,
+			},
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			rt := &fakeServiceHealthRuntime{
+				errors: map[int]error{1: tt.err},
+			}
+
+			oldSleep := serviceHealthSleep
+			sleepCalls := 0
+			serviceHealthSleep = func(context.Context, time.Duration) error {
+				sleepCalls++
+				return nil
+			}
+			defer func() {
+				serviceHealthSleep = oldSleep
+			}()
+
+			err := waitForRuntimeServiceHealth(context.Background(), runtime.Target{}, "db", []string{"app"}, rt)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if rt.calls != 1 {
+				t.Fatalf("unexpected health calls: got %d want 1", rt.calls)
+			}
+			if sleepCalls != 0 {
+				t.Fatalf("unexpected sleep calls: got %d want 0", sleepCalls)
+			}
+		})
+	}
+}
+
+func TestWaitForRuntimeServiceHealthTimeoutIncludesLastStatus(t *testing.T) {
 	rt := &fakeServiceHealthRuntime{
 		errors: map[int]error{
 			1: &runtime.ServiceHealthError{
@@ -65,11 +160,22 @@ func TestWaitForRuntimeServiceHealthTimeoutIncludesServiceName(t *testing.T) {
 				Message:   `service "espocrm" health is "starting" (want "healthy")`,
 				Retryable: true,
 			},
+			2: &runtime.ServiceHealthError{
+				Service: "espocrm",
+				State:   "running",
+				Health:  "unhealthy",
+				Message: `service "espocrm" health is "unhealthy" (want "healthy")`,
+			},
 		},
 	}
 
 	oldSleep := serviceHealthSleep
+	sleepCalls := 0
 	serviceHealthSleep = func(context.Context, time.Duration) error {
+		sleepCalls++
+		if sleepCalls == 1 {
+			return nil
+		}
 		return context.DeadlineExceeded
 	}
 	defer func() {
@@ -85,6 +191,9 @@ func TestWaitForRuntimeServiceHealthTimeoutIncludesServiceName(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), `service "espocrm"`) {
 		t.Fatalf("expected service name in error, got %v", err)
+	}
+	if !strings.Contains(err.Error(), `health is "unhealthy"`) {
+		t.Fatalf("expected last health status in error, got %v", err)
 	}
 	if !strings.Contains(err.Error(), "timed out waiting for docker compose service health") {
 		t.Fatalf("unexpected error: %v", err)

@@ -493,7 +493,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fake_root="$(cd -- "$script_dir/.." && pwd)"
 
 default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
-default_failed_health_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
+default_failed_health_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"exited","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
 
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
