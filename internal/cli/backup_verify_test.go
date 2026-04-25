@@ -55,7 +55,7 @@ func TestBackupVerifyCLIJSONSuccess(t *testing.T) {
 	if filesBackup := requireJSONString(t, obj, "result", "files_backup"); filesBackup != filesPath {
 		t.Fatalf("unexpected files_backup: %s", filesBackup)
 	}
-	if image := requireJSONString(t, obj, "result", "runtime", "espo_crm_image"); image != "espocrm/espocrm:9.3.4-apache" {
+	if image := requireJSONString(t, obj, "result", "runtime", "espo_crm_image"); image != "espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" {
 		t.Fatalf("unexpected runtime image: %s", image)
 	}
 	if stderr.Len() != 0 {
@@ -270,8 +270,8 @@ func v2ManifestDocument(dbBase, filesBase, dbChecksum, filesChecksum string) map
 			"files_backup": filesChecksum,
 		},
 		"runtime": map[string]any{
-			"espo_crm_image":     "espocrm/espocrm:9.3.4-apache",
-			"mariadb_image":      "mariadb:11.4",
+			"espo_crm_image":     "espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"mariadb_image":      "mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			"db_name":            "espocrm",
 			"db_service":         "db",
 			"app_services":       []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},

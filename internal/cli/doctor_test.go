@@ -21,6 +21,8 @@ func TestDoctorCLIJSONSuccess(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -89,6 +91,8 @@ func TestDoctorCLIJSONFailureForUnhealthyService(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -149,6 +153,8 @@ func TestDoctorCLIJSONFailureForMissingEnv(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",

@@ -75,7 +75,7 @@ Shipped env examples stay tag-based:
 
 That is readable and easy to replace, but it is not digest-pinned. The repository does not claim that the shipped examples are production-safe from a supply-chain perspective.
 
-For real production, replace both image refs with digest-pinned values before first deployment, for example `repo@sha256:...`. `espops` does not auto-detect digests and does not enforce digest pinning for you.
+For real production, replace both image refs with digest-pinned values before first deployment, for example `repo@sha256:...`. `espops` enforces digest-pinned image refs for `--scope prod`, but it does not auto-detect or resolve digests for you.
 
 To pre-pull the exact runtime refs you intend to trust:
 
@@ -176,7 +176,7 @@ Operator prerequisites:
 - `MIN_FREE_DISK_MB` is required for every backup-capable scope, must be an integer greater than zero, and is checked before `backup` stops app services or creates backup artifacts
 - `BACKUP_RETENTION_DAYS` is required for every backup-capable scope, must be an integer greater than or equal to zero, and `0` disables retention cleanup explicitly
 - `ESPO_STORAGE_DIR` must already exist, must be the real storage directory for the selected scope, and must be clearable by the operator account before `restore` or `migrate`
-- Current MariaDB runtime baseline is `mariadb:11.4`; both shipped env examples set `MARIADB_IMAGE=mariadb:11.4`, and the Docker integration fixture uses the same major/minor target
+- Current MariaDB example/integration baseline is the `mariadb:11.4` line; shipped examples keep `MARIADB_IMAGE=mariadb:11.4` for readability, while prod env files must pin a digest before use
 - `APP_BIND_ADDRESS` and `WS_BIND_ADDRESS` are required. Shipped examples use `127.0.0.1` to avoid accidental publish-all. To expose on LAN or public interfaces, set an explicit host IP or `0.0.0.0` on purpose and update `SITE_URL` and `WS_PUBLIC_URL` to match
 - Current Compose runtime includes the websocket container. `APP_SERVICES` must explicitly list `espocrm,espocrm-daemon,espocrm-websocket`; there is no fallback that adds websocket automatically
 - Shared MariaDB baseline in `deploy/mariadb/z-custom.cnf` sets `innodb_buffer_pool_size=512M`. Shipped examples keep `DB_MEM_LIMIT` at or above that baseline (`768m` in dev and `1g` in prod); do not set `DB_MEM_LIMIT` below the buffer pool size

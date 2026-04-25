@@ -8,6 +8,13 @@ import (
 	"testing"
 )
 
+const (
+	testEspoCRMImageRef = "espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	testMariaDBImageRef = "mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+	testEspoCRMTagRef   = "espocrm/espocrm:9.3.4-apache"
+	testMariaDBTagRef   = "mariadb:11.4"
+)
+
 func TestLoadBackupConfigValid(t *testing.T) {
 	projectDir := t.TempDir()
 	composePath := filepath.Join(projectDir, "compose.yaml")
@@ -17,8 +24,8 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	}
 	if err := os.WriteFile(envPath, []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=" + testEspoCRMImageRef,
+		"MARIADB_IMAGE=" + testMariaDBImageRef,
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -47,10 +54,10 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	if cfg.EnvFile != envPath {
 		t.Fatalf("unexpected env file: %s", cfg.EnvFile)
 	}
-	if cfg.EspoCRMImage != "espocrm/espocrm:9.3.4-apache" {
+	if cfg.EspoCRMImage != testEspoCRMImageRef {
 		t.Fatalf("unexpected espo image: %s", cfg.EspoCRMImage)
 	}
-	if cfg.MariaDBImage != "mariadb:11.4" {
+	if cfg.MariaDBImage != testMariaDBImageRef {
 		t.Fatalf("unexpected mariadb image: %s", cfg.MariaDBImage)
 	}
 	if cfg.BackupRoot != filepath.Join(projectDir, "backups", "prod") {
@@ -214,6 +221,78 @@ func TestLoadBackupConfigDoesNotRejectDevWorldReadableEnv(t *testing.T) {
 	}
 }
 
+func TestLoadBackupConfigAllowsDevTagBasedImageRefs(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBackupConfigEnv(t, projectDir, ".env.dev", []string{
+		"ESPO_CONTOUR=dev",
+		"ESPOCRM_IMAGE=" + testEspoCRMTagRef,
+		"MARIADB_IMAGE=" + testMariaDBTagRef,
+		"BACKUP_ROOT=./backups/dev",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/dev/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+
+	cfg, err := LoadBackup(BackupRequest{Scope: "dev", ProjectDir: projectDir})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	if cfg.EspoCRMImage != testEspoCRMTagRef || cfg.MariaDBImage != testMariaDBTagRef {
+		t.Fatalf("unexpected dev image refs: %s %s", cfg.EspoCRMImage, cfg.MariaDBImage)
+	}
+}
+
+func TestLoadBackupConfigRejectsProdImageRefsWithoutDigest(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		line string
+		key  string
+	}{
+		{name: "espo_tag", line: "ESPOCRM_IMAGE=" + testEspoCRMTagRef, key: "ESPOCRM_IMAGE"},
+		{name: "mariadb_tag", line: "MARIADB_IMAGE=" + testMariaDBTagRef, key: "MARIADB_IMAGE"},
+		{name: "espo_missing", line: "ESPOCRM_IMAGE=", key: "ESPOCRM_IMAGE"},
+		{name: "mariadb_missing", line: "MARIADB_IMAGE=", key: "MARIADB_IMAGE"},
+		{name: "wrong_algorithm", line: "ESPOCRM_IMAGE=espocrm/espocrm@sha512:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", key: "ESPOCRM_IMAGE"},
+		{name: "short_digest", line: "MARIADB_IMAGE=mariadb@sha256:abc123", key: "MARIADB_IMAGE"},
+		{name: "non_hex_digest", line: "ESPOCRM_IMAGE=espocrm/espocrm@sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg", key: "ESPOCRM_IMAGE"},
+		{name: "tag_plus_digest", line: "MARIADB_IMAGE=mariadb:11.4@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb", key: "MARIADB_IMAGE"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			projectDir := t.TempDir()
+			writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+				"ESPO_CONTOUR=prod",
+				tc.line,
+				"BACKUP_ROOT=./backups/prod",
+				"BACKUP_NAME_PREFIX=test-backup",
+				"BACKUP_RETENTION_DAYS=7",
+				"MIN_FREE_DISK_MB=1",
+				"ESPO_STORAGE_DIR=./runtime/prod/espo",
+				"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+				"DB_SERVICE=db",
+				"DB_USER=espocrm",
+				"DB_PASSWORD=db-secret",
+				"DB_NAME=espocrm",
+			})
+
+			_, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			for _, want := range []string{tc.key, "digest-pinned", "repo@sha256:<64-hex-digest>", "prod"} {
+				if !strings.Contains(err.Error(), want) {
+					t.Fatalf("expected error to contain %q, got %v", want, err)
+				}
+			}
+		})
+	}
+}
+
 func TestLoadBackupConfigRequiresInlineDBPassword(t *testing.T) {
 	projectDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
@@ -254,8 +333,8 @@ func TestLoadRestoreConfigRequiresDBRootPassword(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=" + testEspoCRMImageRef,
+		"MARIADB_IMAGE=" + testMariaDBImageRef,
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -292,8 +371,8 @@ func TestLoadRestoreConfigReadsInlineDBRootPassword(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=" + testEspoCRMImageRef,
+		"MARIADB_IMAGE=" + testMariaDBImageRef,
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -322,10 +401,10 @@ func TestLoadRestoreConfigReadsInlineDBRootPassword(t *testing.T) {
 	if cfg.DBRootPassword != "root-secret" {
 		t.Fatalf("unexpected db root password: %q", cfg.DBRootPassword)
 	}
-	if cfg.EspoCRMImage != "espocrm/espocrm:9.3.4-apache" {
+	if cfg.EspoCRMImage != testEspoCRMImageRef {
 		t.Fatalf("unexpected espo image: %s", cfg.EspoCRMImage)
 	}
-	if cfg.MariaDBImage != "mariadb:11.4" {
+	if cfg.MariaDBImage != testMariaDBImageRef {
 		t.Fatalf("unexpected mariadb image: %s", cfg.MariaDBImage)
 	}
 	if !cfg.RuntimeOwnershipConfigured {
@@ -453,6 +532,8 @@ func TestLoadBackupConfigUsesComposeFileFromEnv(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=" + testEspoCRMImageRef,
+		"MARIADB_IMAGE=" + testMariaDBImageRef,
 		"COMPOSE_FILE=./compose.prod.yaml",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
@@ -488,6 +569,8 @@ func TestLoadBackupConfigUsesAppServicesFromEnv(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=" + testEspoCRMImageRef,
+		"MARIADB_IMAGE=" + testMariaDBImageRef,
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -867,9 +950,35 @@ func writeBackupConfigEnv(t *testing.T, projectDir, envName string, lines []stri
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	lines = testEnvLines(envName, lines)
 	if err := os.WriteFile(filepath.Join(projectDir, envName), []byte(strings.Join(append(lines, ""), "\n")), testEnvFileMode(envName)); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func testEnvLines(envName string, lines []string) []string {
+	if envName != ".env.prod" {
+		return lines
+	}
+
+	out := append([]string(nil), lines...)
+	if !hasEnvAssignment(out, "ESPOCRM_IMAGE") {
+		out = append([]string{"ESPOCRM_IMAGE=" + testEspoCRMImageRef}, out...)
+	}
+	if !hasEnvAssignment(out, "MARIADB_IMAGE") {
+		out = append([]string{"MARIADB_IMAGE=" + testMariaDBImageRef}, out...)
+	}
+	return out
+}
+
+func hasEnvAssignment(lines []string, key string) bool {
+	prefix := key + "="
+	for _, line := range lines {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func testEnvFileMode(envName string) os.FileMode {

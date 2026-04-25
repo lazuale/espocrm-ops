@@ -30,8 +30,8 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -119,8 +119,8 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -187,8 +187,8 @@ func TestRestoreCLIJSONRejectsManifestFromDifferentScope(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -245,8 +245,8 @@ func TestRestoreCLIJSONHealthFailureIsRuntimeFailure(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -312,8 +312,8 @@ func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -375,8 +375,8 @@ func TestRestoreCLIJSONUsageFailureWhenRuntimeOwnershipMissing(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -435,8 +435,8 @@ func TestRestoreCLIJSONOwnershipFailureDoesNotRevealSecrets(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -501,8 +501,8 @@ func TestRestoreCLIJSONVersionOneManifestFailsClosed(t *testing.T) {
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
 		"ESPO_CONTOUR=prod",
-		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
-		"MARIADB_IMAGE=mariadb:11.4",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 		"BACKUP_ROOT=./backups/prod",
 		"BACKUP_NAME_PREFIX=test-backup",
 		"BACKUP_RETENTION_DAYS=7",
@@ -581,8 +581,8 @@ func writeVerifiedRestoreBackupSet(t *testing.T) (manifestPath, dbSQL string) {
 			"files_backup": sha256OfFile(t, filesPath),
 		},
 		"runtime": map[string]any{
-			"espo_crm_image":     "espocrm/espocrm:9.3.4-apache",
-			"mariadb_image":      "mariadb:11.4",
+			"espo_crm_image":     "espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+			"mariadb_image":      "mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
 			"db_name":            "espocrm",
 			"db_service":         "db",
 			"app_services":       []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},

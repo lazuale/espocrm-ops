@@ -55,6 +55,7 @@ type loadOptions struct {
 }
 
 const maxBackupNamePrefixLen = 80
+const sha256DigestHexLen = 64
 
 func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	scope := strings.TrimSpace(req.Scope)
@@ -134,14 +135,24 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	if err != nil {
 		return BackupConfig{}, err
 	}
+	espoCRMImage := strings.TrimSpace(values["ESPOCRM_IMAGE"])
+	mariaDBImage := strings.TrimSpace(values["MARIADB_IMAGE"])
+	if scope == "prod" {
+		if err := requireDigestPinnedImage("ESPOCRM_IMAGE", espoCRMImage, envFile); err != nil {
+			return BackupConfig{}, err
+		}
+		if err := requireDigestPinnedImage("MARIADB_IMAGE", mariaDBImage, envFile); err != nil {
+			return BackupConfig{}, err
+		}
+	}
 
 	return BackupConfig{
 		Scope:                      scope,
 		ProjectDir:                 projectDir,
 		ComposeFile:                composeFile,
 		EnvFile:                    envFile,
-		EspoCRMImage:               strings.TrimSpace(values["ESPOCRM_IMAGE"]),
-		MariaDBImage:               strings.TrimSpace(values["MARIADB_IMAGE"]),
+		EspoCRMImage:               espoCRMImage,
+		MariaDBImage:               mariaDBImage,
 		BackupRoot:                 resolveProjectPath(projectDir, values["BACKUP_ROOT"]),
 		BackupNamePrefix:           backupNamePrefix,
 		BackupRetentionDays:        backupRetentionDays,
@@ -198,6 +209,40 @@ func requireSecureProdEnvFile(path string) error {
 		return fmt.Errorf("prod env file %s has unsafe permissions %04o; run chmod 600 %s, or chmod 640 %s when group read access is required", path, mode, path, path)
 	}
 	return nil
+}
+
+func requireDigestPinnedImage(key, ref, envFile string) error {
+	if ref == "" {
+		return fmt.Errorf("%s is required in %s and must be digest-pinned as repo@sha256:<64-hex-digest> for prod", key, envFile)
+	}
+	if !isDigestPinnedImageRef(ref) {
+		return fmt.Errorf("%s in %s must be digest-pinned as repo@sha256:<64-hex-digest> for prod, got %q", key, envFile, ref)
+	}
+	return nil
+}
+
+func isDigestPinnedImageRef(ref string) bool {
+	repo, digest, ok := strings.Cut(ref, "@sha256:")
+	if !ok || repo == "" || digest == "" {
+		return false
+	}
+	if strings.Contains(repo, "@") || strings.Contains(digest, "@") || strings.Contains(digest, ":") {
+		return false
+	}
+	lastSlash := strings.LastIndex(repo, "/")
+	if strings.Contains(repo[lastSlash+1:], ":") {
+		return false
+	}
+	if len(digest) != sha256DigestHexLen {
+		return false
+	}
+	for _, ch := range digest {
+		if ('0' <= ch && ch <= '9') || ('a' <= ch && ch <= 'f') {
+			continue
+		}
+		return false
+	}
+	return true
 }
 
 func resolveProjectPath(projectDir, value string) string {
