@@ -71,7 +71,6 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(backupCmd)
 	cmd.AddCommand(newRestoreCmd())
 	cmd.AddCommand(newMigrateCmd())
-	cmd.AddCommand(newSmokeCmd())
 
 	return cmd
 }

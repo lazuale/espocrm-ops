@@ -62,10 +62,10 @@ func TestDoctorCLIJSONSuccess(t *testing.T) {
 		t.Fatalf("unexpected message: %s", message)
 	}
 	checks := requireJSONObjectArray(t, obj, "result", "checks")
-	if len(checks) != 7 {
+	if len(checks) != 6 {
 		t.Fatalf("unexpected checks: %#v", checks)
 	}
-	for i, name := range []string{"config", "backup_root", "storage_dir", "compose_config", "services", "service_health", "db_ping"} {
+	for i, name := range []string{"config", "backup_root", "storage_dir", "compose_config", "service_health", "db_ping"} {
 		if got := requireJSONStringFromObject(t, checks[i], "name"); got != name {
 			t.Fatalf("unexpected check name at %d: %s", i, got)
 		}
@@ -132,13 +132,13 @@ func TestDoctorCLIJSONFailureForUnhealthyService(t *testing.T) {
 		t.Fatalf("unexpected error message: %s", errMessage)
 	}
 	checks := requireJSONObjectArray(t, obj, "result", "checks")
-	if len(checks) != 6 {
+	if len(checks) != 5 {
 		t.Fatalf("unexpected checks: %#v", checks)
 	}
-	if name := requireJSONStringFromObject(t, checks[5], "name"); name != "service_health" {
+	if name := requireJSONStringFromObject(t, checks[4], "name"); name != "service_health" {
 		t.Fatalf("unexpected failed check: %s", name)
 	}
-	if requireJSONBoolFromObject(t, checks[5], "ok") {
+	if requireJSONBoolFromObject(t, checks[4], "ok") {
 		t.Fatal("expected service_health check to fail")
 	}
 	if stderr.Len() != 0 {

@@ -75,7 +75,7 @@ func TestRestoreRejectsDifferentManifestScopeBeforeMutation(t *testing.T) {
 
 	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
 	assertVerifyErrorKind(t, err, ErrorKindUsage)
-	if !strings.Contains(err.Error(), "restore source scope is invalid") {
+	if !strings.Contains(err.Error(), "manifest scope is invalid for requested operation") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if result.Manifest != sourceManifest {

@@ -95,7 +95,6 @@ func TestIntegrationDoctorPassesAgainstRealComposeProject(t *testing.T) {
 		"backup_root",
 		"storage_dir",
 		"compose_config",
-		"services",
 		"service_health",
 		"db_ping",
 	}

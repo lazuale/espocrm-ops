@@ -31,14 +31,7 @@ type restoreRuntime interface {
 }
 
 func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result RestoreResult, err error) {
-	return restoreWithOptions(ctx, cfg, manifestPath, rt, now, restoreOptions{
-		scopeErrorMessage: "restore source scope is invalid",
-	})
-}
-
-type restoreOptions struct {
-	allowedSourceScope string
-	scopeErrorMessage  string
+	return restoreWithOptions(ctx, cfg, manifestPath, rt, now, "")
 }
 
 const restoreStagingDirPattern = "espops-restore-staging-*"
@@ -62,7 +55,7 @@ type restoreOwnershipOps struct {
 	lchown func(string, int, int) error
 }
 
-func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, opts restoreOptions) (result RestoreResult, err error) {
+func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, allowedSourceScope string) (result RestoreResult, err error) {
 	if rt == nil {
 		return RestoreResult{}, runtimeError("restore runtime is required", nil)
 	}
@@ -78,11 +71,11 @@ func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPa
 		ProjectDir: cfg.ProjectDir,
 		Scope:      cfg.Scope,
 	}}, "restore lock failed", func(lockedCtx context.Context) (RestoreResult, error) {
-		return restoreWithOptionsLocked(lockedCtx, cfg, manifestPath, rt, now, opts)
+		return restoreWithOptionsLocked(lockedCtx, cfg, manifestPath, rt, now, allowedSourceScope)
 	})
 }
 
-func restoreWithOptionsLocked(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, opts restoreOptions) (result RestoreResult, err error) {
+func restoreWithOptionsLocked(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, allowedSourceScope string) (result RestoreResult, err error) {
 	result.Manifest = manifestPath
 
 	verifyResult, verifyErr := VerifyBackup(ctx, manifestPath)
@@ -90,7 +83,7 @@ func restoreWithOptionsLocked(ctx context.Context, cfg config.BackupConfig, mani
 		return result, verifyErr
 	}
 	result.Manifest = verifyResult.Manifest
-	if err := validateRestoreSourceScope(cfg.Scope, verifyResult.Scope, opts); err != nil {
+	if err := validateRestoreSourceScope(cfg.Scope, verifyResult.Scope, allowedSourceScope); err != nil {
 		return result, err
 	}
 	if err := requireRestoreRuntimeContract(cfg, verifyResult); err != nil {
@@ -195,22 +188,18 @@ func validateRestoreInputs(cfg config.BackupConfig, manifestPath string) error {
 	return nil
 }
 
-func validateRestoreSourceScope(targetScope, sourceScope string, opts restoreOptions) error {
+func validateRestoreSourceScope(targetScope, sourceScope, allowedSourceScope string) error {
 	wantScope := strings.TrimSpace(targetScope)
-	if allowed := strings.TrimSpace(opts.allowedSourceScope); allowed != "" {
+	if allowed := strings.TrimSpace(allowedSourceScope); allowed != "" {
 		wantScope = allowed
 	}
 	if sourceScope == wantScope {
 		return nil
 	}
 
-	message := strings.TrimSpace(opts.scopeErrorMessage)
-	if message == "" {
-		message = "restore source scope is invalid"
-	}
 	return &VerifyError{
 		Kind:    ErrorKindUsage,
-		Message: message,
+		Message: "manifest scope is invalid for requested operation",
 		Err: fmt.Errorf(
 			"manifest scope %q does not match required scope %q",
 			sourceScope,

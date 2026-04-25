@@ -21,7 +21,6 @@ type DoctorResult struct {
 
 type doctorRuntime interface {
 	ComposeConfig(ctx context.Context, target runtime.Target) error
-	Services(ctx context.Context, target runtime.Target) ([]runtime.Service, error)
 	RequireHealthyServices(ctx context.Context, target runtime.Target, services []string) error
 	DBPing(ctx context.Context, target runtime.Target) error
 }
@@ -31,7 +30,7 @@ func Doctor(ctx context.Context, req config.BackupRequest, rt doctorRuntime) (Do
 		return DoctorResult{}, runtimeError("doctor runtime is required", nil)
 	}
 
-	result := DoctorResult{Checks: make([]DoctorCheck, 0, 7)}
+	result := DoctorResult{Checks: make([]DoctorCheck, 0, 6)}
 
 	cfg, err := config.LoadBackup(req)
 	if err != nil {
@@ -63,15 +62,6 @@ func Doctor(ctx context.Context, req config.BackupRequest, rt doctorRuntime) (Do
 		return failDoctorCheck(result, "compose_config", ErrorKindRuntime, "doctor compose config check failed", err)
 	}
 	result.Checks = append(result.Checks, passedDoctorCheck("compose_config"))
-
-	services, err := rt.Services(ctx, target)
-	if err != nil {
-		return failDoctorCheck(result, "services", ErrorKindRuntime, "doctor services check failed", err)
-	}
-	if err := requireDoctorServices(services, cfg.DBService, cfg.AppServices); err != nil {
-		return failDoctorCheck(result, "services", ErrorKindRuntime, "doctor services check failed", err)
-	}
-	result.Checks = append(result.Checks, passedDoctorCheck("services"))
 
 	if err := requireRuntimeServiceHealth(ctx, target, cfg.DBService, cfg.AppServices, rt); err != nil {
 		return failDoctorCheck(result, "service_health", ErrorKindRuntime, "doctor service health check failed", err)
@@ -142,30 +132,6 @@ func checkDoctorStorageDir(path string) error {
 	}
 	if _, err := os.ReadDir(path); err != nil {
 		return err
-	}
-
-	return nil
-}
-
-func requireDoctorServices(services []runtime.Service, dbService string, appServices []string) error {
-	available := make(map[string]struct{}, len(services))
-	for _, service := range services {
-		name := strings.TrimSpace(service.Name)
-		if name == "" {
-			continue
-		}
-		available[name] = struct{}{}
-	}
-
-	dbService = strings.TrimSpace(dbService)
-	if _, ok := available[dbService]; !ok {
-		return fmt.Errorf("db service %q not found in docker compose ps output", dbService)
-	}
-	for _, service := range appServices {
-		name := strings.TrimSpace(service)
-		if _, ok := available[name]; !ok {
-			return fmt.Errorf("app service %q not found in docker compose ps output", name)
-		}
 	}
 
 	return nil

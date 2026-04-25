@@ -182,22 +182,18 @@ func TestDoctorStorageDirMissingFails(t *testing.T) {
 	}
 }
 
-func TestDoctorMissingDBServiceInPSFails(t *testing.T) {
+func TestDoctorMissingServiceInPSFailsAtServiceHealthCheck(t *testing.T) {
 	projectDir := doctorProjectDir(t, validDoctorEnv(), true)
 
 	rt := &fakeDoctorRuntime{
-		services: []runtime.Service{
-			{Name: "espocrm"},
-			{Name: "espocrm-daemon"},
-			{Name: "espocrm-websocket"},
-		},
+		serviceHealthErr: errf(`service "db" not found in docker compose ps output`),
 	}
 	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
 	}, rt)
 	assertVerifyErrorKind(t, err, ErrorKindRuntime)
-	if !strings.Contains(err.Error(), `db service "db" not found`) {
+	if !strings.Contains(err.Error(), "doctor service health check failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	assertDoctorChecks(t, result.Checks,
@@ -205,39 +201,9 @@ func TestDoctorMissingDBServiceInPSFails(t *testing.T) {
 		DoctorCheck{Name: "backup_root", OK: true},
 		DoctorCheck{Name: "storage_dir", OK: true},
 		DoctorCheck{Name: "compose_config", OK: true},
-		DoctorCheck{Name: "services", OK: false},
+		DoctorCheck{Name: "service_health", OK: false},
 	)
-	if err := rt.requireCalls("compose_config", "services"); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func TestDoctorMissingAppServiceInPSFails(t *testing.T) {
-	projectDir := doctorProjectDir(t, validDoctorEnv(), true)
-
-	rt := &fakeDoctorRuntime{
-		services: []runtime.Service{
-			{Name: "db"},
-			{Name: "espocrm"},
-			{Name: "espocrm-websocket"},
-		},
-	}
-	result, err := Doctor(context.Background(), config.BackupRequest{
-		Scope:      "prod",
-		ProjectDir: projectDir,
-	}, rt)
-	assertVerifyErrorKind(t, err, ErrorKindRuntime)
-	if !strings.Contains(err.Error(), `app service "espocrm-daemon" not found`) {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	assertDoctorChecks(t, result.Checks,
-		DoctorCheck{Name: "config", OK: true},
-		DoctorCheck{Name: "backup_root", OK: true},
-		DoctorCheck{Name: "storage_dir", OK: true},
-		DoctorCheck{Name: "compose_config", OK: true},
-		DoctorCheck{Name: "services", OK: false},
-	)
-	if err := rt.requireCalls("compose_config", "services"); err != nil {
+	if err := rt.requireCalls("compose_config", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -246,12 +212,6 @@ func TestDoctorUnhealthyAppServiceFailsAtServiceHealthCheck(t *testing.T) {
 	projectDir := doctorProjectDir(t, validDoctorEnv(), true)
 
 	rt := &fakeDoctorRuntime{
-		services: []runtime.Service{
-			{Name: "db"},
-			{Name: "espocrm"},
-			{Name: "espocrm-daemon"},
-			{Name: "espocrm-websocket"},
-		},
 		serviceHealthErr: errf(`service "espocrm-daemon" health is "unhealthy" (want "healthy")`),
 	}
 	result, err := Doctor(context.Background(), config.BackupRequest{
@@ -267,10 +227,9 @@ func TestDoctorUnhealthyAppServiceFailsAtServiceHealthCheck(t *testing.T) {
 		DoctorCheck{Name: "backup_root", OK: true},
 		DoctorCheck{Name: "storage_dir", OK: true},
 		DoctorCheck{Name: "compose_config", OK: true},
-		DoctorCheck{Name: "services", OK: true},
 		DoctorCheck{Name: "service_health", OK: false},
 	)
-	if err := rt.requireCalls("compose_config", "services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -278,14 +237,7 @@ func TestDoctorUnhealthyAppServiceFailsAtServiceHealthCheck(t *testing.T) {
 func TestDoctorHealthyServicesProceedToDBPing(t *testing.T) {
 	projectDir := doctorProjectDir(t, validDoctorEnv(), true)
 
-	rt := &fakeDoctorRuntime{
-		services: []runtime.Service{
-			{Name: "db"},
-			{Name: "espocrm"},
-			{Name: "espocrm-daemon"},
-			{Name: "espocrm-websocket"},
-		},
-	}
+	rt := &fakeDoctorRuntime{}
 	result, err := Doctor(context.Background(), config.BackupRequest{
 		Scope:      "prod",
 		ProjectDir: projectDir,
@@ -298,11 +250,10 @@ func TestDoctorHealthyServicesProceedToDBPing(t *testing.T) {
 		DoctorCheck{Name: "backup_root", OK: true},
 		DoctorCheck{Name: "storage_dir", OK: true},
 		DoctorCheck{Name: "compose_config", OK: true},
-		DoctorCheck{Name: "services", OK: true},
 		DoctorCheck{Name: "service_health", OK: true},
 		DoctorCheck{Name: "db_ping", OK: true},
 	)
-	if err := rt.requireCalls("compose_config", "services", "service_health", "db_ping"); err != nil {
+	if err := rt.requireCalls("compose_config", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -361,8 +312,6 @@ func validDoctorEnv() []string {
 
 type fakeDoctorRuntime struct {
 	composeErr       error
-	services         []runtime.Service
-	servicesErr      error
 	serviceHealthErr error
 	dbPingErr        error
 	calls            []string
@@ -371,14 +320,6 @@ type fakeDoctorRuntime struct {
 func (f *fakeDoctorRuntime) ComposeConfig(_ context.Context, _ runtime.Target) error {
 	f.calls = append(f.calls, "compose_config")
 	return f.composeErr
-}
-
-func (f *fakeDoctorRuntime) Services(_ context.Context, _ runtime.Target) ([]runtime.Service, error) {
-	f.calls = append(f.calls, "services")
-	if f.servicesErr != nil {
-		return nil, f.servicesErr
-	}
-	return append([]runtime.Service(nil), f.services...), nil
 }
 
 func (f *fakeDoctorRuntime) RequireHealthyServices(_ context.Context, _ runtime.Target, _ []string) error {

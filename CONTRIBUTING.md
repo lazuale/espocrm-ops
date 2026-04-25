@@ -11,7 +11,6 @@ The shipped command surface is fixed:
 - `backup verify`
 - `restore`
 - `migrate`
-- `smoke`
 
 Production behavior lives in:
 
@@ -34,11 +33,12 @@ Required invariants:
 
 - `DB_SERVICE` and `APP_SERVICES` stay explicit; no inferred defaults.
 - `DB_SERVICE` and every `APP_SERVICES` entry must have a Compose healthcheck.
+- Env files stay literal `KEY=VALUE` only; no quotes, spaces, or shell expansion syntax.
 - Success requires service health plus explicit operation post-checks; MariaDB reachability alone is not enough.
 - Mutating operations must acquire the per-scope cross-process operation lock before mutation.
 - New backups write manifest version `2` with runtime metadata; `restore` and `migrate` must block manifest version `1` before mutation.
-- `restore`, `migrate`, and `smoke` require explicit `DB_ROOT_PASSWORD`; never fall back to `DB_USER` for database reset.
-- `restore`, `migrate`, and `smoke` require explicit `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`; never infer ownership from the image, container, or operator account.
+- `restore` and `migrate` require explicit `DB_ROOT_PASSWORD`; never fall back to `DB_USER` for database reset.
+- `restore` and `migrate` require explicit `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`; never infer ownership from the image, container, or operator account.
 - Shipped Compose/env contract uses inline `DB_PASSWORD` and `DB_ROOT_PASSWORD`; do not advertise file-based password env keys.
 - `prod` env loading stays fail-closed: `.env.prod` must be a regular non-symlink file with mode exactly `0600`.
 - Do not call mutable image tags production-safe unless deployed image refs are digest-pinned.

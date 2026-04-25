@@ -25,10 +25,6 @@ type Target struct {
 	DBName         string
 }
 
-type Service struct {
-	Name string `json:"Service"`
-}
-
 type ServiceStatus struct {
 	Name   string `json:"Service"`
 	State  string `json:"State"`
@@ -58,19 +54,6 @@ func (DockerCompose) ComposeConfig(ctx context.Context, target Target) error {
 
 func (DockerCompose) Validate(ctx context.Context, target Target) error {
 	return DockerCompose{}.ComposeConfig(ctx, target)
-}
-
-func (DockerCompose) Services(ctx context.Context, target Target) ([]Service, error) {
-	statuses, err := DockerCompose{}.ServiceStatuses(ctx, target)
-	if err != nil {
-		return nil, err
-	}
-
-	services := make([]Service, 0, len(statuses))
-	for _, status := range statuses {
-		services = append(services, Service{Name: status.Name})
-	}
-	return services, nil
 }
 
 func (DockerCompose) ServiceStatuses(ctx context.Context, target Target) ([]ServiceStatus, error) {

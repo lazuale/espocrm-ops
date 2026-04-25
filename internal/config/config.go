@@ -414,17 +414,16 @@ func loadEnvAssignments(path string) (values map[string]string, err error) {
 }
 
 func parseEnvAssignment(line string) (string, string, bool) {
-	trimmed := strings.TrimLeft(line, " \t")
-	if trimmed == "" {
+	if line == "" || strings.TrimSpace(line) != line || strings.ContainsAny(line, " \t") {
 		return "", "", false
 	}
 
-	sep := strings.IndexByte(trimmed, '=')
+	sep := strings.IndexByte(line, '=')
 	if sep <= 0 {
 		return "", "", false
 	}
 
-	key := trimmed[:sep]
+	key := line[:sep]
 	for i, ch := range key {
 		if i == 0 {
 			if !isEnvKeyStart(ch) {
@@ -437,7 +436,7 @@ func parseEnvAssignment(line string) (string, string, bool) {
 		}
 	}
 
-	return key, trimmed[sep+1:], true
+	return key, line[sep+1:], true
 }
 
 func isEnvKeyStart(ch rune) bool {
@@ -449,74 +448,11 @@ func isEnvKeyPart(ch rune) bool {
 }
 
 func parseEnvValue(rawValue, path string, lineNo int) (string, error) {
-	switch {
-	case strings.HasPrefix(rawValue, "\""):
-		return decodeDoubleQuotedValue(rawValue, path, lineNo)
-	case strings.HasPrefix(rawValue, "'"):
-		return decodeSingleQuotedValue(rawValue, path, lineNo)
-	default:
-		return decodeUnquotedValue(rawValue, path, lineNo)
-	}
-}
-
-func decodeDoubleQuotedValue(rawValue, path string, lineNo int) (string, error) {
-	if len(rawValue) < 2 || !strings.HasSuffix(rawValue, "\"") {
-		return "", fmt.Errorf("%s:%d: unterminated double-quoted value", path, lineNo)
-	}
-
-	inner := rawValue[1 : len(rawValue)-1]
-	var decoded strings.Builder
-	escapeNext := false
-	for _, ch := range inner {
-		if escapeNext {
-			switch ch {
-			case '\\', '"':
-				decoded.WriteRune(ch)
-			default:
-				return "", fmt.Errorf("%s:%d: unsupported escape sequence \\%c", path, lineNo, ch)
-			}
-			escapeNext = false
-			continue
-		}
-
-		switch ch {
-		case '\\':
-			escapeNext = true
-		case '"':
-			return "", fmt.Errorf("%s:%d: inner double quotes must be escaped", path, lineNo)
-		default:
-			decoded.WriteRune(ch)
-		}
-	}
-	if escapeNext {
-		return "", fmt.Errorf("%s:%d: unfinished escape sequence", path, lineNo)
-	}
-
-	value := decoded.String()
-	if err := rejectShellSyntax(value, path, lineNo); err != nil {
-		return "", err
-	}
-	return value, nil
-}
-
-func decodeSingleQuotedValue(rawValue, path string, lineNo int) (string, error) {
-	if len(rawValue) < 2 || !strings.HasSuffix(rawValue, "'") {
-		return "", fmt.Errorf("%s:%d: unterminated single-quoted value", path, lineNo)
-	}
-
-	value := rawValue[1 : len(rawValue)-1]
-	if strings.Contains(value, "'") {
-		return "", fmt.Errorf("%s:%d: raw single quote is not allowed inside single-quoted value", path, lineNo)
-	}
-	if err := rejectShellSyntax(value, path, lineNo); err != nil {
-		return "", err
-	}
-	return value, nil
-}
-
-func decodeUnquotedValue(rawValue, path string, lineNo int) (string, error) {
 	if strings.ContainsAny(rawValue, " \t") {
-		return "", fmt.Errorf("%s:%d: unquoted values with spaces are not allowed", path, lineNo)
+		return "", fmt.Errorf("%s:%d: values with spaces are not allowed", path, lineNo)
+	}
+	if strings.ContainsAny(rawValue, `"'`) {
+		return "", fmt.Errorf("%s:%d: quoted values are not allowed", path, lineNo)
 	}
 	if err := rejectShellSyntax(rawValue, path, lineNo); err != nil {
 		return "", err

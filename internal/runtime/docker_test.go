@@ -266,49 +266,6 @@ func TestDockerComposeUpServiceRunsComposeUp(t *testing.T) {
 	}
 }
 
-func TestDockerComposeServicesRunsComposePS(t *testing.T) {
-	projectDir := t.TempDir()
-	logPath := installFakeDocker(t)
-	setFakeDockerPSOutput(t, logPath, `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"}]`)
-
-	rt := DockerCompose{}
-	services, err := rt.Services(context.Background(), Target{
-		ProjectDir:  projectDir,
-		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
-		EnvFile:     filepath.Join(projectDir, ".env.prod"),
-	})
-	if err != nil {
-		t.Fatalf("Services failed: %v", err)
-	}
-	if len(services) != 2 || services[0].Name != "db" || services[1].Name != "espocrm" {
-		t.Fatalf("unexpected services: %#v", services)
-	}
-
-	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" ps --format json") {
-		t.Fatalf("unexpected docker log:\n%s", log)
-	}
-}
-
-func TestDockerComposeServicesAcceptsJSONLines(t *testing.T) {
-	projectDir := t.TempDir()
-	logPath := installFakeDocker(t)
-	setFakeDockerPSOutput(t, logPath, "{\"Service\":\"db\",\"State\":\"running\",\"Health\":\"healthy\"}\n{\"Service\":\"espocrm\",\"State\":\"running\",\"Health\":\"healthy\"}\n")
-
-	rt := DockerCompose{}
-	services, err := rt.Services(context.Background(), Target{
-		ProjectDir:  projectDir,
-		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
-		EnvFile:     filepath.Join(projectDir, ".env.prod"),
-	})
-	if err != nil {
-		t.Fatalf("Services failed: %v", err)
-	}
-	if len(services) != 2 || services[0].Name != "db" || services[1].Name != "espocrm" {
-		t.Fatalf("unexpected services: %#v", services)
-	}
-}
-
 func TestDockerComposeServiceStatusesAcceptsJSONLines(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)

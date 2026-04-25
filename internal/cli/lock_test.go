@@ -50,13 +50,6 @@ func (l cliHeldLock) Release(t *testing.T) {
 	}
 }
 
-func assertCLIScopeLockAvailable(t *testing.T, projectDir, scope string) {
-	t.Helper()
-
-	lock := holdCLIScopeLock(t, projectDir, scope)
-	lock.Release(t)
-}
-
 func cliScopeLockMessage(scope string) string {
 	return fmt.Sprintf(`operation lock busy for scope %q`, scope)
 }

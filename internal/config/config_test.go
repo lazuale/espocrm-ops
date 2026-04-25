@@ -89,6 +89,66 @@ func TestLoadBackupConfigValid(t *testing.T) {
 	}
 }
 
+func TestLoadEnvAssignmentsOnlyAcceptsLiteralKeyValueLines(t *testing.T) {
+	t.Run("valid", func(t *testing.T) {
+		path := filepath.Join(t.TempDir(), ".env.dev")
+		if err := os.WriteFile(path, []byte(strings.Join([]string{
+			"# comment",
+			"",
+			"KEY=value",
+			"EMPTY=",
+			"",
+		}, "\n")), 0o600); err != nil {
+			t.Fatal(err)
+		}
+
+		values, err := loadEnvAssignments(path)
+		if err != nil {
+			t.Fatalf("loadEnvAssignments failed: %v", err)
+		}
+		if values["KEY"] != "value" || values["EMPTY"] != "" {
+			t.Fatalf("unexpected values: %#v", values)
+		}
+	})
+
+	testCases := []struct {
+		name string
+		line string
+		want string
+	}{
+		{name: "duplicate_key", line: "KEY=two", want: "duplicate assignment for KEY"},
+		{name: "invalid_key", line: "1KEY=value", want: "expected KEY=VALUE"},
+		{name: "leading_space", line: " KEY=value", want: "expected KEY=VALUE"},
+		{name: "space_around_equals", line: "KEY =value", want: "expected KEY=VALUE"},
+		{name: "value_space", line: "KEY=bad value", want: "expected KEY=VALUE"},
+		{name: "double_quoted_value", line: `KEY="value"`, want: "quoted values are not allowed"},
+		{name: "single_quoted_value", line: "KEY='value'", want: "quoted values are not allowed"},
+		{name: "command_substitution", line: "KEY=$(whoami)", want: "shell expansion syntax is not allowed"},
+		{name: "brace_expansion", line: "KEY=${HOME}", want: "shell expansion syntax is not allowed"},
+		{name: "backtick_expansion", line: "KEY=`whoami`", want: "shell expansion syntax is not allowed"},
+	}
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), ".env.dev")
+			lines := []string{tc.line}
+			if tc.name == "duplicate_key" {
+				lines = []string{"KEY=one", tc.line}
+			}
+			if err := os.WriteFile(path, []byte(strings.Join(append(lines, ""), "\n")), 0o600); err != nil {
+				t.Fatal(err)
+			}
+
+			_, err := loadEnvAssignments(path)
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("expected error to contain %q, got %v", tc.want, err)
+			}
+		})
+	}
+}
+
 func TestLoadBackupConfigRejectsProdEnvMode0640(t *testing.T) {
 	projectDir := t.TempDir()
 	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
@@ -799,7 +859,6 @@ func TestLoadBackupConfigRejectsUnsafeBackupNamePrefix(t *testing.T) {
 	}{
 		{name: "path_traversal", envLine: "BACKUP_NAME_PREFIX=../prod"},
 		{name: "slash", envLine: "BACKUP_NAME_PREFIX=bad/name"},
-		{name: "space", envLine: "BACKUP_NAME_PREFIX=\"bad name\""},
 		{name: "dot", envLine: "BACKUP_NAME_PREFIX=."},
 		{name: "dotdot", envLine: "BACKUP_NAME_PREFIX=.."},
 		{name: "too_long", envLine: "BACKUP_NAME_PREFIX=" + strings.Repeat("a", 81)},

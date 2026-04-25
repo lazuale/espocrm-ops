@@ -221,7 +221,7 @@ func TestRestoreCLIJSONRejectsManifestFromDifferentScope(t *testing.T) {
 	if kind := requireJSONString(t, obj, "error", "kind"); kind != "usage" {
 		t.Fatalf("unexpected error kind: %s", kind)
 	}
-	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "restore source scope is invalid") {
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "manifest scope is invalid for requested operation") {
 		t.Fatalf("unexpected error message: %s", errMessage)
 	}
 	if stderr.Len() != 0 {

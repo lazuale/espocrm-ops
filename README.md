@@ -9,7 +9,6 @@ The product commands are exactly:
 - `backup verify`
 - `restore`
 - `migrate`
-- `smoke`
 
 Every command writes one structured JSON result to `stdout` on success or failure.
 
@@ -36,6 +35,8 @@ For `prod`, `.env.prod` must be a regular file, not a symlink, with mode exactly
 chmod 600 .env.prod
 ```
 
+Env files are parsed as literal `KEY=VALUE` lines only: no quotes, no spaces, and no shell expansion syntax.
+
 Required `espops` env keys:
 
 - `BACKUP_ROOT`
@@ -49,7 +50,7 @@ Required `espops` env keys:
 - `DB_PASSWORD`
 - `DB_NAME`
 
-Additional keys required by `restore`, `migrate`, and `smoke`:
+Additional keys required by `restore` and `migrate`:
 
 - `DB_ROOT_PASSWORD`
 - `ESPO_RUNTIME_UID`
@@ -94,13 +95,12 @@ Mutating commands use cross-process operation locks under `PROJECT_DIR/.espops/l
 - `backup` locks its scope before runtime validation, disk checks, service stop, and artifact creation.
 - `restore` locks the target scope before manifest verify, snapshot backup, service stop, database reset, and storage mutation.
 - `migrate` locks both the source scope and target scope.
-- `smoke` locks both scopes for the full fixed flow.
 
 Success requires explicit health or post-check evidence. A MariaDB ping alone is not success.
 
 - `doctor` succeeds only when config parses, backup/storage prerequisites pass, contract services are present, `running`, and `healthy`, and MariaDB `SELECT 1` succeeds.
 - `backup` succeeds only after app services are returned, all contract services are `running` and `healthy`, and the new backup set self-verifies.
-- `restore`, `migrate`, and `smoke` succeed only after restored storage passes post-check, contract services are `running` and `healthy`, and MariaDB `SELECT 1` succeeds.
+- `restore` and `migrate` succeed only after restored storage passes post-check, contract services are `running` and `healthy`, and MariaDB `SELECT 1` succeeds.
 
 These checks validate the Compose service contract, not a browser login flow.
 
@@ -134,12 +134,20 @@ Retention cleanup runs only after the new set self-verifies. It deletes only com
 
 Both flows create a target snapshot before mutation, reset the target database as MariaDB root, import into a clean database, restore files through staged extraction next to target storage, apply `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`, switch storage by same-parent rename, and run final post-checks before reporting success.
 
-## Smoke
+## Manual Destructive Smoke Sequence
 
 ```bash
-./bin/espops smoke --from-scope dev --to-scope prod --project-dir /path/to/project
+PROJECT_DIR=/path/to/project
+MANIFEST=/path/to/fresh-dev.manifest.json
+
+./bin/espops doctor --scope dev --project-dir "$PROJECT_DIR"
+./bin/espops doctor --scope prod --project-dir "$PROJECT_DIR"
+./bin/espops backup --scope dev --project-dir "$PROJECT_DIR"
+./bin/espops backup verify --manifest "$MANIFEST"
+./bin/espops restore --scope dev --project-dir "$PROJECT_DIR" --manifest "$MANIFEST"
+./bin/espops migrate --from-scope dev --to-scope prod --project-dir "$PROJECT_DIR" --manifest "$MANIFEST"
 ```
 
-`smoke` runs `doctor` on both scopes, then `backup`, `backup verify`, `restore`, and `migrate` with the fresh manifest it just created. It does no setup, pull, cleanup, retry, or fallback.
+This is a manual destructive sequence, not a product command. Use the fresh manifest produced by the `backup` step. The sequence does no setup, pull, cleanup, retry, or fallback.
 
 Developer rules and test paths live in `CONTRIBUTING.md`.

@@ -32,10 +32,7 @@ func Migrate(ctx context.Context, fromScope string, targetCfg config.BackupConfi
 		{ProjectDir: targetCfg.ProjectDir, Scope: targetCfg.Scope},
 	}
 	restoreResult, restoreErr := withOperationLocks(ctx, lockSpecs, "migrate lock failed", func(lockedCtx context.Context) (RestoreResult, error) {
-		return restoreWithOptionsLocked(lockedCtx, targetCfg, manifestPath, rt, now, restoreOptions{
-			allowedSourceScope: fromScope,
-			scopeErrorMessage:  "migrate source scope is invalid",
-		})
+		return restoreWithOptionsLocked(lockedCtx, targetCfg, manifestPath, rt, now, fromScope)
 	})
 	result.Manifest = restoreResult.Manifest
 	result.SnapshotManifest = restoreResult.SnapshotManifest
