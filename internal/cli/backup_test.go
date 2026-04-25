@@ -440,9 +440,9 @@ func TestBackupCLIJSONRuntimeErrorRedactsPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prependFakeDocker(t)
-	t.Setenv("TEST_BACKUP_DOCKER_FAIL_DUMP", "1")
-	t.Setenv("TEST_BACKUP_DOCKER_FAIL_MESSAGE", "dump failed with MYSQL_PWD=db-secret")
+	fakeDockerRoot := prependFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "backup-fail-dump", "1")
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "backup-fail-message", "dump failed with MYSQL_PWD=db-secret")
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
@@ -467,7 +467,7 @@ func TestBackupCLIJSONRuntimeErrorRedactsPassword(t *testing.T) {
 	}
 }
 
-func prependFakeDocker(t *testing.T) {
+func prependFakeDocker(t *testing.T) string {
 	t.Helper()
 
 	rootDir := t.TempDir()
@@ -481,10 +481,22 @@ func prependFakeDocker(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return rootDir
+}
+
+func writeCLIFakeDockerControl(t *testing.T, rootDir, name, value string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(rootDir, name), []byte(value), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 const fakeDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fake_root="$(cd -- "$script_dir/.." && pwd)"
 
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
@@ -540,8 +552,13 @@ case "${1:-}" in
       printf 'unexpected command: %s\n' "${1:-}" >&2
       exit 1
     fi
-    if [[ "${TEST_BACKUP_DOCKER_FAIL_DUMP:-}" == "1" ]]; then
-      printf '%s\n' "${TEST_BACKUP_DOCKER_FAIL_MESSAGE:-dump failed}" >&2
+    if [[ -f "$fake_root/backup-fail-dump" ]]; then
+      if [[ -f "$fake_root/backup-fail-message" ]]; then
+        cat "$fake_root/backup-fail-message" >&2
+        printf '\n' >&2
+      else
+        printf 'dump failed\n' >&2
+      fi
       exit 1
     fi
     printf 'create table test(id int);\n'

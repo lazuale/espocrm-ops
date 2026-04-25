@@ -50,8 +50,8 @@ func TestMigrateCLIJSONSuccess(t *testing.T) {
 	}
 
 	stdinLogPath := filepath.Join(t.TempDir(), "migrate-db.sql")
-	prependRestoreFakeDocker(t)
-	t.Setenv("TEST_RESTORE_DOCKER_STDIN_LOG", stdinLogPath)
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-stdin-log", stdinLogPath)
 
 	oldNow := migrateNow
 	migrateNow = func() time.Time {

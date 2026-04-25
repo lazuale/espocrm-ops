@@ -51,8 +51,8 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 	}
 
 	stdinLogPath := filepath.Join(t.TempDir(), "restore-db.sql")
-	prependRestoreFakeDocker(t)
-	t.Setenv("TEST_RESTORE_DOCKER_STDIN_LOG", stdinLogPath)
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-stdin-log", stdinLogPath)
 
 	oldNow := restoreNow
 	restoreNow = func() time.Time {
@@ -265,8 +265,8 @@ func TestRestoreCLIJSONHealthFailureIsRuntimeFailure(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prependRestoreFakeDocker(t)
-	t.Setenv("TEST_RESTORE_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-ps-output", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
@@ -332,9 +332,9 @@ func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prependRestoreFakeDocker(t)
-	t.Setenv("TEST_RESTORE_DOCKER_FAIL_RESET", "1")
-	t.Setenv("TEST_RESTORE_DOCKER_FAIL_MESSAGE", "reset failed with MYSQL_PWD=root-secret and root-secret")
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-fail-reset", "1")
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-fail-message", "reset failed with MYSQL_PWD=root-secret and root-secret")
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
@@ -643,7 +643,7 @@ func writeVersionOneRestoreBackupSet(t *testing.T) (manifestPath, dbSQL string) 
 	return manifestPath, dbSQL
 }
 
-func prependRestoreFakeDocker(t *testing.T) {
+func prependRestoreFakeDocker(t *testing.T) string {
 	t.Helper()
 
 	rootDir := t.TempDir()
@@ -657,6 +657,7 @@ func prependRestoreFakeDocker(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return rootDir
 }
 
 func currentRuntimeUIDString() string {
@@ -669,6 +670,9 @@ func currentRuntimeGIDString() string {
 
 const restoreFakeDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fake_root="$(cd -- "$script_dir/.." && pwd)"
 
 default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
 
@@ -694,7 +698,11 @@ case "${1:-}" in
     exit 0
     ;;
   ps)
-    printf '%s' "${TEST_RESTORE_DOCKER_PS_OUTPUT:-$default_ps}"
+    if [[ -f "$fake_root/restore-ps-output" ]]; then
+      cat "$fake_root/restore-ps-output"
+    else
+      printf '%s' "$default_ps"
+    fi
     exit 0
     ;;
   stop|start)
@@ -730,8 +738,13 @@ case "${1:-}" in
             shift
             [[ "${1:-}" == "-e" ]] || exit 1
             shift
-            if [[ "${TEST_RESTORE_DOCKER_FAIL_RESET:-}" == "1" ]]; then
-              printf '%s\n' "${TEST_RESTORE_DOCKER_FAIL_MESSAGE:-reset failed}" >&2
+            if [[ -f "$fake_root/restore-fail-reset" ]]; then
+              if [[ -f "$fake_root/restore-fail-message" ]]; then
+                cat "$fake_root/restore-fail-message" >&2
+                printf '\n' >&2
+              else
+                printf 'reset failed\n' >&2
+              fi
               exit 1
             fi
             [[ "${1:-}" == DROP\ DATABASE\ IF\ EXISTS*CREATE\ DATABASE*CHARACTER\ SET\ utf8mb4\ COLLATE\ utf8mb4_unicode_ci\; ]] || exit 1
@@ -745,7 +758,11 @@ case "${1:-}" in
                 exit 0
               fi
             done
-            cat >"${TEST_RESTORE_DOCKER_STDIN_LOG:-/dev/null}"
+            if [[ -f "$fake_root/restore-stdin-log" ]]; then
+              cat >"$(cat "$fake_root/restore-stdin-log")"
+            else
+              cat >/dev/null
+            fi
             exit 0
             ;;
         esac

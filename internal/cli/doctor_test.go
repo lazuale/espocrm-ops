@@ -36,8 +36,8 @@ func TestDoctorCLIJSONSuccess(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prependDoctorFakeDocker(t)
-	t.Setenv("TEST_DOCTOR_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
+	fakeDockerRoot := prependDoctorFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "doctor-ps-output", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
@@ -104,8 +104,8 @@ func TestDoctorCLIJSONFailureForUnhealthyService(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	prependDoctorFakeDocker(t)
-	t.Setenv("TEST_DOCTOR_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
+	fakeDockerRoot := prependDoctorFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "doctor-ps-output", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]`)
 
 	stdout := &strings.Builder{}
 	stderr := &strings.Builder{}
@@ -204,7 +204,7 @@ func TestDoctorCLIJSONFailureForMissingEnv(t *testing.T) {
 	}
 }
 
-func prependDoctorFakeDocker(t *testing.T) {
+func prependDoctorFakeDocker(t *testing.T) string {
 	t.Helper()
 
 	rootDir := t.TempDir()
@@ -218,6 +218,7 @@ func prependDoctorFakeDocker(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return rootDir
 }
 
 func requireJSONObjectArray(t *testing.T, obj map[string]any, path ...string) []map[string]any {
@@ -255,6 +256,9 @@ func requireJSONBoolFromObject(t *testing.T, obj map[string]any, path ...string)
 const doctorFakeDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
 
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fake_root="$(cd -- "$script_dir/.." && pwd)"
+
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
   exit 1
@@ -274,14 +278,18 @@ done
 
 case "${1:-}" in
   config)
-    if [[ "${TEST_DOCTOR_DOCKER_FAIL_CONFIG:-}" == "1" ]]; then
+    if [[ -f "$fake_root/doctor-fail-config" ]]; then
       printf 'compose config failed\n' >&2
       exit 1
     fi
     exit 0
     ;;
   ps)
-    printf '%s' "${TEST_DOCTOR_DOCKER_PS_OUTPUT:-[]}"
+    if [[ -f "$fake_root/doctor-ps-output" ]]; then
+      cat "$fake_root/doctor-ps-output"
+    else
+      printf '[]'
+    fi
     exit 0
     ;;
   exec)
@@ -312,7 +320,7 @@ case "${1:-}" in
     shift
     case "${1:-}" in
       mariadb)
-        if [[ "${TEST_DOCTOR_DOCKER_FAIL_DBPING:-}" == "1" ]]; then
+        if [[ -f "$fake_root/doctor-fail-dbping" ]]; then
           printf 'db ping failed\n' >&2
           exit 1
         fi

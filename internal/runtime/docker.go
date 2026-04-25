@@ -221,7 +221,7 @@ func runCompose(ctx context.Context, target Target, opts runOptions, args ...str
 	} else {
 		cmd.Stdout = io.Discard
 	}
-	cmd.Env = mergeCommandEnv(os.Environ(), opts.env)
+	cmd.Env = commandEnv(os.Environ(), opts.env)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
@@ -278,6 +278,58 @@ func resetDatabaseSQL(name string) string {
 
 func quoteSQLIdentifier(name string) string {
 	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
+}
+
+func commandEnv(base, overrides []string) []string {
+	return mergeCommandEnv(allowedDockerEnv(base), explicitDockerEnv(overrides))
+}
+
+func allowedDockerEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if !ok || !isAllowedDockerEnvKey(key) {
+			continue
+		}
+		out = append(out, entry)
+	}
+	return out
+}
+
+func isAllowedDockerEnvKey(key string) bool {
+	switch key {
+	case "PATH",
+		"HOME",
+		"DOCKER_HOST",
+		"DOCKER_CONTEXT",
+		"DOCKER_CONFIG",
+		"DOCKER_CERT_PATH",
+		"DOCKER_TLS_VERIFY",
+		"SSH_AUTH_SOCK",
+		"XDG_RUNTIME_DIR",
+		"HTTP_PROXY",
+		"HTTPS_PROXY",
+		"NO_PROXY",
+		"ALL_PROXY",
+		"http_proxy",
+		"https_proxy",
+		"no_proxy",
+		"all_proxy":
+		return true
+	default:
+		return false
+	}
+}
+
+func explicitDockerEnv(env []string) []string {
+	out := make([]string, 0, len(env))
+	for _, entry := range env {
+		key, _, ok := strings.Cut(entry, "=")
+		if ok && key == "MYSQL_PWD" {
+			out = append(out, entry)
+		}
+	}
+	return out
 }
 
 func mergeCommandEnv(base, overrides []string) []string {

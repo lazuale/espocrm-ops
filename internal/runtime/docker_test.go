@@ -50,6 +50,105 @@ func TestDockerComposeComposeConfigRunsComposeConfig(t *testing.T) {
 	}
 }
 
+func TestDockerComposeDoesNotExposeHostRuntimeContractEnv(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+
+	for _, key := range runtimeContractEnvKeys() {
+		t.Setenv(key, "host-"+key)
+	}
+	t.Setenv("MYSQL_PWD", "host-mysql-secret")
+
+	rt := DockerCompose{}
+	err := rt.Validate(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	})
+	if err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+
+	envLog := mustReadFile(t, fakeDockerEnvLogPath(logPath))
+	for _, key := range append(runtimeContractEnvKeys(), "MYSQL_PWD") {
+		if envLogContainsKey(envLog, key) {
+			t.Fatalf("docker command inherited host env %s:\n%s", key, envLog)
+		}
+	}
+}
+
+func TestDockerComposeKeepsDockerSystemEnv(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+
+	t.Setenv("DOCKER_HOST", "unix:///tmp/espops-docker.sock")
+	t.Setenv("DOCKER_CONTEXT", "espops-context")
+	t.Setenv("DOCKER_CONFIG", filepath.Join(projectDir, ".docker"))
+	t.Setenv("DOCKER_CERT_PATH", filepath.Join(projectDir, "certs"))
+	t.Setenv("DOCKER_TLS_VERIFY", "1")
+	t.Setenv("SSH_AUTH_SOCK", filepath.Join(projectDir, "ssh-agent.sock"))
+	t.Setenv("XDG_RUNTIME_DIR", filepath.Join(projectDir, "xdg-runtime"))
+	t.Setenv("HTTP_PROXY", "http://proxy.example:8080")
+	t.Setenv("http_proxy", "http://proxy.example:8081")
+
+	rt := DockerCompose{}
+	err := rt.Validate(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	})
+	if err != nil {
+		t.Fatalf("Validate failed: %v", err)
+	}
+
+	envLog := mustReadFile(t, fakeDockerEnvLogPath(logPath))
+	for _, want := range []string{
+		"DOCKER_HOST=unix:///tmp/espops-docker.sock",
+		"DOCKER_CONTEXT=espops-context",
+		"DOCKER_CONFIG=" + filepath.Join(projectDir, ".docker"),
+		"DOCKER_CERT_PATH=" + filepath.Join(projectDir, "certs"),
+		"DOCKER_TLS_VERIFY=1",
+		"SSH_AUTH_SOCK=" + filepath.Join(projectDir, "ssh-agent.sock"),
+		"XDG_RUNTIME_DIR=" + filepath.Join(projectDir, "xdg-runtime"),
+		"HTTP_PROXY=http://proxy.example:8080",
+		"http_proxy=http://proxy.example:8081",
+	} {
+		if !envLogContainsEntry(envLog, want) {
+			t.Fatalf("docker command did not inherit %s:\n%s", want, envLog)
+		}
+	}
+}
+
+func TestCommandEnvKeepsOnlyDockerSystemEnvAndExplicitMySQLPwd(t *testing.T) {
+	env := commandEnv([]string{
+		"PATH=/bin",
+		"DB_NAME=host_db",
+		"COMPOSE_PROJECT_NAME=host_project",
+		"DOCKER_HOST=unix:///tmp/docker.sock",
+		"HTTP_PROXY=http://proxy.example:8080",
+	}, []string{
+		"DB_PASSWORD=override-secret",
+		"MYSQL_PWD=db-secret",
+	})
+	log := strings.Join(env, "\n")
+
+	for _, want := range []string{
+		"PATH=/bin",
+		"DOCKER_HOST=unix:///tmp/docker.sock",
+		"HTTP_PROXY=http://proxy.example:8080",
+		"MYSQL_PWD=db-secret",
+	} {
+		if !envLogContainsEntry(log, want) {
+			t.Fatalf("command env missing %s from %#v", want, env)
+		}
+	}
+	for _, key := range []string{"DB_NAME", "COMPOSE_PROJECT_NAME", "DB_PASSWORD"} {
+		if envLogContainsKey(log, key) {
+			t.Fatalf("command env kept %s in %#v", key, env)
+		}
+	}
+}
+
 func TestDockerComposeDumpDatabaseRunsMariadbDump(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
@@ -170,7 +269,7 @@ func TestDockerComposeUpServiceRunsComposeUp(t *testing.T) {
 func TestDockerComposeServicesRunsComposePS(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"}]`)
+	setFakeDockerPSOutput(t, logPath, `[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"}]`)
 
 	rt := DockerCompose{}
 	services, err := rt.Services(context.Background(), Target{
@@ -193,8 +292,8 @@ func TestDockerComposeServicesRunsComposePS(t *testing.T) {
 
 func TestDockerComposeServicesAcceptsJSONLines(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_PS_OUTPUT", "{\"Service\":\"db\",\"State\":\"running\",\"Health\":\"healthy\"}\n{\"Service\":\"espocrm\",\"State\":\"running\",\"Health\":\"healthy\"}\n")
+	logPath := installFakeDocker(t)
+	setFakeDockerPSOutput(t, logPath, "{\"Service\":\"db\",\"State\":\"running\",\"Health\":\"healthy\"}\n{\"Service\":\"espocrm\",\"State\":\"running\",\"Health\":\"healthy\"}\n")
 
 	rt := DockerCompose{}
 	services, err := rt.Services(context.Background(), Target{
@@ -212,8 +311,8 @@ func TestDockerComposeServicesAcceptsJSONLines(t *testing.T) {
 
 func TestDockerComposeServiceStatusesAcceptsJSONLines(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_PS_OUTPUT", "{\"Service\":\"db\",\"State\":\"running\",\"Health\":\"healthy\"}\n{\"Service\":\"espocrm\",\"State\":\"restarting\",\"Health\":\"starting\"}\n")
+	logPath := installFakeDocker(t)
+	setFakeDockerPSOutput(t, logPath, "{\"Service\":\"db\",\"State\":\"running\",\"Health\":\"healthy\"}\n{\"Service\":\"espocrm\",\"State\":\"restarting\",\"Health\":\"starting\"}\n")
 
 	rt := DockerCompose{}
 	statuses, err := rt.ServiceStatuses(context.Background(), Target{
@@ -237,8 +336,8 @@ func TestDockerComposeServiceStatusesAcceptsJSONLines(t *testing.T) {
 
 func TestDockerComposeRequireHealthyServicesPassesForHealthyRunningServices(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_PS_OUTPUT", strings.Join([]string{
+	logPath := installFakeDocker(t)
+	setFakeDockerPSOutput(t, logPath, strings.Join([]string{
 		`{"Service":"db","State":"running","Health":"healthy"}`,
 		`{"Service":"espocrm","State":"running","Health":"healthy"}`,
 		"",
@@ -257,8 +356,8 @@ func TestDockerComposeRequireHealthyServicesPassesForHealthyRunningServices(t *t
 
 func TestDockerComposeRequireHealthyServicesFailsWithoutHealthcheck(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_PS_OUTPUT", `[{"Service":"db","State":"running","Health":""}]`)
+	logPath := installFakeDocker(t)
+	setFakeDockerPSOutput(t, logPath, `[{"Service":"db","State":"running","Health":""}]`)
 
 	rt := DockerCompose{}
 	err := rt.RequireHealthyServices(context.Background(), Target{
@@ -276,7 +375,7 @@ func TestDockerComposeRequireHealthyServicesFailsWithoutHealthcheck(t *testing.T
 
 func TestDockerComposeRequireHealthyServicesFailsForUnhealthyStateOrMissingService(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
+	logPath := installFakeDocker(t)
 
 	rt := DockerCompose{}
 	target := Target{
@@ -312,7 +411,7 @@ func TestDockerComposeRequireHealthyServicesFailsForUnhealthyStateOrMissingServi
 		},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
-			t.Setenv("TEST_DOCKER_PS_OUTPUT", tc.output)
+			setFakeDockerPSOutput(t, logPath, tc.output)
 			err := rt.RequireHealthyServices(context.Background(), target, []string{"db"})
 			if err == nil {
 				t.Fatal("expected error")
@@ -326,8 +425,8 @@ func TestDockerComposeRequireHealthyServicesFailsForUnhealthyStateOrMissingServi
 
 func TestDockerComposeServiceStatusesFailsForMalformedJSON(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_PS_OUTPUT", `{"Service":"db"`)
+	logPath := installFakeDocker(t)
+	setFakeDockerPSOutput(t, logPath, `{"Service":"db"`)
 
 	rt := DockerCompose{}
 	_, err := rt.ServiceStatuses(context.Background(), Target{
@@ -370,6 +469,34 @@ func TestDockerComposeDBPingRunsMariadbSelect1(t *testing.T) {
 	}
 }
 
+func TestDockerComposeMariadbExecUsesExplicitMySQLPwd(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+	t.Setenv("MYSQL_PWD", "host-secret")
+
+	rt := DockerCompose{}
+	err := rt.DBPing(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+		DBService:   "db",
+		DBUser:      "espocrm",
+		DBPassword:  "db-secret",
+		DBName:      "espocrm",
+	})
+	if err != nil {
+		t.Fatalf("DBPing failed: %v", err)
+	}
+
+	envLog := mustReadFile(t, fakeDockerEnvLogPath(logPath))
+	if envLogContainsEntry(envLog, "MYSQL_PWD=host-secret") {
+		t.Fatalf("docker command inherited host MYSQL_PWD:\n%s", envLog)
+	}
+	if !envLogContainsEntry(envLog, "MYSQL_PWD=db-secret") {
+		t.Fatalf("docker command did not receive explicit MYSQL_PWD:\n%s", envLog)
+	}
+}
+
 func TestDockerComposeResetDatabaseRunsMariadbRootCommand(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
@@ -400,7 +527,7 @@ func TestDockerComposeRestoreDatabaseRunsMariadb(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
 	stdinLogPath := filepath.Join(t.TempDir(), "restore-db.sql")
-	t.Setenv("TEST_DOCKER_STDIN_LOG", stdinLogPath)
+	setFakeDockerStdinLog(t, logPath, stdinLogPath)
 
 	rt := DockerCompose{}
 	err := rt.RestoreDatabase(context.Background(), Target{
@@ -430,9 +557,8 @@ func TestDockerComposeRestoreDatabaseRunsMariadb(t *testing.T) {
 
 func TestDockerComposeDBPingRuntimeErrorRedactsPassword(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_FAIL_EXEC", "1")
-	t.Setenv("TEST_DOCKER_FAIL_STDERR", "db ping failed with MYSQL_PWD=db-secret")
+	logPath := installFakeDocker(t)
+	setFakeDockerExecFailure(t, logPath, "db ping failed with MYSQL_PWD=db-secret")
 
 	rt := DockerCompose{}
 	err := rt.DBPing(context.Background(), Target{
@@ -457,9 +583,8 @@ func TestDockerComposeDBPingRuntimeErrorRedactsPassword(t *testing.T) {
 
 func TestDockerComposeResetDatabaseRuntimeErrorRedactsRootPassword(t *testing.T) {
 	projectDir := t.TempDir()
-	installFakeDocker(t)
-	t.Setenv("TEST_DOCKER_FAIL_EXEC", "1")
-	t.Setenv("TEST_DOCKER_FAIL_STDERR", "reset failed with MYSQL_PWD=root-secret and root-secret")
+	logPath := installFakeDocker(t)
+	setFakeDockerExecFailure(t, logPath, "reset failed with MYSQL_PWD=root-secret and root-secret")
 
 	rt := DockerCompose{}
 	err := rt.ResetDatabase(context.Background(), Target{
@@ -496,9 +621,40 @@ func installFakeDocker(t *testing.T) string {
 		t.Fatal(err)
 	}
 
-	t.Setenv("TEST_DOCKER_LOG", logPath)
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return logPath
+}
+
+func setFakeDockerPSOutput(t *testing.T, logPath, output string) {
+	t.Helper()
+	writeFakeDockerControl(t, logPath, "ps-output", output)
+}
+
+func setFakeDockerStdinLog(t *testing.T, logPath, path string) {
+	t.Helper()
+	writeFakeDockerControl(t, logPath, "stdin-log-path", path)
+}
+
+func setFakeDockerExecFailure(t *testing.T, logPath, stderr string) {
+	t.Helper()
+	writeFakeDockerControl(t, logPath, "fail-exec", "1")
+	writeFakeDockerControl(t, logPath, "fail-stderr", stderr)
+}
+
+func writeFakeDockerControl(t *testing.T, logPath, name, value string) {
+	t.Helper()
+
+	if err := os.WriteFile(filepath.Join(fakeDockerRoot(logPath), name), []byte(value), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func fakeDockerRoot(logPath string) string {
+	return filepath.Dir(logPath)
+}
+
+func fakeDockerEnvLogPath(logPath string) string {
+	return filepath.Join(fakeDockerRoot(logPath), "docker.env")
 }
 
 func mustReadFile(t *testing.T, path string) string {
@@ -511,10 +667,81 @@ func mustReadFile(t *testing.T, path string) string {
 	return string(raw)
 }
 
+func runtimeContractEnvKeys() []string {
+	return []string{
+		"ADMIN_PASSWORD",
+		"ADMIN_USERNAME",
+		"APP_BIND_ADDRESS",
+		"APP_PORT",
+		"APP_SERVICES",
+		"BACKUP_NAME_PREFIX",
+		"BACKUP_RETENTION_DAYS",
+		"BACKUP_ROOT",
+		"COMPOSE_FILE",
+		"COMPOSE_PROJECT_NAME",
+		"DAEMON_CPUS",
+		"DAEMON_MEM_LIMIT",
+		"DAEMON_PIDS_LIMIT",
+		"DB_CPUS",
+		"DB_MEM_LIMIT",
+		"DB_NAME",
+		"DB_PASSWORD",
+		"DB_PIDS_LIMIT",
+		"DB_ROOT_PASSWORD",
+		"DB_SERVICE",
+		"DB_STORAGE_DIR",
+		"DB_USER",
+		"DOCKER_LOG_MAX_FILE",
+		"DOCKER_LOG_MAX_SIZE",
+		"ESPO_CONTOUR",
+		"ESPO_DEFAULT_LANGUAGE",
+		"ESPO_LOGGER_LEVEL",
+		"ESPO_MEM_LIMIT",
+		"ESPO_CPUS",
+		"ESPO_PIDS_LIMIT",
+		"ESPO_RUNTIME_GID",
+		"ESPO_RUNTIME_UID",
+		"ESPO_STORAGE_DIR",
+		"ESPO_TIME_ZONE",
+		"ESPOCRM_IMAGE",
+		"MARIADB_IMAGE",
+		"MIN_FREE_DISK_MB",
+		"SITE_URL",
+		"WS_BIND_ADDRESS",
+		"WS_CPUS",
+		"WS_MEM_LIMIT",
+		"WS_PIDS_LIMIT",
+		"WS_PORT",
+		"WS_PUBLIC_URL",
+	}
+}
+
+func envLogContainsKey(log, key string) bool {
+	return envLogContainsEntryPrefix(log, key+"=")
+}
+
+func envLogContainsEntry(log, entry string) bool {
+	return envLogContainsEntryPrefix(log, entry)
+}
+
+func envLogContainsEntryPrefix(log, prefix string) bool {
+	for _, line := range strings.Split(log, "\n") {
+		if strings.HasPrefix(line, prefix) {
+			return true
+		}
+	}
+	return false
+}
+
 const fakeDockerScript = `#!/usr/bin/env bash
 set -Eeuo pipefail
 
-printf '%s\n' "$*" >>"$TEST_DOCKER_LOG"
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fake_root="$(cd -- "$script_dir/.." && pwd)"
+
+printf '%s\n' "$*" >>"$fake_root/docker.log"
+env | LC_ALL=C sort >>"$fake_root/docker.env"
+printf '\n' >>"$fake_root/docker.env"
 
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
@@ -538,7 +765,11 @@ case "${1:-}" in
     exit 0
     ;;
   ps)
-    printf '%s' "${TEST_DOCKER_PS_OUTPUT:-[]}"
+    if [[ -f "$fake_root/ps-output" ]]; then
+      cat "$fake_root/ps-output"
+    else
+      printf '[]'
+    fi
     exit 0
     ;;
   up)
@@ -555,8 +786,13 @@ case "${1:-}" in
     shift
     [[ "${1:-}" == "db" ]] || exit 1
     shift
-    if [[ "${TEST_DOCKER_FAIL_EXEC:-}" == "1" ]]; then
-      printf '%s\n' "${TEST_DOCKER_FAIL_STDERR:-exec failed}" >&2
+    if [[ -f "$fake_root/fail-exec" ]]; then
+      if [[ -f "$fake_root/fail-stderr" ]]; then
+        cat "$fake_root/fail-stderr" >&2
+        printf '\n' >&2
+      else
+        printf 'exec failed\n' >&2
+      fi
       exit 1
     fi
     case "${1:-}" in
@@ -586,7 +822,11 @@ case "${1:-}" in
                 exit 0
               fi
             done
-            cat >"${TEST_DOCKER_STDIN_LOG:-/dev/null}"
+            if [[ -f "$fake_root/stdin-log-path" ]]; then
+              cat >"$(cat "$fake_root/stdin-log-path")"
+            else
+              cat >/dev/null
+            fi
             exit 0
             ;;
         esac
@@ -595,7 +835,11 @@ case "${1:-}" in
             exit 0
           fi
         done
-        cat >"${TEST_DOCKER_STDIN_LOG:-/dev/null}"
+        if [[ -f "$fake_root/stdin-log-path" ]]; then
+          cat >"$(cat "$fake_root/stdin-log-path")"
+        else
+          cat >/dev/null
+        fi
         exit 0
         ;;
     esac
