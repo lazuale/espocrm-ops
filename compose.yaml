@@ -17,8 +17,16 @@ x-espocrm-runtime-env: &espocrm_runtime_env
   ESPOCRM_CONFIG_TIME_ZONE: ${ESPO_TIME_ZONE}
   ESPOCRM_CONFIG_LOGGER_LEVEL: ${ESPO_LOGGER_LEVEL}
 
+x-service-hardening: &service_hardening
+  init: true
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - NET_RAW
+
 services:
   db:
+    <<: *service_hardening
     image: ${MARIADB_IMAGE}
     restart: unless-stopped
     mem_limit: ${DB_MEM_LIMIT}
@@ -51,6 +59,7 @@ services:
       start_period: 30s
 
   espocrm:
+    <<: *service_hardening
     image: ${ESPOCRM_IMAGE}
     restart: unless-stopped
     mem_limit: ${ESPO_MEM_LIMIT}
@@ -77,13 +86,14 @@ services:
       - "${APP_BIND_ADDRESS}:${APP_PORT}:80"
     healthcheck:
       # Escape `$` as `$$` so Compose does not rewrite the probe.
-      test: ["CMD-SHELL", "php -r '$$s=@fsockopen(\"127.0.0.1\",80,$$e,$$es,2); if(!$$s){exit(1);} fclose($$s);' || exit 1"]
+      test: ["CMD-SHELL", "php -r '$$ctx=stream_context_create([\"http\"=>[\"timeout\"=>3,\"ignore_errors\"=>true]]); @file_get_contents(\"http://127.0.0.1/\",false,$$ctx); $$h=$$http_response_header[0]??\"\"; if(!preg_match(\"/^HTTP\\/\\S+ [23][0-9][0-9]/\",$$h)){exit(1);}' || exit 1"]
       interval: 30s
       timeout: 10s
       retries: 5
       start_period: 60s
 
   espocrm-daemon:
+    <<: *service_hardening
     image: ${ESPOCRM_IMAGE}
     restart: unless-stopped
     mem_limit: ${DAEMON_MEM_LIMIT}
@@ -115,6 +125,7 @@ services:
       start_period: 60s
 
   espocrm-websocket:
+    <<: *service_hardening
     image: ${ESPOCRM_IMAGE}
     restart: unless-stopped
     mem_limit: ${WS_MEM_LIMIT}
