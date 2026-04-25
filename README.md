@@ -102,6 +102,8 @@ make integration
 - `compose.yaml`
 - `.env.dev` and/or `.env.prod`
 
+For `prod`, `.env.prod` must be a regular file, not a symlink, and its mode must be no broader than `0600` or `0640`; use `chmod 600 .env.prod` unless deliberate group read access is required.
+
 `compose.yaml` consumes these env keys directly:
 
 - `COMPOSE_PROJECT_NAME`

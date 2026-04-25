@@ -32,7 +32,7 @@ func TestDoctorCLIJSONSuccess(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -100,7 +100,7 @@ func TestDoctorCLIJSONFailureForUnhealthyService(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -159,7 +159,7 @@ func TestDoctorCLIJSONFailureForMissingEnv(t *testing.T) {
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

@@ -71,6 +71,11 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	}
 
 	envFile := filepath.Join(projectDir, ".env."+scope)
+	if scope == "prod" {
+		if err := requireSecureProdEnvFile(envFile); err != nil {
+			return BackupConfig{}, err
+		}
+	}
 
 	values, err := loadEnvAssignments(envFile)
 	if err != nil {
@@ -172,6 +177,25 @@ func requireFile(path, label string) error {
 	}
 	if info.IsDir() {
 		return fmt.Errorf("%s %s must be a file", label, path)
+	}
+	return nil
+}
+
+func requireSecureProdEnvFile(path string) error {
+	info, err := os.Lstat(path)
+	if err != nil {
+		return fmt.Errorf("stat prod env file %s: %w", path, err)
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("prod env file %s must be a regular file, not a symlink", path)
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("prod env file %s must be a regular file", path)
+	}
+
+	mode := info.Mode().Perm()
+	if mode&^0o640 != 0 {
+		return fmt.Errorf("prod env file %s has unsafe permissions %04o; run chmod 600 %s, or chmod 640 %s when group read access is required", path, mode, path, path)
 	}
 	return nil
 }

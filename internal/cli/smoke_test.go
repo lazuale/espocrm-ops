@@ -446,7 +446,7 @@ func smokeProjectDir(t *testing.T, createTargetBackupRoot bool) string {
 		"DB_NAME=espocrm_prod",
 		"",
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join(prodEnv, "\n")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join(prodEnv, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

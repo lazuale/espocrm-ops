@@ -85,7 +85,7 @@ func TestDoctorBackupRootNotWritableFails(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.WriteFile(filepath.Join(projectDir, "blocked"), []byte("not a directory"), 0o644); err != nil {
@@ -128,7 +128,7 @@ func TestDoctorMissingBackupRootFailsAndDoesNotCreateDirectory(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if err := os.MkdirAll(filepath.Join(projectDir, "runtime", "prod", "espo"), 0o755); err != nil {
@@ -310,7 +310,7 @@ func doctorProjectDir(t *testing.T, envLines []string, createStorage bool) strin
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join(append(envLines, ""), "\n")), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join(append(envLines, ""), "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	if backupRoot := doctorEnvValue(envLines, "BACKUP_ROOT"); backupRoot != "" {

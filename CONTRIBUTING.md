@@ -77,6 +77,7 @@ Contract:
 - Keep shell execution and `os.Environ()` confined to `internal/runtime/docker.go`.
 - Keep `DB_SERVICE` and `APP_SERVICES` explicit in the env contract; do not reintroduce guessed or defaulted service names.
 - Keep inline `DB_PASSWORD` and `DB_ROOT_PASSWORD` explicit in the shipped compose/env contract; do not claim file-based runtime secrets that `compose.yaml` does not consume.
+- Keep `prod` env-file loading fail-closed: `.env.prod` must be a regular non-symlink file with permissions no broader than `0600` or `0640`.
 - Keep `DB_ROOT_PASSWORD` explicit for restore-capable flows; do not fall back to `DB_USER` credentials for database reset.
 - Keep `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID` explicit for restore-capable flows; do not guess runtime ownership from the image, container user, or current operator account.
 - Keep health/post-check success strict: contract services must be explicitly listed, `running`, and `healthy`; MariaDB reachability alone is not success.

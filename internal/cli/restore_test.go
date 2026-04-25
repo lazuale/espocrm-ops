@@ -46,7 +46,7 @@ func TestRestoreCLIJSONSuccess(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -135,7 +135,7 @@ func TestRestoreCLIJSONFailureForInvalidManifest(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -203,7 +203,7 @@ func TestRestoreCLIJSONRejectsManifestFromDifferentScope(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -261,7 +261,7 @@ func TestRestoreCLIJSONHealthFailureIsRuntimeFailure(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -328,7 +328,7 @@ func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -389,7 +389,7 @@ func TestRestoreCLIJSONUsageFailureWhenRuntimeOwnershipMissing(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -451,7 +451,7 @@ func TestRestoreCLIJSONOwnershipFailureDoesNotRevealSecrets(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -517,7 +517,7 @@ func TestRestoreCLIJSONVersionOneManifestFailsClosed(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

@@ -39,7 +39,7 @@ func TestBackupCLIJSONSuccess(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -107,7 +107,7 @@ func TestBackupCLIJSONFailureForMissingEnv(t *testing.T) {
 		"DB_USER=espocrm",
 		"DB_PASSWORD=db-secret",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -169,7 +169,7 @@ func TestBackupCLIJSONFailureWhenLockBusy(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -227,7 +227,7 @@ func TestBackupCLIJSONFailureWhenBackupNamePrefixMissing(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -269,7 +269,7 @@ func TestBackupCLIJSONFailureWhenDBServiceMissing(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -314,7 +314,7 @@ func TestBackupCLIJSONFailureWhenAppServicesMissing(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -367,7 +367,7 @@ func TestBackupCLIJSONLowDiskFailsClosed(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -436,7 +436,7 @@ func TestBackupCLIJSONRuntimeErrorRedactsPassword(t *testing.T) {
 		"DB_PASSWORD=db-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 

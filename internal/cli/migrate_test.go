@@ -45,7 +45,7 @@ func TestMigrateCLIJSONSuccess(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -134,7 +134,7 @@ func TestMigrateCLIJSONFailure(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
@@ -202,7 +202,7 @@ func TestMigrateCLIJSONVersionOneManifestFailsClosed(t *testing.T) {
 		"DB_ROOT_PASSWORD=root-secret",
 		"DB_NAME=espocrm",
 		"",
-	}, "\n")), 0o644); err != nil {
+	}, "\n")), 0o600); err != nil {
 		t.Fatal(err)
 	}
 
