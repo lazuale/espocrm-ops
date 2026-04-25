@@ -39,25 +39,17 @@ type BackupConfig struct {
 }
 
 func LoadBackup(req BackupRequest) (BackupConfig, error) {
-	return load(req, loadOptions{})
+	return load(req, false)
 }
 
 func LoadRestore(req BackupRequest) (BackupConfig, error) {
-	return load(req, loadOptions{
-		requireRootPassword:     true,
-		requireRuntimeOwnership: true,
-	})
-}
-
-type loadOptions struct {
-	requireRootPassword     bool
-	requireRuntimeOwnership bool
+	return load(req, true)
 }
 
 const maxBackupNamePrefixLen = 80
 const sha256DigestHexLen = 64
 
-func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
+func load(req BackupRequest, restoreMode bool) (BackupConfig, error) {
 	scope := strings.TrimSpace(req.Scope)
 	if scope != "dev" && scope != "prod" {
 		return BackupConfig{}, fmt.Errorf("--scope must be dev or prod")
@@ -111,11 +103,11 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	if err != nil {
 		return BackupConfig{}, err
 	}
-	rootPassword, err := resolveRequiredInlineSecret(values, "DB_ROOT_PASSWORD", envFile, opts.requireRootPassword)
+	rootPassword, err := resolveRequiredInlineSecret(values, "DB_ROOT_PASSWORD", envFile, restoreMode)
 	if err != nil {
 		return BackupConfig{}, err
 	}
-	runtimeUID, runtimeGID, runtimeOwnershipConfigured, err := resolveRuntimeOwnership(values, envFile, opts.requireRuntimeOwnership)
+	runtimeUID, runtimeGID, runtimeOwnershipConfigured, err := resolveRuntimeOwnership(values, envFile, restoreMode)
 	if err != nil {
 		return BackupConfig{}, err
 	}
@@ -127,11 +119,11 @@ func load(req BackupRequest, opts loadOptions) (BackupConfig, error) {
 	if err != nil {
 		return BackupConfig{}, err
 	}
-	backupRetentionDays, err := resolveRequiredNonNegativeEnvInt(values, "BACKUP_RETENTION_DAYS", envFile)
+	backupRetentionDays, err := resolveRequiredEnvInt(values, "BACKUP_RETENTION_DAYS", envFile, 0)
 	if err != nil {
 		return BackupConfig{}, err
 	}
-	minFreeDiskMB, err := resolveRequiredPositiveEnvInt(values, "MIN_FREE_DISK_MB", envFile)
+	minFreeDiskMB, err := resolveRequiredEnvInt(values, "MIN_FREE_DISK_MB", envFile, 1)
 	if err != nil {
 		return BackupConfig{}, err
 	}
@@ -298,28 +290,12 @@ func resolveBackupNamePrefix(values map[string]string, envFile string) (string, 
 	return raw, nil
 }
 
-func resolveRequiredPositiveEnvInt(values map[string]string, key, envFile string) (int, error) {
+func resolveRequiredEnvInt(values map[string]string, key, envFile string, minValue int) (int, error) {
 	raw, ok := values[key]
 	if !ok || raw == "" {
 		return 0, fmt.Errorf("%s is required in %s", key, envFile)
 	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value <= 0 {
-		return 0, fmt.Errorf("%s in %s must be an integer > 0", key, envFile)
-	}
-	return value, nil
-}
-
-func resolveRequiredNonNegativeEnvInt(values map[string]string, key, envFile string) (int, error) {
-	raw, ok := values[key]
-	if !ok || raw == "" {
-		return 0, fmt.Errorf("%s is required in %s", key, envFile)
-	}
-	value, err := strconv.Atoi(raw)
-	if err != nil || value < 0 {
-		return 0, fmt.Errorf("%s in %s must be an integer >= 0", key, envFile)
-	}
-	return value, nil
+	return parseEnvIntAtLeast(key, raw, envFile, minValue)
 }
 
 func resolveRuntimeOwnership(values map[string]string, envFile string, required bool) (int, int, bool, error) {
@@ -342,11 +318,11 @@ func resolveRuntimeOwnership(values map[string]string, envFile string, required 
 		return 0, 0, false, fmt.Errorf("ESPO_RUNTIME_UID and ESPO_RUNTIME_GID must both be set in %s", envFile)
 	}
 
-	uid, err := parseNonNegativeEnvInt("ESPO_RUNTIME_UID", rawUID, envFile)
+	uid, err := parseEnvIntAtLeast("ESPO_RUNTIME_UID", rawUID, envFile, 0)
 	if err != nil {
 		return 0, 0, false, err
 	}
-	gid, err := parseNonNegativeEnvInt("ESPO_RUNTIME_GID", rawGID, envFile)
+	gid, err := parseEnvIntAtLeast("ESPO_RUNTIME_GID", rawGID, envFile, 0)
 	if err != nil {
 		return 0, 0, false, err
 	}
@@ -354,15 +330,19 @@ func resolveRuntimeOwnership(values map[string]string, envFile string, required 
 	return uid, gid, true, nil
 }
 
-func parseNonNegativeEnvInt(key, raw, envFile string) (int, error) {
+func parseEnvIntAtLeast(key, raw, envFile string, minValue int) (int, error) {
 	value, err := strconv.Atoi(strings.TrimSpace(raw))
-	if err != nil {
-		return 0, fmt.Errorf("%s in %s must be an integer >= 0", key, envFile)
-	}
-	if value < 0 {
-		return 0, fmt.Errorf("%s in %s must be an integer >= 0", key, envFile)
+	if err != nil || value < minValue {
+		return 0, fmt.Errorf("%s in %s must be an integer %s", key, envFile, envIntMinDescription(minValue))
 	}
 	return value, nil
+}
+
+func envIntMinDescription(minValue int) string {
+	if minValue == 1 {
+		return "> 0"
+	}
+	return fmt.Sprintf(">= %d", minValue)
 }
 
 func loadEnvAssignments(path string) (values map[string]string, err error) {

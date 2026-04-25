@@ -144,10 +144,9 @@ MANIFEST=/path/to/fresh-dev.manifest.json
 ./bin/espops doctor --scope prod --project-dir "$PROJECT_DIR"
 ./bin/espops backup --scope dev --project-dir "$PROJECT_DIR"
 ./bin/espops backup verify --manifest "$MANIFEST"
-./bin/espops restore --scope dev --project-dir "$PROJECT_DIR" --manifest "$MANIFEST"
 ./bin/espops migrate --from-scope dev --to-scope prod --project-dir "$PROJECT_DIR" --manifest "$MANIFEST"
 ```
 
-This is a manual destructive sequence, not a product command. Use the fresh manifest produced by the `backup` step. The sequence does no setup, pull, cleanup, retry, or fallback.
+This is a manual destructive sequence, not a product command. Use the fresh manifest produced by the `backup` step. Add a same-scope `restore` smoke only when you intentionally want to test that destructive path separately. The sequence does no setup, pull, cleanup, retry, or fallback.
 
 Developer rules and test paths live in `CONTRIBUTING.md`.

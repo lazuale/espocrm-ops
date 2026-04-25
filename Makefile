@@ -7,7 +7,7 @@ GOLANGCI_LINT_VERSION ?= v2.11.4
 INTEGRATION_PKGS := ./internal/runtime
 INTEGRATION_IMAGES := mariadb:11.4 alpine:3.20
 
-.PHONY: build test test-race test-readonly integration integration-preflight pull-images ci-fast ci-integration ci staticcheck lint fmt vet mod-verify mod-clean-check coverage clean install-health-tools install-ci-health-tools
+.PHONY: build test test-race test-readonly integration integration-preflight pull-images ci-fast ci-integration ci staticcheck lint fmt vet mod-verify mod-clean-check coverage clean install-health-tools
 
 build:
 	mkdir -p bin
@@ -88,8 +88,6 @@ install-health-tools:
 	mkdir -p "$(HEALTH_TOOLS_BIN)"
 	GOBIN="$(HEALTH_TOOLS_BIN)" go install honnef.co/go/tools/cmd/staticcheck@$(STATICCHECK_VERSION)
 	GOBIN="$(HEALTH_TOOLS_BIN)" go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@$(GOLANGCI_LINT_VERSION)
-
-install-ci-health-tools: install-health-tools
 
 clean:
 	rm -rf bin coverage.out

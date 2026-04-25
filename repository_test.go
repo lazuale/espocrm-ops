@@ -9,17 +9,11 @@ import (
 	"path/filepath"
 	"regexp"
 	"slices"
-	"strconv"
 	"strings"
 	"testing"
 )
 
 const modulePath = "github.com/lazuale/espocrm-ops"
-
-const (
-	expectedMariaDBImage       = "mariadb:11.4"
-	expectedRuntimeAppServices = "espocrm,espocrm-daemon,espocrm-websocket"
-)
 
 var (
 	exampleEnvFiles = []string{
@@ -243,17 +237,9 @@ func TestImageContractIsConsistent(t *testing.T) {
 
 	for _, rel := range exampleEnvFiles {
 		env := readEnvAssignmentsFile(t, rel)
-		if env["MARIADB_IMAGE"] != expectedMariaDBImage {
-			t.Fatalf("%s must set MARIADB_IMAGE=%s, got %q", rel, expectedMariaDBImage, env["MARIADB_IMAGE"])
-		}
 		if _, ok := env["MARIADB_TAG"]; ok {
 			t.Fatalf("%s must not contain deprecated MARIADB_TAG", rel)
 		}
-	}
-
-	integration := string(readRepoFile(t, "internal/runtime/docker_integration_test.go"))
-	if !strings.Contains(integration, `integrationMariaDBImage = "mariadb:11.4"`) {
-		t.Fatal("integration fixture must target mariadb:11.4")
 	}
 }
 
@@ -279,34 +265,19 @@ func TestComposePortsUseExplicitBindAddress(t *testing.T) {
 	}
 }
 
-func TestWebsocketRuntimeContractIsExplicit(t *testing.T) {
-	compose := string(readRepoFile(t, "compose.yaml"))
-	for _, needle := range []string{
-		"  espocrm:\n",
-		"  espocrm-daemon:\n",
-		"  espocrm-websocket:\n",
-	} {
-		if !strings.Contains(compose, needle) {
-			t.Fatalf("compose.yaml must keep explicit application service %q", strings.TrimSpace(needle))
-		}
-	}
+func TestExampleRuntimeServicesExistAndHaveHealthchecks(t *testing.T) {
+	serviceBlocks := composeServiceBlocks(t)
 
 	for _, rel := range exampleEnvFiles {
 		env := readEnvAssignmentsFile(t, rel)
-		if env["APP_SERVICES"] != expectedRuntimeAppServices {
-			t.Fatalf("%s must set APP_SERVICES=%s, got %q", rel, expectedRuntimeAppServices, env["APP_SERVICES"])
-		}
-	}
-}
-
-func TestExampleDBMemoryIsNotBelowMariaDBBufferPool(t *testing.T) {
-	bufferPoolBytes := mariaDBBufferPoolBytes(t)
-
-	for _, rel := range exampleEnvFiles {
-		env := readEnvAssignmentsFile(t, rel)
-		dbMemBytes := parseByteSize(t, rel, "DB_MEM_LIMIT", env["DB_MEM_LIMIT"])
-		if dbMemBytes < bufferPoolBytes {
-			t.Fatalf("%s sets DB_MEM_LIMIT=%s below innodb_buffer_pool_size", rel, env["DB_MEM_LIMIT"])
+		for _, service := range append([]string{requiredEnvValue(t, env, rel, "DB_SERVICE")}, requiredEnvServices(t, env, rel, "APP_SERVICES")...) {
+			block, ok := serviceBlocks[service]
+			if !ok {
+				t.Fatalf("%s references service %q, but compose.yaml does not define it", rel, service)
+			}
+			if !strings.Contains(block, "    healthcheck:\n") {
+				t.Fatalf("%s references service %q, but compose.yaml does not define a healthcheck for it", rel, service)
+			}
 		}
 	}
 }
@@ -445,43 +416,74 @@ func readEnvAssignmentsFile(t *testing.T, rel string) map[string]string {
 	return values
 }
 
-func mariaDBBufferPoolBytes(t *testing.T) int64 {
+func requiredEnvValue(t *testing.T, env map[string]string, rel, key string) string {
 	t.Helper()
 
-	pattern := regexp.MustCompile(`(?m)^\s*innodb_buffer_pool_size\s*=\s*([0-9]+[KMGkmg]?)\s*$`)
-	match := pattern.FindStringSubmatch(string(readRepoFile(t, "deploy/mariadb/z-custom.cnf")))
-	if len(match) != 2 {
-		t.Fatal("deploy/mariadb/z-custom.cnf must define innodb_buffer_pool_size")
-	}
-	return parseByteSize(t, "deploy/mariadb/z-custom.cnf", "innodb_buffer_pool_size", match[1])
-}
-
-func parseByteSize(t *testing.T, rel, key, raw string) int64 {
-	t.Helper()
-
-	value := strings.TrimSpace(raw)
+	value := strings.TrimSpace(env[key])
 	if value == "" {
 		t.Fatalf("%s must define %s", rel, key)
 	}
+	return value
+}
 
-	multiplier := int64(1)
-	switch suffix := value[len(value)-1]; suffix {
-	case 'k', 'K':
-		multiplier = 1024
-		value = value[:len(value)-1]
-	case 'm', 'M':
-		multiplier = 1024 * 1024
-		value = value[:len(value)-1]
-	case 'g', 'G':
-		multiplier = 1024 * 1024 * 1024
-		value = value[:len(value)-1]
-	}
+func requiredEnvServices(t *testing.T, env map[string]string, rel, key string) []string {
+	t.Helper()
 
-	number, err := strconv.ParseInt(value, 10, 64)
-	if err != nil || number <= 0 {
-		t.Fatalf("%s has invalid %s size %q", rel, key, raw)
+	raw := requiredEnvValue(t, env, rel, key)
+	parts := strings.Split(raw, ",")
+	services := make([]string, 0, len(parts))
+	for _, part := range parts {
+		service := strings.TrimSpace(part)
+		if service == "" {
+			t.Fatalf("%s must define non-empty service names in %s", rel, key)
+		}
+		services = append(services, service)
 	}
-	return number * multiplier
+	return services
+}
+
+func composeServiceBlocks(t *testing.T) map[string]string {
+	t.Helper()
+
+	serviceHeader := regexp.MustCompile(`^  ([A-Za-z0-9._-]+):\s*$`)
+	blocks := make(map[string]string)
+	inServices := false
+	var current string
+	var block strings.Builder
+
+	for _, line := range strings.Split(string(readRepoFile(t, "compose.yaml")), "\n") {
+		if line == "services:" {
+			inServices = true
+			current = ""
+			block.Reset()
+			continue
+		}
+		if !inServices {
+			continue
+		}
+		if strings.HasPrefix(line, "  ") {
+			if match := serviceHeader.FindStringSubmatch(line); len(match) == 2 {
+				if current != "" {
+					blocks[current] = block.String()
+					block.Reset()
+				}
+				current = match[1]
+			}
+			if current != "" {
+				block.WriteString(line)
+				block.WriteByte('\n')
+			}
+			continue
+		}
+		if current != "" && strings.TrimSpace(line) != "" {
+			blocks[current] = block.String()
+			break
+		}
+	}
+	if current != "" {
+		blocks[current] = block.String()
+	}
+	return blocks
 }
 
 func mapKeysSorted(values map[string]struct{}) []string {

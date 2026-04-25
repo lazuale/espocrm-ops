@@ -31,7 +31,7 @@ type restoreRuntime interface {
 }
 
 func Restore(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result RestoreResult, err error) {
-	return restoreWithOptions(ctx, cfg, manifestPath, rt, now, "")
+	return restoreWithAllowedSourceScope(ctx, cfg, manifestPath, rt, now, "")
 }
 
 const restoreStagingDirPattern = "espops-restore-staging-*"
@@ -55,7 +55,7 @@ type restoreOwnershipOps struct {
 	lchown func(string, int, int) error
 }
 
-func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, allowedSourceScope string) (result RestoreResult, err error) {
+func restoreWithAllowedSourceScope(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, allowedSourceScope string) (result RestoreResult, err error) {
 	if rt == nil {
 		return RestoreResult{}, runtimeError("restore runtime is required", nil)
 	}
@@ -71,11 +71,11 @@ func restoreWithOptions(ctx context.Context, cfg config.BackupConfig, manifestPa
 		ProjectDir: cfg.ProjectDir,
 		Scope:      cfg.Scope,
 	}}, "restore lock failed", func(lockedCtx context.Context) (RestoreResult, error) {
-		return restoreWithOptionsLocked(lockedCtx, cfg, manifestPath, rt, now, allowedSourceScope)
+		return restoreWithAllowedSourceScopeLocked(lockedCtx, cfg, manifestPath, rt, now, allowedSourceScope)
 	})
 }
 
-func restoreWithOptionsLocked(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, allowedSourceScope string) (result RestoreResult, err error) {
+func restoreWithAllowedSourceScopeLocked(ctx context.Context, cfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time, allowedSourceScope string) (result RestoreResult, err error) {
 	result.Manifest = manifestPath
 
 	verifyResult, verifyErr := VerifyBackup(ctx, manifestPath)
