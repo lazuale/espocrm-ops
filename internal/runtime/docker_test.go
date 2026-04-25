@@ -423,6 +423,41 @@ func TestDockerComposeRequireHealthyServicesFailsForUnhealthyStateOrMissingServi
 	}
 }
 
+func TestDockerComposeRequireStoppedServicesPassesForStoppedOrMissingServices(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+	setFakeDockerPSOutput(t, logPath, `[{"Service":"espocrm","State":"exited","Health":""},{"Service":"worker","State":"created","Health":""}]`)
+
+	rt := DockerCompose{}
+	err := rt.RequireStoppedServices(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	}, []string{"espocrm", "worker", "not-present"})
+	if err != nil {
+		t.Fatalf("RequireStoppedServices failed: %v", err)
+	}
+}
+
+func TestDockerComposeRequireStoppedServicesFailsForRunningService(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+	setFakeDockerPSOutput(t, logPath, `[{"Service":"espocrm","State":"running","Health":"healthy"}]`)
+
+	rt := DockerCompose{}
+	err := rt.RequireStoppedServices(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	}, []string{"espocrm"})
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), `service "espocrm" state is "running" (want stopped)`) {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestDockerComposeServiceStatusesFailsForMalformedJSON(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)

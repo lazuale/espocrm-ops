@@ -675,6 +675,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fake_root="$(cd -- "$script_dir/.." && pwd)"
 
 default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
+stopped_ps='[{"Service":"db","State":"running","Health":"healthy"}]'
 
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
@@ -704,14 +705,30 @@ case "${1:-}" in
     fi
     ps_count="$((ps_count + 1))"
     printf '%s' "$ps_count" >"$fake_root/restore-ps-count"
-    if [[ -f "$fake_root/restore-ps-output" && "$ps_count" -gt 1 ]]; then
+    start_count=0
+    if [[ -f "$fake_root/start-count" ]]; then
+      start_count="$(cat "$fake_root/start-count")"
+    fi
+    if [[ -f "$fake_root/app-stopped" ]]; then
+      printf '%s' "$stopped_ps"
+    elif [[ -f "$fake_root/restore-ps-output" && "$start_count" -ge 2 ]]; then
       cat "$fake_root/restore-ps-output"
     else
       printf '%s' "$default_ps"
     fi
     exit 0
     ;;
-  stop|start)
+  stop)
+    printf '1' >"$fake_root/app-stopped"
+    exit 0
+    ;;
+  start)
+    rm -f "$fake_root/app-stopped"
+    start_count=0
+    if [[ -f "$fake_root/start-count" ]]; then
+      start_count="$(cat "$fake_root/start-count")"
+    fi
+    printf '%s' "$((start_count + 1))" >"$fake_root/start-count"
     exit 0
     ;;
   up)

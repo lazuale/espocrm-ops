@@ -29,6 +29,7 @@ type BackupResult struct {
 type backupRuntime interface {
 	Validate(ctx context.Context, target runtime.Target) error
 	StopServices(ctx context.Context, target runtime.Target, services []string) error
+	RequireStoppedServices(ctx context.Context, target runtime.Target, services []string) error
 	StartServices(ctx context.Context, target runtime.Target, services []string) error
 	DumpDatabase(ctx context.Context, target runtime.Target, destPath string) error
 	RequireHealthyServices(ctx context.Context, target runtime.Target, services []string) error
@@ -89,13 +90,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 		FilesBackup: layout.FilesArtifact,
 	}
 
-	cleanupPaths := []string{
-		layout.ManifestJSON,
-		layout.FilesChecksum,
-		layout.FilesArtifact,
-		layout.DBChecksum,
-		layout.DBArtifact,
-	}
+	cleanupPaths := []string{}
 	verified := false
 	defer func() {
 		if verified {
@@ -115,11 +110,11 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 		DBPassword:  cfg.DBPassword,
 		DBName:      cfg.DBName,
 	}
-	servicesStopped := false
+	serviceReturnNeeded := false
 	servicesReturned := false
 	serviceReturnAttempted := false
 	defer func() {
-		if !servicesStopped || servicesReturned || serviceReturnAttempted {
+		if !serviceReturnNeeded || servicesReturned || serviceReturnAttempted {
 			return
 		}
 		serviceReturnAttempted = true
@@ -145,10 +140,13 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	if err := ensureBackupFreeDisk(cfg.BackupRoot, cfg.MinFreeDiskMB); err != nil {
 		return result, ioError("backup free disk preflight failed", err)
 	}
+	serviceReturnNeeded = true
 	if err := rt.StopServices(ctx, target, cfg.AppServices); err != nil {
 		return result, runtimeError("failed to stop app services", err)
 	}
-	servicesStopped = true
+	if err := rt.RequireStoppedServices(ctx, target, cfg.AppServices); err != nil {
+		return result, runtimeError("app service stop check failed", err)
+	}
 
 	dbTmp, err := newTempTarget(layout.DBArtifact)
 	if err != nil {
@@ -165,6 +163,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	if err := promoteTempFile(dbTmp, layout.DBArtifact); err != nil {
 		return result, ioError("failed to finalize db backup", err)
 	}
+	cleanupPaths = append(cleanupPaths, layout.DBArtifact)
 
 	dbSidecarTmp, err := newTempTarget(layout.DBChecksum)
 	if err != nil {
@@ -177,6 +176,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	if err := promoteTempFile(dbSidecarTmp, layout.DBChecksum); err != nil {
 		return result, ioError("failed to finalize db checksum sidecar", err)
 	}
+	cleanupPaths = append(cleanupPaths, layout.DBChecksum)
 
 	filesTmp, err := newTempTarget(layout.FilesArtifact)
 	if err != nil {
@@ -193,6 +193,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	if err := promoteTempFile(filesTmp, layout.FilesArtifact); err != nil {
 		return result, ioError("failed to finalize files backup", err)
 	}
+	cleanupPaths = append(cleanupPaths, layout.FilesArtifact)
 
 	filesSidecarTmp, err := newTempTarget(layout.FilesChecksum)
 	if err != nil {
@@ -205,6 +206,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	if err := promoteTempFile(filesSidecarTmp, layout.FilesChecksum); err != nil {
 		return result, ioError("failed to finalize files checksum sidecar", err)
 	}
+	cleanupPaths = append(cleanupPaths, layout.FilesChecksum)
 	serviceReturnAttempted = true
 	startCtx, cancel := serviceReturnContext()
 	if err := rt.StartServices(startCtx, target, cfg.AppServices); err != nil {
@@ -241,6 +243,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	if err := promoteTempFile(manifestTmp, layout.ManifestJSON); err != nil {
 		return result, ioError("failed to finalize backup manifest", err)
 	}
+	cleanupPaths = append(cleanupPaths, layout.ManifestJSON)
 
 	verifyResult, verifyErr := VerifyBackup(ctx, layout.ManifestJSON)
 	if verifyErr != nil {
@@ -393,7 +396,13 @@ func newTempTarget(finalPath string) (string, error) {
 }
 
 func promoteTempFile(tempPath, finalPath string) error {
-	return os.Rename(tempPath, finalPath)
+	if err := os.Link(tempPath, finalPath); err != nil {
+		if os.IsExist(err) {
+			return fmt.Errorf("target already exists: %s", finalPath)
+		}
+		return err
+	}
+	return os.Remove(tempPath)
 }
 
 func writeSHA256Sidecar(path, artifactName, checksum string) error {

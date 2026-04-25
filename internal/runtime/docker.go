@@ -94,6 +94,14 @@ func (rt DockerCompose) RequireHealthyServices(ctx context.Context, target Targe
 	return requireHealthyServices(statuses, services)
 }
 
+func (rt DockerCompose) RequireStoppedServices(ctx context.Context, target Target, services []string) error {
+	statuses, err := rt.ServiceStatuses(ctx, target)
+	if err != nil {
+		return err
+	}
+	return requireStoppedServices(statuses, services)
+}
+
 func (DockerCompose) StopServices(ctx context.Context, target Target, services []string) error {
 	args, err := serviceArgs("stop", services)
 	if err != nil {
@@ -542,6 +550,43 @@ func requireHealthyServices(statuses []ServiceStatus, services []string) error {
 	}
 
 	return nil
+}
+
+func requireStoppedServices(statuses []ServiceStatus, services []string) error {
+	available := make(map[string]ServiceStatus, len(statuses))
+	for _, status := range statuses {
+		name := strings.TrimSpace(status.Name)
+		if name == "" {
+			continue
+		}
+		available[name] = status
+	}
+
+	for _, service := range services {
+		name := strings.TrimSpace(service)
+		if name == "" {
+			return fmt.Errorf("service names must be non-empty")
+		}
+
+		status, ok := available[name]
+		if !ok {
+			continue
+		}
+		if !isStoppedServiceState(status.State) {
+			return fmt.Errorf("service %q state is %q (want stopped)", name, statusValue(status.State))
+		}
+	}
+
+	return nil
+}
+
+func isStoppedServiceState(state string) bool {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "exited", "created", "dead":
+		return true
+	default:
+		return false
+	}
 }
 
 func statusValue(value string) string {

@@ -498,6 +498,7 @@ set -Eeuo pipefail
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fake_root="$(cd -- "$script_dir/.." && pwd)"
 default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
+stopped_ps='[{"Service":"db","State":"running","Health":"healthy"}]'
 
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
@@ -520,13 +521,20 @@ case "${1:-}" in
   config)
     exit 0
     ;;
-  stop|start)
+  stop)
+    printf '1' >"$fake_root/app-stopped"
+    exit 0
+    ;;
+  start)
+    rm -f "$fake_root/app-stopped"
     exit 0
     ;;
   ps)
     [[ "${2:-}" == "--format" ]] || exit 1
     [[ "${3:-}" == "json" ]] || exit 1
-    if [[ -f "$fake_root/backup-ps-output" ]]; then
+    if [[ -f "$fake_root/app-stopped" ]]; then
+      printf '%s' "$stopped_ps"
+    elif [[ -f "$fake_root/backup-ps-output" ]]; then
       cat "$fake_root/backup-ps-output"
     else
       printf '%s' "$default_ps"

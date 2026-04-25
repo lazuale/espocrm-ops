@@ -493,6 +493,7 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fake_root="$(cd -- "$script_dir/.." && pwd)"
 
 default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
+stopped_ps='[{"Service":"db","State":"running","Health":"healthy"}]'
 default_failed_health_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"exited","Health":"unhealthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
 
 if [[ "${1:-}" != "compose" ]]; then
@@ -525,6 +526,10 @@ case "${1:-}" in
     if [[ -f "$fake_root/smoke-fail-health-after-start-count" ]]; then
       fail_after="$(cat "$fake_root/smoke-fail-health-after-start-count")"
     fi
+    if [[ -f "$fake_root/app-stopped" ]]; then
+      printf '%s' "$stopped_ps"
+      exit 0
+    fi
     if [[ -n "$fail_after" ]] && (( start_count >= fail_after )); then
       if [[ -f "$fake_root/smoke-failed-health-ps-output" ]]; then
         cat "$fake_root/smoke-failed-health-ps-output"
@@ -541,9 +546,11 @@ case "${1:-}" in
     exit 0
     ;;
   stop)
+    printf '1' >"$fake_root/app-stopped"
     exit 0
     ;;
   start)
+    rm -f "$fake_root/app-stopped"
     start_count=0
     if [[ -f "$fake_root/start-count" ]]; then
       start_count="$(cat "$fake_root/start-count")"

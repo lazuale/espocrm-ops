@@ -36,7 +36,7 @@ func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Backup failed: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(rt.lastServices, ",") != strings.Join(cfg.AppServices, ",") {
@@ -110,7 +110,7 @@ func TestBackupSuccessRequiresHealthCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Backup failed: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.healthContextErrs) != 1 || rt.healthContextErrs[0] != nil {
@@ -226,6 +226,43 @@ func TestBackupUsesConfiguredNamePrefixNotScope(t *testing.T) {
 	}
 }
 
+func TestBackupSameSecondCollisionFailsBeforeStoppingServices(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	now := time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC)
+	cfg := backupTestConfig(root, storageDir)
+	cfg.BackupRetentionDays = 0
+	if _, err := Backup(context.Background(), cfg, &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table first_snapshot(id int);\n"),
+	}, now); err != nil {
+		t.Fatalf("setup backup failed: %v", err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table second_snapshot(id int);\n"),
+	}
+	result, err := Backup(context.Background(), cfg, rt, now)
+	assertVerifyErrorKind(t, err, ErrorKindArtifact)
+	if !strings.Contains(err.Error(), "backup target already exists") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := rt.requireCalls("validate"); err != nil {
+		t.Fatal(err)
+	}
+	assertBackupSetPresent(t, BackupResult{
+		Manifest:    result.Manifest,
+		DBBackup:    result.DBBackup,
+		FilesBackup: result.FilesBackup,
+	})
+}
+
 func TestBackupFailsClosedWhenSelfVerifyFails(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")
@@ -243,7 +280,7 @@ func TestBackupFailsClosedWhenSelfVerifyFails(t *testing.T) {
 
 	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -273,7 +310,7 @@ func TestBackupFailsIfReturnedServicesAreNotHealthy(t *testing.T) {
 	if !strings.Contains(err.Error(), `service "espocrm" health is "unhealthy"`) {
 		t.Fatalf("expected health detail, got %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	wantHealthServices := runtimeContractServices(cfg.DBService, cfg.AppServices)
@@ -335,7 +372,65 @@ func TestBackupFailsWhenStopServicesFails(t *testing.T) {
 	if !strings.Contains(err.Error(), "failed to stop app services") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	assertBackupSetRemoved(t, result)
+}
+
+func TestBackupStopFailureAndStartFailureIncludesBothErrors(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump:   gzipBytes(t, "create table test(id int);\n"),
+		stopErr:  errf("stop failed after partial stop"),
+		startErr: errf("start failed"),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "failed to stop app services") {
+		t.Fatalf("original stop error was lost: %v", err)
+	}
+	if !strings.Contains(err.Error(), "return app services failed") {
+		t.Fatalf("service return error missing: %v", err)
+	}
+	if err := rt.requireCalls("validate", "stop_services", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	assertBackupSetRemoved(t, result)
+}
+
+func TestBackupFailsIfAppServicesStillRunningAfterStop(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump:       gzipBytes(t, "create table test(id int);\n"),
+		stopCheckErr: errf(`service "espocrm" state is "running" (want stopped)`),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "app service stop check failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -361,10 +456,35 @@ func TestBackupFailureAfterStopAttemptsStart(t *testing.T) {
 	if !strings.Contains(err.Error(), "database backup failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
+}
+
+func TestBackupDumpFailureCleansPartialTempArtifacts(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dumpErr:     errf("dump failed"),
+		dumpPartial: []byte("partial dump"),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "database backup failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	assertBackupSetRemoved(t, result)
+	assertNoBackupTempFiles(t, cfg)
 }
 
 func TestBackupStartFailureAfterSnapshotFailsBackup(t *testing.T) {
@@ -388,7 +508,7 @@ func TestBackupStartFailureAfterSnapshotFailsBackup(t *testing.T) {
 	if !strings.Contains(err.Error(), "failed to return app services") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -418,7 +538,7 @@ func TestBackupStartFailureAfterPriorFailureKeepsOriginalErrorVisible(t *testing
 	if !strings.Contains(err.Error(), "return app services failed") {
 		t.Fatalf("service return error missing: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -443,13 +563,13 @@ func TestBackupCancellationAfterStopStillAttemptsStart(t *testing.T) {
 
 	result, err := Backup(ctx, cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindRuntime)
-	if !strings.Contains(err.Error(), "database backup failed") {
+	if !strings.Contains(err.Error(), "app service stop check failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation in error chain: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 1 || rt.startContextErrs[0] != nil {
@@ -478,7 +598,7 @@ func TestBackupCancellationAfterStopAndStartFailureIncludesBothErrors(t *testing
 
 	result, err := Backup(ctx, cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindRuntime)
-	if !strings.Contains(err.Error(), "database backup failed") {
+	if !strings.Contains(err.Error(), "app service stop check failed") {
 		t.Fatalf("original error was lost: %v", err)
 	}
 	if !strings.Contains(err.Error(), "return app services failed") {
@@ -487,7 +607,7 @@ func TestBackupCancellationAfterStopAndStartFailureIncludesBothErrors(t *testing
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation in error chain: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 1 || rt.startContextErrs[0] != nil {
@@ -513,7 +633,7 @@ func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
 
 	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -684,6 +804,36 @@ func TestBackupRetentionCleanupErrorFailsBackupVisibly(t *testing.T) {
 	assertBackupSetPresent(t, oldResult)
 }
 
+func TestPromoteTempFileRefusesOverwrite(t *testing.T) {
+	dir := t.TempDir()
+	tempPath := filepath.Join(dir, ".artifact.tmp-1")
+	finalPath := filepath.Join(dir, "artifact.sql.gz")
+	if err := os.WriteFile(tempPath, []byte("new"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(finalPath, []byte("old"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	err := promoteTempFile(tempPath, finalPath)
+	if err == nil {
+		t.Fatal("expected overwrite refusal")
+	}
+	if !strings.Contains(err.Error(), "target already exists") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	raw, err := os.ReadFile(finalPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(raw) != "old" {
+		t.Fatalf("final artifact was overwritten: %q", string(raw))
+	}
+	if _, err := os.Stat(tempPath); err != nil {
+		t.Fatalf("expected temp artifact to remain for cleanup: %v", err)
+	}
+}
+
 func backupTestConfig(root, storageDir string) config.BackupConfig {
 	return config.BackupConfig{
 		Scope:                      "prod",
@@ -713,15 +863,19 @@ type fakeBackupRuntime struct {
 	dbDump             []byte
 	validateErr        error
 	stopErr            error
+	stopCheckErr       error
 	startErr           error
 	dumpErr            error
+	dumpPartial        []byte
 	healthErr          error
 	cancelOnStop       context.CancelFunc
 	calls              []string
 	lastTarget         runtime.Target
 	lastServices       []string
+	lastStopServices   []string
 	lastHealthServices []string
 	startContextErrs   []error
+	stopContextErrs    []error
 	healthContextErrs  []error
 }
 
@@ -741,6 +895,17 @@ func (f *fakeBackupRuntime) StopServices(_ context.Context, target runtime.Targe
 	return f.stopErr
 }
 
+func (f *fakeBackupRuntime) RequireStoppedServices(ctx context.Context, target runtime.Target, services []string) error {
+	f.calls = append(f.calls, "service_stopped")
+	f.lastTarget = target
+	f.lastStopServices = append([]string(nil), services...)
+	f.stopContextErrs = append(f.stopContextErrs, ctx.Err())
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	return f.stopCheckErr
+}
+
 func (f *fakeBackupRuntime) StartServices(ctx context.Context, target runtime.Target, services []string) error {
 	f.calls = append(f.calls, "start_services")
 	f.lastTarget = target
@@ -754,6 +919,11 @@ func (f *fakeBackupRuntime) DumpDatabase(ctx context.Context, target runtime.Tar
 	f.lastTarget = target
 	if err := ctx.Err(); err != nil {
 		return err
+	}
+	if len(f.dumpPartial) > 0 {
+		if err := os.WriteFile(destPath, append([]byte(nil), f.dumpPartial...), 0o644); err != nil {
+			return err
+		}
 	}
 	if f.dumpErr != nil {
 		return f.dumpErr
@@ -811,6 +981,18 @@ func assertBackupSetPresent(t *testing.T, result BackupResult) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected backup artifact %s: %v", path, err)
 		}
+	}
+}
+
+func assertNoBackupTempFiles(t *testing.T, cfg config.BackupConfig) {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(cfg.BackupRoot, "*", "*.tmp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("unexpected temporary files: %v", matches)
 	}
 }
 
