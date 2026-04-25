@@ -98,6 +98,9 @@ func restoreWithAllowedSourceScopeLocked(ctx context.Context, cfg config.BackupC
 		return result, snapshotErr
 	}
 	result.SnapshotManifest = snapshotResult.Manifest
+	if err := ensureRestoreStagingFreeDisk(cfg.StorageDir, verifyResult.FilesExpandedBytes, cfg.MinFreeDiskMB); err != nil {
+		return result, ioError("restore free disk preflight failed", err)
+	}
 
 	target := runtime.Target{
 		ProjectDir:     cfg.ProjectDir,
@@ -206,6 +209,57 @@ func validateRestoreSourceScope(targetScope, sourceScope, allowedSourceScope str
 			wantScope,
 		),
 	}
+}
+
+func ensureRestoreStagingFreeDisk(storageDir string, filesExpandedBytes int64, minFreeDiskMB int) error {
+	storageParent := filepath.Dir(storageDir)
+	freeBytes, err := backupDiskFreeBytes(storageParent)
+	if err != nil {
+		return fmt.Errorf("check storage parent free space %s: %w", storageParent, err)
+	}
+
+	requiredBytes, err := restoreStagingRequiredBytes(filesExpandedBytes, minFreeDiskMB)
+	if err != nil {
+		return err
+	}
+	if freeBytes >= requiredBytes {
+		return nil
+	}
+
+	return fmt.Errorf(
+		"storage parent %s has %d MiB available; restore staging requires at least %d MiB (files backup expands to %d bytes plus MIN_FREE_DISK_MB=%d)",
+		storageParent,
+		freeBytes/bytesPerMiB,
+		bytesToMiBCeil(requiredBytes),
+		filesExpandedBytes,
+		minFreeDiskMB,
+	)
+}
+
+func restoreStagingRequiredBytes(filesExpandedBytes int64, minFreeDiskMB int) (uint64, error) {
+	if filesExpandedBytes < 0 {
+		return 0, fmt.Errorf("files backup expanded size is invalid: %d", filesExpandedBytes)
+	}
+	if minFreeDiskMB <= 0 {
+		return 0, fmt.Errorf("MIN_FREE_DISK_MB must be > 0")
+	}
+
+	expandedBytes := uint64(filesExpandedBytes)
+	reserveBytes := uint64(minFreeDiskMB) * bytesPerMiB
+	if reserveBytes/bytesPerMiB != uint64(minFreeDiskMB) {
+		return 0, fmt.Errorf("MIN_FREE_DISK_MB is too large")
+	}
+	if expandedBytes > ^uint64(0)-reserveBytes {
+		return 0, fmt.Errorf("restore staging required space is too large")
+	}
+	return expandedBytes + reserveBytes, nil
+}
+
+func bytesToMiBCeil(value uint64) uint64 {
+	if value == 0 {
+		return 0
+	}
+	return ((value - 1) / bytesPerMiB) + 1
 }
 
 func resetDatabase(ctx context.Context, rt restoreRuntime, target runtime.Target) error {

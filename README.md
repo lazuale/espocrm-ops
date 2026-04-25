@@ -66,7 +66,7 @@ Operator requirements:
 - `BACKUP_ROOT` must already exist and be writable by the operator account.
 - `ESPO_STORAGE_DIR` must already exist, point at the selected scope storage, be clearable by the operator account, and have a writable parent for adjacent staging during `restore` and `migrate`.
 - `BACKUP_NAME_PREFIX` is used directly in artifact names: `<prefix>_<YYYY-MM-DD_HH-MM-SS>.sql.gz`, `.tar.gz`, and `.manifest.json`.
-- `MIN_FREE_DISK_MB` is checked before `backup` stops app services.
+- `MIN_FREE_DISK_MB` is checked before `backup` stops app services and is kept as the free-space reserve when `restore` or `migrate` preflights files staging next to `ESPO_STORAGE_DIR`.
 - `BACKUP_RETENTION_DAYS=0` disables retention cleanup.
 - `APP_SERVICES` must explicitly list the application services; the shipped Compose runtime expects `espocrm,espocrm-daemon,espocrm-websocket`.
 - `DB_SERVICE` must name the exact Compose database service.
@@ -132,7 +132,7 @@ Retention cleanup runs only after the new set self-verifies. It deletes only com
 
 `migrate` is the supported cross-scope restore path. It requires manifest version `2` and checks the recorded image, service, and storage contract before target mutation. For `dev` to `prod` migration, both scopes must use the same digest-pinned `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs.
 
-Both flows create a target snapshot before mutation, reset the target database as MariaDB root, import into a clean database, restore files through staged extraction next to target storage, apply `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`, switch storage by same-parent rename, and run final post-checks before reporting success.
+Both flows create a target snapshot before mutation, verify target storage parent free space for files staging, reset the target database as MariaDB root, import into a clean database, restore files through staged extraction next to target storage, apply `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`, switch storage by same-parent rename, and run final post-checks before reporting success.
 
 If `restore` or `migrate` fails after the target snapshot exists, the error JSON includes `result.snapshot_manifest`. Database and file rollback is manual: use that snapshot manifest to plan and execute recovery of the target scope.
 

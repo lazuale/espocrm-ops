@@ -42,13 +42,14 @@ var (
 )
 
 type VerifyResult struct {
-	Manifest        string
-	ManifestVersion int
-	Scope           string
-	CreatedAt       string
-	DBBackup        string
-	FilesBackup     string
-	Runtime         manifest.Runtime
+	Manifest           string
+	ManifestVersion    int
+	Scope              string
+	CreatedAt          string
+	DBBackup           string
+	FilesBackup        string
+	FilesExpandedBytes int64
+	Runtime            manifest.Runtime
 }
 
 type VerifyError struct {
@@ -98,64 +99,71 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 		return VerifyResult{}, manifestError("manifest is invalid", err)
 	}
 
-	if err := verifyArtifact(ctx, "db backup", paths.DBPath, paths.DBSidecarPath, loadedManifest.Checksums.DBBackup, ".sql.gz", verifyGzipReadable); err != nil {
+	if _, err := verifyArtifact(ctx, "db backup", paths.DBPath, paths.DBSidecarPath, loadedManifest.Checksums.DBBackup, ".sql.gz", verifyGzipReadableForArtifact); err != nil {
 		return VerifyResult{}, err
 	}
-	if err := verifyArtifact(ctx, "files backup", paths.FilesPath, paths.FilesSidecarPath, loadedManifest.Checksums.FilesBackup, ".tar.gz", verifyTarGzReadable); err != nil {
+	filesCheck, err := verifyArtifact(ctx, "files backup", paths.FilesPath, paths.FilesSidecarPath, loadedManifest.Checksums.FilesBackup, ".tar.gz", verifyTarGzReadableForArtifact)
+	if err != nil {
 		return VerifyResult{}, err
 	}
 
 	return VerifyResult{
-		Manifest:        manifestPath,
-		ManifestVersion: loadedManifest.Version,
-		Scope:           loadedManifest.Scope,
-		CreatedAt:       loadedManifest.CreatedAt,
-		DBBackup:        paths.DBPath,
-		FilesBackup:     paths.FilesPath,
-		Runtime:         loadedManifest.Runtime,
+		Manifest:           manifestPath,
+		ManifestVersion:    loadedManifest.Version,
+		Scope:              loadedManifest.Scope,
+		CreatedAt:          loadedManifest.CreatedAt,
+		DBBackup:           paths.DBPath,
+		FilesBackup:        paths.FilesPath,
+		FilesExpandedBytes: filesCheck.FilesExpandedBytes,
+		Runtime:            loadedManifest.Runtime,
 	}, nil
 }
 
-func verifyArtifact(ctx context.Context, label, artifactPath, sidecarPath, manifestChecksum, requiredSuffix string, verifyReadable func(string) error) error {
+type artifactCheckResult struct {
+	FilesExpandedBytes int64
+}
+
+func verifyArtifact(ctx context.Context, label, artifactPath, sidecarPath, manifestChecksum, requiredSuffix string, verifyReadable func(string) (artifactCheckResult, error)) (artifactCheckResult, error) {
 	if err := ctx.Err(); err != nil {
-		return ioError("backup verify interrupted", err)
+		return artifactCheckResult{}, ioError("backup verify interrupted", err)
 	}
 	if !strings.HasSuffix(artifactPath, requiredSuffix) {
-		return artifactError(label+" has an unexpected file name", nil)
+		return artifactCheckResult{}, artifactError(label+" has an unexpected file name", nil)
 	}
 	if err := ensureNonEmptyFile(artifactPath); err != nil {
-		return artifactError(label+" is unavailable", err)
+		return artifactCheckResult{}, artifactError(label+" is unavailable", err)
 	}
 	if err := ensureNonEmptyFile(sidecarPath); err != nil {
-		return checksumError(label+" checksum sidecar is unavailable", err)
+		return artifactCheckResult{}, checksumError(label+" checksum sidecar is unavailable", err)
 	}
 
 	actualChecksum, err := sha256File(artifactPath)
 	if err != nil {
-		return ioError("failed to read "+label+" checksum", err)
+		return artifactCheckResult{}, ioError("failed to read "+label+" checksum", err)
 	}
 
 	manifestChecksum = strings.ToLower(strings.TrimSpace(manifestChecksum))
 	if !validChecksum(manifestChecksum) {
-		return checksumError(label+" manifest checksum is invalid", nil)
+		return artifactCheckResult{}, checksumError(label+" manifest checksum is invalid", nil)
 	}
 	if actualChecksum != manifestChecksum {
-		return checksumError(label+" checksum does not match manifest", nil)
+		return artifactCheckResult{}, checksumError(label+" checksum does not match manifest", nil)
 	}
 
 	sidecarChecksum, err := readSidecarChecksum(sidecarPath, artifactPath)
 	if err != nil {
-		return checksumError(label+" checksum sidecar is invalid", err)
+		return artifactCheckResult{}, checksumError(label+" checksum sidecar is invalid", err)
 	}
 	if actualChecksum != sidecarChecksum {
-		return checksumError(label+" checksum does not match sidecar", nil)
+		return artifactCheckResult{}, checksumError(label+" checksum does not match sidecar", nil)
 	}
 
-	if err := verifyReadable(artifactPath); err != nil {
-		return archiveError(label+" archive is unreadable", err)
+	result, err := verifyReadable(artifactPath)
+	if err != nil {
+		return artifactCheckResult{}, archiveError(label+" archive is unreadable", err)
 	}
 
-	return nil
+	return result, nil
 }
 
 func ensureNonEmptyFile(path string) error {
@@ -228,6 +236,10 @@ func verifyGzipReadable(path string) (err error) {
 	return err
 }
 
+func verifyGzipReadableForArtifact(path string) (artifactCheckResult, error) {
+	return artifactCheckResult{}, verifyGzipReadable(path)
+}
+
 type dbBackupLimitReader struct {
 	reader    io.Reader
 	remaining int64
@@ -258,16 +270,28 @@ func (r *dbBackupLimitReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func verifyTarGzReadable(path string) (err error) {
+func verifyTarGzReadableForArtifact(path string) (artifactCheckResult, error) {
+	info, err := inspectFilesArchive(path)
+	if err != nil {
+		return artifactCheckResult{}, err
+	}
+	return artifactCheckResult{FilesExpandedBytes: info.expandedBytes}, nil
+}
+
+type filesArchiveInfo struct {
+	expandedBytes int64
+}
+
+func inspectFilesArchive(path string) (info filesArchiveInfo, err error) {
 	file, err := os.Open(path)
 	if err != nil {
-		return err
+		return filesArchiveInfo{}, err
 	}
 	defer closeResource(file, &err)
 
 	gzipReader, err := gzip.NewReader(file)
 	if err != nil {
-		return err
+		return filesArchiveInfo{}, err
 	}
 	defer closeResource(gzipReader, &err)
 
@@ -280,21 +304,21 @@ func verifyTarGzReadable(path string) (err error) {
 			break
 		}
 		if nextErr != nil {
-			return nextErr
+			return filesArchiveInfo{}, nextErr
 		}
 		if err := validator.validate(header); err != nil {
-			return err
+			return filesArchiveInfo{}, err
 		}
 		found = true
 		if _, err := io.Copy(io.Discard, tarReader); err != nil {
-			return err
+			return filesArchiveInfo{}, err
 		}
 	}
 	if !found {
-		return fmt.Errorf("files archive is empty")
+		return filesArchiveInfo{}, fmt.Errorf("files archive is empty")
 	}
 
-	return nil
+	return filesArchiveInfo{expandedBytes: validator.expandedBytes}, nil
 }
 
 type tarEntryKind int

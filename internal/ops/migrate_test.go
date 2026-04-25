@@ -142,6 +142,39 @@ func TestMigrateRestoreFailureFails(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestMigrateFreeDiskPreflightFailsBeforeTargetDBReset(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
+	storageParent := filepath.Clean(filepath.Dir(storageDir))
+	restoreBackupDiskFreeBytes(t, func(path string) (uint64, error) {
+		if filepath.Clean(path) == storageParent {
+			return bytesPerMiB, nil
+		}
+		return 64 * bytesPerMiB, nil
+	})
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "restore free disk preflight failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != sourceManifest {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest before destructive migrate mutation")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
 func TestMigrateBusyTargetLockFailsBeforeMutation(t *testing.T) {
 	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
 	cfg, storageDir := restoreTargetConfig(t)

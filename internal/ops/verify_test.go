@@ -32,6 +32,9 @@ func TestVerifyBackupValid(t *testing.T) {
 	if result.FilesBackup != filesPath {
 		t.Fatalf("unexpected files path: %s", result.FilesBackup)
 	}
+	if result.FilesExpandedBytes != int64(len("hello\n")) {
+		t.Fatalf("unexpected files expanded size: %d", result.FilesExpandedBytes)
+	}
 	if result.ManifestVersion != manifestpkg.VersionCurrent {
 		t.Fatalf("unexpected manifest version: %d", result.ManifestVersion)
 	}

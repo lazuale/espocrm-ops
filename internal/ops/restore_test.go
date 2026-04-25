@@ -291,6 +291,85 @@ func TestRestoreResetDBFailureAttemptsStartWithoutImportOrFileMutation(t *testin
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestRestoreFreeDiskPreflightFailsBeforeDBReset(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	storageParent := filepath.Clean(filepath.Dir(storageDir))
+	restorePreflightChecked := false
+	restoreBackupDiskFreeBytes(t, func(path string) (uint64, error) {
+		if filepath.Clean(path) == storageParent {
+			restorePreflightChecked = true
+			return bytesPerMiB, nil
+		}
+		return 64 * bytesPerMiB, nil
+	})
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "restore free disk preflight failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "restore staging requires") ||
+		!strings.Contains(err.Error(), "files backup expands") ||
+		!strings.Contains(err.Error(), "MIN_FREE_DISK_MB=1") {
+		t.Fatalf("error is not operator-clear enough: %v", err)
+	}
+	if !restorePreflightChecked {
+		t.Fatal("expected restore staging free-space preflight")
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest before destructive restore mutation")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != "" {
+		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreFreeDiskPreflightAllowsSufficientSpace(t *testing.T) {
+	sourceManifest, wantSQL, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	storageParent := filepath.Clean(filepath.Dir(storageDir))
+	restorePreflightChecked := false
+	restoreBackupDiskFreeBytes(t, func(path string) (uint64, error) {
+		if filepath.Clean(path) == storageParent {
+			restorePreflightChecked = true
+		}
+		return 2 * bytesPerMiB, nil
+	})
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	if err != nil {
+		t.Fatalf("Restore failed: %v", err)
+	}
+	if !restorePreflightChecked {
+		t.Fatal("expected restore staging free-space preflight")
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != wantSQL {
+		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+}
+
 func TestRestoreUnclearableStorageFailsBeforeMutation(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)

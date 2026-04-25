@@ -45,6 +45,7 @@ type backupLayout struct {
 }
 
 const serviceReturnTimeout = 30 * time.Second
+const bytesPerMiB uint64 = 1024 * 1024
 
 const backupSetTimestampFormat = "2006-01-02_15-04-05"
 
@@ -354,11 +355,11 @@ func ensureBackupFreeDisk(path string, minFreeDiskMB int) error {
 		return err
 	}
 
-	requiredBytes := uint64(minFreeDiskMB) * 1024 * 1024
+	requiredBytes := uint64(minFreeDiskMB) * bytesPerMiB
 	if freeBytes < requiredBytes {
 		return fmt.Errorf(
 			"backup root free space %d MiB is below MIN_FREE_DISK_MB=%d",
-			freeBytes/(1024*1024),
+			freeBytes/bytesPerMiB,
 			minFreeDiskMB,
 		)
 	}
