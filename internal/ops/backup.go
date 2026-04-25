@@ -419,9 +419,12 @@ func writeManifestJSON(path string, manifestData manifest.Manifest) error {
 }
 
 func archiveStorageDir(sourceDir, destPath string) (err error) {
-	info, err := os.Stat(sourceDir)
+	info, err := os.Lstat(sourceDir)
 	if err != nil {
 		return err
+	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("storage dir root is a symlink")
 	}
 	if !info.IsDir() {
 		return fmt.Errorf("storage dir must be a directory")
@@ -462,6 +465,11 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 		if !info.IsDir() && !info.Mode().IsRegular() {
 			return fmt.Errorf("storage entry %s has unsupported type", rel)
 		}
+		if info.Mode().IsRegular() {
+			if err := ensureArchiveSourceNotHardlinked(rel, info); err != nil {
+				return err
+			}
+		}
 
 		header, err := tar.FileInfoHeader(info, "")
 		if err != nil {
@@ -470,6 +478,9 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 		header.Name = filepath.ToSlash(rel)
 		if info.IsDir() {
 			header.Name += "/"
+		}
+		if err := validateTarHeader(header); err != nil {
+			return err
 		}
 		if err := tw.WriteHeader(header); err != nil {
 			return err
@@ -497,6 +508,17 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 		return fmt.Errorf("storage dir is empty")
 	}
 
+	return nil
+}
+
+func ensureArchiveSourceNotHardlinked(rel string, info os.FileInfo) error {
+	stat, ok := info.Sys().(*syscall.Stat_t)
+	if !ok || stat == nil {
+		return fmt.Errorf("storage entry %s link metadata is unavailable", rel)
+	}
+	if stat.Nlink > 1 {
+		return fmt.Errorf("storage entry %s has multiple hardlinks", rel)
+	}
 	return nil
 }
 

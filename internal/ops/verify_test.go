@@ -168,6 +168,132 @@ func TestVerifyBackupTarTraversal(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 }
 
+func TestVerifyBackupRejectsMaliciousFilesArchiveWithValidChecksum(t *testing.T) {
+	tests := []struct {
+		name      string
+		entries   []archiveTestEntry
+		configure func(t *testing.T)
+		want      string
+	}{
+		{
+			name:    "absolute path",
+			entries: []archiveTestEntry{{name: "/escape.txt", body: "bad\n"}},
+			want:    "escapes archive root",
+		},
+		{
+			name:    "parent traversal",
+			entries: []archiveTestEntry{{name: "../escape.txt", body: "bad\n"}},
+			want:    "escapes archive root",
+		},
+		{
+			name: "symlink typeflag",
+			entries: []archiveTestEntry{{
+				name:     "linked",
+				typeflag: tar.TypeSymlink,
+				linkname: "/etc/passwd",
+			}},
+			want: "type is not allowed",
+		},
+		{
+			name: "hardlink typeflag",
+			entries: []archiveTestEntry{{
+				name:     "linked",
+				typeflag: tar.TypeLink,
+				linkname: "target",
+			}},
+			want: "type is not allowed",
+		},
+		{
+			name: "device typeflag",
+			entries: []archiveTestEntry{{
+				name:     "device",
+				typeflag: tar.TypeChar,
+				devmajor: 1,
+				devminor: 3,
+			}},
+			want: "type is not allowed",
+		},
+		{
+			name: "special file typeflag",
+			entries: []archiveTestEntry{{
+				name:     "fifo",
+				typeflag: tar.TypeFifo,
+			}},
+			want: "type is not allowed",
+		},
+		{
+			name:    "duplicated entry",
+			entries: []archiveTestEntry{{name: "same.txt", body: "first\n"}, {name: "same.txt", body: "second\n"}},
+			want:    "duplicated",
+		},
+		{
+			name:    "file directory collision",
+			entries: []archiveTestEntry{{name: "collide", body: "file\n"}, {name: "collide/child.txt", body: "child\n"}},
+			want:    "parent is a file",
+		},
+		{
+			name:    "directory file collision",
+			entries: []archiveTestEntry{{name: "collide/child.txt", body: "child\n"}, {name: "collide", body: "file\n"}},
+			want:    "collides with directory",
+		},
+		{
+			name:    "world writable mode",
+			entries: []archiveTestEntry{{name: "open.txt", body: "open\n", mode: 0o777}},
+			want:    "world-writable",
+		},
+		{
+			name:    "setuid mode",
+			entries: []archiveTestEntry{{name: "setuid.txt", body: "setuid\n", mode: 0o4755}},
+			want:    "special bits",
+		},
+		{
+			name:    "sticky mode",
+			entries: []archiveTestEntry{{name: "sticky.txt", body: "sticky\n", mode: 0o1755}},
+			want:    "special bits",
+		},
+		{
+			name: "expanded size limit",
+			entries: []archiveTestEntry{{
+				name: "huge.txt",
+				body: "12345",
+			}},
+			configure: func(t *testing.T) {
+				restoreFilesArchiveLimits(t, defaultFilesArchiveMaxEntries, 4)
+			},
+			want: "expanded size exceeds limit",
+		},
+		{
+			name:    "entry count limit",
+			entries: []archiveTestEntry{{name: "one.txt", body: "1"}, {name: "two.txt", body: "2"}},
+			configure: func(t *testing.T) {
+				restoreFilesArchiveLimits(t, 1, defaultFilesArchiveMaxExpandedBytes)
+			},
+			want: "too many entries",
+		},
+		{
+			name:    "empty archive",
+			entries: nil,
+			want:    "empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.configure != nil {
+				tt.configure(t)
+			}
+			manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
+			replaceVerifiedFilesArchive(t, manifestPath, dbPath, filesPath, tt.entries)
+
+			_, err := VerifyBackup(context.Background(), manifestPath)
+			assertVerifyErrorKind(t, err, ErrorKindArchive)
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected %q in error, got %v", tt.want, err)
+			}
+		})
+	}
+}
+
 func TestVerifyBackupVersionTwoRejectsMissingRuntimeMetadata(t *testing.T) {
 	root := t.TempDir()
 	dbPath := filepath.Join(root, "db", "espocrm-prod_2026-04-24_12-00-00.sql.gz")
@@ -359,6 +485,88 @@ func writeTarGzFile(t *testing.T, path string, files map[string]string) {
 			t.Fatal(err)
 		}
 	}
+}
+
+type archiveTestEntry struct {
+	name     string
+	body     string
+	mode     int64
+	typeflag byte
+	linkname string
+	devmajor int64
+	devminor int64
+}
+
+func replaceVerifiedFilesArchive(t *testing.T, manifestPath, dbPath, filesPath string, entries []archiveTestEntry) {
+	t.Helper()
+
+	writeTarGzArchiveEntries(t, filesPath, entries)
+	rewriteSidecar(t, filesPath)
+	writeManifest(t, manifestPath, v2ManifestDocument(
+		filepath.Base(dbPath),
+		filepath.Base(filesPath),
+		sha256OfFile(t, dbPath),
+		sha256OfFile(t, filesPath),
+	))
+}
+
+func writeTarGzArchiveEntries(t *testing.T, path string, entries []archiveTestEntry) {
+	t.Helper()
+
+	file, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer closeTestResource(t, file)
+
+	gzipWriter := gzip.NewWriter(file)
+	defer closeTestResource(t, gzipWriter)
+
+	tarWriter := tar.NewWriter(gzipWriter)
+	defer closeTestResource(t, tarWriter)
+
+	for _, entry := range entries {
+		mode := entry.mode
+		if mode == 0 {
+			if entry.typeflag == tar.TypeDir {
+				mode = 0o755
+			} else {
+				mode = 0o644
+			}
+		}
+		header := &tar.Header{
+			Name:     entry.name,
+			Mode:     mode,
+			Typeflag: entry.typeflag,
+			Linkname: entry.linkname,
+			Devmajor: entry.devmajor,
+			Devminor: entry.devminor,
+		}
+		if entry.typeflag == tar.TypeReg || entry.typeflag == tarRegularTypeflagZero {
+			header.Size = int64(len(entry.body))
+		}
+		if err := tarWriter.WriteHeader(header); err != nil {
+			t.Fatal(err)
+		}
+		if header.Size > 0 {
+			if _, err := tarWriter.Write([]byte(entry.body)); err != nil {
+				t.Fatal(err)
+			}
+		}
+	}
+}
+
+func restoreFilesArchiveLimits(t *testing.T, maxEntries int, maxExpandedBytes int64) {
+	t.Helper()
+
+	oldMaxEntries := filesArchiveMaxEntries
+	oldMaxExpandedBytes := filesArchiveMaxExpandedBytes
+	filesArchiveMaxEntries = maxEntries
+	filesArchiveMaxExpandedBytes = maxExpandedBytes
+	t.Cleanup(func() {
+		filesArchiveMaxEntries = oldMaxEntries
+		filesArchiveMaxExpandedBytes = oldMaxExpandedBytes
+	})
 }
 
 func writeTraversalTarGzFile(t *testing.T, path string) {

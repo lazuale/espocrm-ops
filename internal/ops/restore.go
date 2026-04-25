@@ -309,6 +309,7 @@ func validateFilesArchiveForRestore(path string) (err error) {
 	defer closeResource(gzipReader, &err)
 
 	tarReader := tar.NewReader(gzipReader)
+	validator := newFilesArchiveValidator()
 	var found bool
 	for {
 		header, nextErr := tarReader.Next()
@@ -318,7 +319,7 @@ func validateFilesArchiveForRestore(path string) (err error) {
 		if nextErr != nil {
 			return archiveError("files restore source is unreadable", nextErr)
 		}
-		if err := validateTarHeader(header); err != nil {
+		if err := validator.validate(header); err != nil {
 			return archiveError("files restore source is unsafe", err)
 		}
 		found = true
@@ -408,6 +409,7 @@ func extractFilesArchiveToStaging(ctx context.Context, artifactPath, stagingDir 
 	defer closeResource(gzipReader, &err)
 
 	tarReader := tar.NewReader(gzipReader)
+	validator := newFilesArchiveValidator()
 	var found bool
 	for {
 		if err := ctx.Err(); err != nil {
@@ -421,7 +423,7 @@ func extractFilesArchiveToStaging(ctx context.Context, artifactPath, stagingDir 
 		if nextErr != nil {
 			return archiveError("files restore source is unreadable", nextErr)
 		}
-		if err := validateTarHeader(header); err != nil {
+		if err := validator.validate(header); err != nil {
 			return archiveError("files restore source is unsafe", err)
 		}
 		found = true
@@ -634,7 +636,11 @@ func rollbackRestoreStorage(storageDir, rollbackDir string) error {
 }
 
 func extractTarEntry(root string, header *tar.Header, reader io.Reader) error {
-	relative := filepath.Clean(filepath.FromSlash(header.Name))
+	relativeSlash, _, err := validateTarHeaderEntry(header)
+	if err != nil {
+		return err
+	}
+	relative := filepath.FromSlash(relativeSlash)
 	targetPath := filepath.Join(root, relative)
 	if !pathWithinRoot(root, targetPath) {
 		return fmt.Errorf("tar entry escapes restore root: %s", header.Name)

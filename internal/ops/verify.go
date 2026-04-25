@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 
@@ -26,6 +27,14 @@ const (
 )
 
 const tarRegularTypeflagZero = byte(0)
+
+const defaultFilesArchiveMaxEntries = 200000
+const defaultFilesArchiveMaxExpandedBytes int64 = 256 * 1024 * 1024 * 1024
+
+var (
+	filesArchiveMaxEntries       = defaultFilesArchiveMaxEntries
+	filesArchiveMaxExpandedBytes = defaultFilesArchiveMaxExpandedBytes
+)
 
 type VerifyResult struct {
 	Manifest        string
@@ -228,6 +237,7 @@ func verifyTarGzReadable(path string) (err error) {
 	defer closeResource(gzipReader, &err)
 
 	tarReader := tar.NewReader(gzipReader)
+	validator := newFilesArchiveValidator()
 	var found bool
 	for {
 		header, nextErr := tarReader.Next()
@@ -237,7 +247,7 @@ func verifyTarGzReadable(path string) (err error) {
 		if nextErr != nil {
 			return nextErr
 		}
-		if err := validateTarHeader(header); err != nil {
+		if err := validator.validate(header); err != nil {
 			return err
 		}
 		found = true
@@ -252,24 +262,162 @@ func verifyTarGzReadable(path string) (err error) {
 	return nil
 }
 
+type tarEntryKind int
+
+const (
+	tarEntryKindDir tarEntryKind = iota
+	tarEntryKindRegular
+)
+
+type filesArchiveValidator struct {
+	entries       int
+	expandedBytes int64
+	seen          map[string]tarEntryKind
+	files         map[string]struct{}
+	dirs          map[string]struct{}
+	implicitDirs  map[string]struct{}
+}
+
+func newFilesArchiveValidator() *filesArchiveValidator {
+	return &filesArchiveValidator{
+		seen:         make(map[string]tarEntryKind),
+		files:        make(map[string]struct{}),
+		dirs:         make(map[string]struct{}),
+		implicitDirs: make(map[string]struct{}),
+	}
+}
+
+func (v *filesArchiveValidator) validate(header *tar.Header) error {
+	name, kind, err := validateTarHeaderEntry(header)
+	if err != nil {
+		return err
+	}
+	if v.entries >= filesArchiveMaxEntries {
+		return fmt.Errorf("files archive has too many entries")
+	}
+	v.entries++
+	if _, ok := v.seen[name]; ok {
+		return fmt.Errorf("tar entry is duplicated: %s", name)
+	}
+	if err := v.validatePathShape(name, kind); err != nil {
+		return err
+	}
+	if kind == tarEntryKindRegular {
+		if header.Size > filesArchiveMaxExpandedBytes-v.expandedBytes {
+			return fmt.Errorf("files archive expanded size exceeds limit")
+		}
+		v.expandedBytes += header.Size
+		v.files[name] = struct{}{}
+	} else {
+		v.dirs[name] = struct{}{}
+	}
+	v.seen[name] = kind
+	v.addImplicitParents(name)
+	return nil
+}
+
+func (v *filesArchiveValidator) validatePathShape(name string, kind tarEntryKind) error {
+	for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+		if _, ok := v.files[parent]; ok {
+			return fmt.Errorf("tar entry parent is a file: %s", parent)
+		}
+	}
+
+	switch kind {
+	case tarEntryKindDir:
+		if _, ok := v.files[name]; ok {
+			return fmt.Errorf("tar entry collides with file: %s", name)
+		}
+	case tarEntryKindRegular:
+		if _, ok := v.dirs[name]; ok {
+			return fmt.Errorf("tar entry collides with directory: %s", name)
+		}
+		if _, ok := v.implicitDirs[name]; ok {
+			return fmt.Errorf("tar entry collides with directory: %s", name)
+		}
+	}
+	return nil
+}
+
+func (v *filesArchiveValidator) addImplicitParents(name string) {
+	for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
+		v.implicitDirs[parent] = struct{}{}
+	}
+}
+
 func validateTarHeader(header *tar.Header) error {
+	_, _, err := validateTarHeaderEntry(header)
+	return err
+}
+
+func validateTarHeaderEntry(header *tar.Header) (string, tarEntryKind, error) {
 	if header == nil {
-		return fmt.Errorf("tar header is required")
+		return "", tarEntryKindRegular, fmt.Errorf("tar header is required")
 	}
 	name := strings.TrimSpace(header.Name)
 	if name == "" {
-		return fmt.Errorf("tar entry has empty name")
+		return "", tarEntryKindRegular, fmt.Errorf("tar entry has empty name")
 	}
-	clean := filepath.ToSlash(filepath.Clean(name))
-	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || filepath.IsAbs(name) {
-		return fmt.Errorf("tar entry escapes archive root: %s", name)
+	clean, err := cleanTarEntryName(name)
+	if err != nil {
+		return "", tarEntryKindRegular, err
+	}
+	if err := validateTarHeaderMode(header.Mode); err != nil {
+		return "", tarEntryKindRegular, err
 	}
 	switch header.Typeflag {
-	case tar.TypeDir, tar.TypeReg, tarRegularTypeflagZero:
-		return nil
+	case tar.TypeDir:
+		if header.Size != 0 {
+			return "", tarEntryKindRegular, fmt.Errorf("tar directory entry has data: %s", name)
+		}
+		return clean, tarEntryKindDir, nil
+	case tar.TypeReg, tarRegularTypeflagZero:
+		if header.Size < 0 {
+			return "", tarEntryKindRegular, fmt.Errorf("tar entry size is invalid: %s", name)
+		}
+		return clean, tarEntryKindRegular, nil
 	default:
-		return fmt.Errorf("tar entry type is not allowed: %d", header.Typeflag)
+		return "", tarEntryKindRegular, fmt.Errorf("tar entry type is not allowed: %d", header.Typeflag)
 	}
+}
+
+func cleanTarEntryName(name string) (string, error) {
+	if strings.IndexByte(name, 0) >= 0 {
+		return "", fmt.Errorf("tar entry has invalid name")
+	}
+	if path.IsAbs(name) || filepath.IsAbs(name) || hasParentPathSegment(name) {
+		return "", fmt.Errorf("tar entry escapes archive root: %s", name)
+	}
+	clean := path.Clean(name)
+	if clean == "." || clean == ".." || strings.HasPrefix(clean, "../") || hasParentPathSegment(clean) {
+		return "", fmt.Errorf("tar entry escapes archive root: %s", name)
+	}
+	return clean, nil
+}
+
+func hasParentPathSegment(name string) bool {
+	for _, segment := range strings.Split(name, "/") {
+		if segment == ".." {
+			return true
+		}
+	}
+	return false
+}
+
+func validateTarHeaderMode(mode int64) error {
+	if mode < 0 {
+		return fmt.Errorf("tar entry mode is invalid: %o", mode)
+	}
+	if mode&^int64(0o7777) != 0 {
+		return fmt.Errorf("tar entry mode has unsupported bits: %o", mode)
+	}
+	if mode&0o7000 != 0 {
+		return fmt.Errorf("tar entry mode has special bits: %04o", mode&0o7777)
+	}
+	if mode&0o002 != 0 {
+		return fmt.Errorf("tar entry mode is world-writable: %04o", mode&0o7777)
+	}
+	return nil
 }
 
 func validChecksum(value string) bool {

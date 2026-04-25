@@ -639,6 +639,63 @@ func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
 	assertBackupSetRemoved(t, result)
 }
 
+func TestArchiveStorageDirRejectsRootSymlink(t *testing.T) {
+	root := t.TempDir()
+	realStorage := filepath.Join(root, "real-storage")
+	if err := os.MkdirAll(realStorage, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	storageLink := filepath.Join(root, "storage-link")
+	if err := os.Symlink(realStorage, storageLink); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+
+	err := archiveStorageDir(storageLink, filepath.Join(root, "files.tar.gz"))
+	if err == nil || !strings.Contains(err.Error(), "root is a symlink") {
+		t.Fatalf("expected root symlink rejection, got %v", err)
+	}
+}
+
+func TestArchiveStorageDirRejectsHardlinkedFile(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "storage")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	realFile := filepath.Join(root, "outside.txt")
+	if err := os.WriteFile(realFile, []byte("outside\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Link(realFile, filepath.Join(storageDir, "hardlinked.txt")); err != nil {
+		t.Skipf("hardlink unavailable: %v", err)
+	}
+
+	err := archiveStorageDir(storageDir, filepath.Join(root, "files.tar.gz"))
+	if err == nil || !strings.Contains(err.Error(), "multiple hardlinks") {
+		t.Fatalf("expected hardlink rejection, got %v", err)
+	}
+}
+
+func TestArchiveStorageDirRejectsUnsafeMode(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "storage")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	openFile := filepath.Join(storageDir, "open.txt")
+	if err := os.WriteFile(openFile, []byte("open\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(openFile, 0o777); err != nil {
+		t.Fatal(err)
+	}
+
+	err := archiveStorageDir(storageDir, filepath.Join(root, "files.tar.gz"))
+	if err == nil || !strings.Contains(err.Error(), "world-writable") {
+		t.Fatalf("expected unsafe mode rejection, got %v", err)
+	}
+}
+
 func TestBackupRetentionDeletesOldCompleteSamePrefixSetAfterSelfVerify(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")

@@ -671,6 +671,71 @@ func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 	probe.assertClean(t)
 }
 
+func TestRestoreFilesBackupRejectsMaliciousArchiveBeforeStaging(t *testing.T) {
+	tests := []struct {
+		name      string
+		entries   []archiveTestEntry
+		configure func(t *testing.T)
+		want      string
+	}{
+		{
+			name:    "duplicated entry",
+			entries: []archiveTestEntry{{name: "restored.txt", body: "first\n"}, {name: "restored.txt", body: "second\n"}},
+			want:    "duplicated",
+		},
+		{
+			name:    "directory file collision",
+			entries: []archiveTestEntry{{name: "nested/child.txt", body: "child\n"}, {name: "nested", body: "file\n"}},
+			want:    "collides with directory",
+		},
+		{
+			name:    "world writable mode",
+			entries: []archiveTestEntry{{name: "restored.txt", body: "restored\n", mode: 0o777}},
+			want:    "world-writable",
+		},
+		{
+			name: "expanded size limit",
+			entries: []archiveTestEntry{{
+				name: "huge.txt",
+				body: "12345",
+			}},
+			configure: func(t *testing.T) {
+				restoreFilesArchiveLimits(t, defaultFilesArchiveMaxEntries, 4)
+			},
+			want: "expanded size exceeds limit",
+		},
+		{
+			name:    "empty archive",
+			entries: nil,
+			want:    "empty",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.configure != nil {
+				tt.configure(t)
+			}
+			cfg, storageDir := restoreTargetConfig(t)
+			probe := useRestoreStagingProbe(t, storageDir)
+			archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+			writeTarGzArchiveEntries(t, archivePath, tt.entries)
+
+			err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+			assertVerifyErrorKind(t, err, ErrorKindArchive)
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("expected %q in error, got %v", tt.want, err)
+			}
+			if len(probe.created) != 0 {
+				t.Fatalf("staging should not be created before archive validation, got %v", probe.created)
+			}
+			assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+			assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+			probe.assertClean(t)
+		})
+	}
+}
+
 func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
 	cfg, storageDir := restoreTargetConfig(t)
 	probe := useRestoreStagingProbe(t, storageDir)
