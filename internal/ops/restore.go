@@ -43,12 +43,15 @@ type restoreOptions struct {
 }
 
 const restoreStagingDirPattern = "espops-restore-staging-*"
+const restoreRollbackDirPattern = "espops-restore-rollback-*"
 
 var (
 	createRestoreStagingDir    = defaultCreateRestoreStagingDir
 	restoreExtractTarEntry     = extractTarEntry
 	restoreValidateStorageTree = validateRestoredStorageTree
 	restoreApplyOwnership      = applyRestoreOwnership
+	restoreRenamePath          = os.Rename
+	restoreRemoveAll           = os.RemoveAll
 	restoreOwnershipFS         = restoreOwnershipOps{
 		lstat:  os.Lstat,
 		lchown: os.Lchown,
@@ -267,7 +270,7 @@ func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string, ru
 		return ioError("failed to create restore staging directory", err)
 	}
 	defer func() {
-		cleanupErr := os.RemoveAll(stagingDir)
+		cleanupErr := restoreRemoveAll(stagingDir)
 		if cleanupErr == nil || err != nil {
 			return
 		}
@@ -280,11 +283,11 @@ func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string, ru
 	if err := restoreValidateStorageTree(stagingDir); err != nil {
 		return archiveError("files restore staging is invalid", err)
 	}
+	if err := restoreApplyOwnership(stagingDir, runtimeUID, runtimeGID); err != nil {
+		return ioError("files ownership restore failed", err)
+	}
 	if err := replaceRestoreStorageFromStaging(ctx, stagingDir, storageDir); err != nil {
 		return err
-	}
-	if err := restoreApplyOwnership(storageDir, runtimeUID, runtimeGID); err != nil {
-		return ioError("files ownership restore failed", err)
 	}
 	if err := restoreValidateStorageTree(storageDir); err != nil {
 		return ioError("files restore post-check failed", err)
@@ -349,6 +352,9 @@ func ensureRestoreStorageClearable(path string) error {
 	if err := ensureRestoreStorageDir(path); err != nil {
 		return err
 	}
+	if err := ensureRestoreStorageParentWritable(path); err != nil {
+		return err
+	}
 
 	return filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
@@ -374,8 +380,19 @@ func ensureRestoreStorageClearable(path string) error {
 	})
 }
 
-func defaultCreateRestoreStagingDir(_ string) (string, error) {
-	return os.MkdirTemp("", restoreStagingDirPattern)
+func ensureRestoreStorageParentWritable(path string) error {
+	probe, err := os.MkdirTemp(filepath.Dir(path), "espops-restore-switch-probe-*")
+	if err != nil {
+		return fmt.Errorf("storage dir parent must allow adjacent restore staging: %w", err)
+	}
+	if err := os.Remove(probe); err != nil {
+		return err
+	}
+	return nil
+}
+
+func defaultCreateRestoreStagingDir(storageDir string) (string, error) {
+	return os.MkdirTemp(filepath.Dir(storageDir), restoreStagingDirPattern)
 }
 
 func extractFilesArchiveToStaging(ctx context.Context, artifactPath, stagingDir string) (err error) {
@@ -420,34 +437,6 @@ func extractFilesArchiveToStaging(ctx context.Context, artifactPath, stagingDir 
 		return archiveError("files restore source is empty", nil)
 	}
 
-	return nil
-}
-
-func clearDirectoryContents(path string) error {
-	entries, err := os.ReadDir(path)
-	if err != nil {
-		return err
-	}
-	paths := make([]string, 0, len(entries))
-	for _, entry := range entries {
-		entryPath := filepath.Join(path, entry.Name())
-		info, err := os.Lstat(entryPath)
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("storage dir entry must not be a symlink: %s", entry.Name())
-		}
-		if !info.Mode().IsRegular() && !info.IsDir() {
-			return fmt.Errorf("storage dir entry type is not supported: %s", entry.Name())
-		}
-		paths = append(paths, entryPath)
-	}
-	for _, entryPath := range paths {
-		if err := os.RemoveAll(entryPath); err != nil {
-			return err
-		}
-	}
 	return nil
 }
 
@@ -556,77 +545,93 @@ func replaceRestoreStorageFromStaging(ctx context.Context, stagingDir, storageDi
 	if err := ctx.Err(); err != nil {
 		return ioError("restore interrupted", err)
 	}
-	if err := clearDirectoryContents(storageDir); err != nil {
-		return ioError("files replace failed before target clear", err)
+	if err := ensureRestoreStorageDir(stagingDir); err != nil {
+		return ioError("files switch staging is invalid", err)
 	}
-	if err := copyDirectoryContents(ctx, stagingDir, storageDir); err != nil {
-		return ioError("files replace failed after target clear; target may be partially restored", err)
+	if err := ensureRestoreStorageDir(storageDir); err != nil {
+		return ioError("files switch target is invalid", err)
+	}
+	if err := ensureStagingNextToStorage(stagingDir, storageDir); err != nil {
+		return ioError("files switch staging is invalid", err)
+	}
+
+	rollbackDir, err := newRestoreRollbackDir(storageDir)
+	if err != nil {
+		return ioError("files switch rollback allocation failed", err)
+	}
+
+	if err := restoreRenamePath(storageDir, rollbackDir); err != nil {
+		return ioError("files switch failed before target switch", fmt.Errorf(
+			"move current storage %s to rollback %s in the same parent directory: %w",
+			storageDir,
+			rollbackDir,
+			err,
+		))
+	}
+
+	if err := ctx.Err(); err != nil {
+		if rollbackErr := rollbackRestoreStorage(storageDir, rollbackDir); rollbackErr != nil {
+			return ioError("files switch interrupted after target move; rollback failed", errors.Join(err, rollbackErr))
+		}
+		return ioError("files switch interrupted after target move; rolled back current storage", err)
+	}
+
+	if err := restoreRenamePath(stagingDir, storageDir); err != nil {
+		switchErr := fmt.Errorf(
+			"move staged storage %s to target %s in the same parent directory: %w",
+			stagingDir,
+			storageDir,
+			err,
+		)
+		if rollbackErr := rollbackRestoreStorage(storageDir, rollbackDir); rollbackErr != nil {
+			return ioError("files switch failed during target switch; rollback failed", errors.Join(switchErr, rollbackErr))
+		}
+		return ioError("files switch failed during target switch; rolled back current storage", switchErr)
+	}
+
+	if err := restoreRemoveAll(rollbackDir); err != nil {
+		return ioError("files switch cleanup failed; restored storage is active and old storage rollback remains", err)
 	}
 	return nil
 }
 
-func copyDirectoryContents(ctx context.Context, sourceDir, targetDir string) error {
-	return filepath.WalkDir(sourceDir, func(current string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		if current == sourceDir {
-			return nil
-		}
-
-		rel, err := filepath.Rel(sourceDir, current)
-		if err != nil {
-			return err
-		}
-		targetPath := filepath.Join(targetDir, rel)
-		if !pathWithinRoot(targetDir, targetPath) {
-			return fmt.Errorf("restore entry escapes target root: %s", filepath.ToSlash(rel))
-		}
-
-		info, err := os.Lstat(current)
-		if err != nil {
-			return err
-		}
-		mode := info.Mode().Perm()
-		switch {
-		case info.Mode()&os.ModeSymlink != 0:
-			return fmt.Errorf("restore entry %s is a symlink", filepath.ToSlash(rel))
-		case info.IsDir():
-			if err := os.MkdirAll(targetPath, mode); err != nil {
-				return err
-			}
-			return os.Chmod(targetPath, mode)
-		case info.Mode().IsRegular():
-			if err := os.MkdirAll(filepath.Dir(targetPath), 0o755); err != nil {
-				return err
-			}
-			return copyRegularFile(current, targetPath, mode)
-		default:
-			return fmt.Errorf("restore entry %s has unsupported type", filepath.ToSlash(rel))
-		}
-	})
+func ensureStagingNextToStorage(stagingDir, storageDir string) error {
+	stagingClean := filepath.Clean(stagingDir)
+	storageClean := filepath.Clean(storageDir)
+	if stagingClean == storageClean {
+		return fmt.Errorf("restore staging dir must differ from storage dir")
+	}
+	if filepath.Clean(filepath.Dir(stagingClean)) != filepath.Clean(filepath.Dir(storageClean)) {
+		return fmt.Errorf(
+			"restore staging dir must be next to storage dir for same-filesystem rename: staging=%s storage=%s",
+			stagingDir,
+			storageDir,
+		)
+	}
+	return nil
 }
 
-func copyRegularFile(sourcePath, targetPath string, mode os.FileMode) (err error) {
-	sourceFile, err := os.Open(sourcePath)
+func newRestoreRollbackDir(storageDir string) (string, error) {
+	rollbackDir, err := os.MkdirTemp(filepath.Dir(storageDir), restoreRollbackDirPattern)
 	if err != nil {
-		return err
+		return "", err
 	}
-	defer closeResource(sourceFile, &err)
+	if err := os.Remove(rollbackDir); err != nil {
+		return "", err
+	}
+	return rollbackDir, nil
+}
 
-	targetFile, err := os.OpenFile(targetPath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, mode)
-	if err != nil {
+func rollbackRestoreStorage(storageDir, rollbackDir string) error {
+	if _, err := os.Lstat(storageDir); err == nil {
+		return fmt.Errorf("target path exists; old storage remains at rollback path %s", rollbackDir)
+	} else if !os.IsNotExist(err) {
 		return err
 	}
-	defer closeResource(targetFile, &err)
-
-	if _, err := io.Copy(targetFile, sourceFile); err != nil {
-		return err
+	if err := restoreRenamePath(rollbackDir, storageDir); err != nil {
+		return fmt.Errorf("move rollback %s back to storage %s: %w", rollbackDir, storageDir, err)
 	}
-	return os.Chmod(targetPath, mode)
+	return nil
 }
 
 func extractTarEntry(root string, header *tar.Header, reader io.Reader) error {

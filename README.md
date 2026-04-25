@@ -175,7 +175,7 @@ Operator prerequisites:
 - `BACKUP_NAME_PREFIX` is required for every backup-capable scope and is used directly for artifact names: `<BACKUP_NAME_PREFIX>_<YYYY-MM-DD_HH-MM-SS>.sql.gz`, `.tar.gz`, and `.manifest.json`
 - `MIN_FREE_DISK_MB` is required for every backup-capable scope, must be an integer greater than zero, and is checked before `backup` stops app services or creates backup artifacts
 - `BACKUP_RETENTION_DAYS` is required for every backup-capable scope, must be an integer greater than or equal to zero, and `0` disables retention cleanup explicitly
-- `ESPO_STORAGE_DIR` must already exist, must be the real storage directory for the selected scope, and must be clearable by the operator account before `restore` or `migrate`
+- `ESPO_STORAGE_DIR` must already exist, must be the real storage directory for the selected scope, must be clearable by the operator account before `restore` or `migrate`, and its parent must allow adjacent staging for same-filesystem rename
 - Current MariaDB example/integration baseline is the `mariadb:11.4` line; shipped examples keep `MARIADB_IMAGE=mariadb:11.4` for readability, while prod env files must pin a digest before use
 - `APP_BIND_ADDRESS` and `WS_BIND_ADDRESS` are required. Shipped examples use `127.0.0.1` to avoid accidental publish-all. To expose on LAN or public interfaces, set an explicit host IP or `0.0.0.0` on purpose and update `SITE_URL` and `WS_PUBLIC_URL` to match
 - Current Compose runtime includes the websocket container. `APP_SERVICES` must explicitly list `espocrm,espocrm-daemon,espocrm-websocket`; there is no fallback that adds websocket automatically
@@ -195,7 +195,7 @@ Operator prerequisites:
 - `restore` fails closed unless the manifest runtime block matches the target runtime contract. Same-scope `restore` also requires `runtime.db_name` to match the target `DB_NAME`
 - `migrate` fails closed unless the manifest version `2` runtime block matches the shared target stack contract for images, service names, and storage contract. Source and target `DB_NAME` may differ across scopes, so `runtime.db_name` is recorded in the manifest but is not used to block cross-scope `migrate`
 - `restore`, `migrate`, and `smoke` reset the target database as MariaDB root before importing the dump
-- `restore` and `migrate` restore files through staged extraction: the archive is validated, extracted into staging, the staged tree is validated, and target storage is cleared only after staging succeeds
+- `restore` and `migrate` restore files through staged extraction: the archive is validated, extracted into staging next to target storage, the staged tree is validated, ownership is applied to staging, and storage is switched by same-parent rename with the old storage kept as rollback until the switch completes
 - `espops` never guesses `ESPO_RUNTIME_UID` or `ESPO_RUNTIME_GID` from the image or the container runtime
 - `restore`, `migrate`, and `smoke` apply the restored storage tree to the explicit runtime uid/gid and fail closed if the operator cannot apply that ownership
 - `doctor` succeeds only when Compose config parses, backup root and storage dir checks pass, contract services are listed, contract services are `running` and `healthy`, and MariaDB `SELECT 1` succeeds
@@ -212,7 +212,7 @@ Prepare the target scope first:
 
 1. Ensure `compose.yaml` and `.env.<scope>` exist.
 2. Ensure `BACKUP_ROOT` already exists and is writable.
-3. Ensure `ESPO_STORAGE_DIR` already exists, points at the correct scope storage, and is clearable by the operator account for `restore` and `migrate`.
+3. Ensure `ESPO_STORAGE_DIR` already exists, points at the correct scope storage, is clearable by the operator account, and has a writable parent for adjacent staging during `restore` and `migrate`.
 4. Pre-pull the exact runtime images you intend to trust.
 5. Run `espops doctor`.
    Doctor does not stop or repair anything. It proves config parsing, local backup/storage prerequisites, contract service presence, Docker Compose service health, and DB reachability.
@@ -225,7 +225,7 @@ Then use the commands in this order:
 2. `espops backup verify`
    Verify the manifest you plan to trust. Version `1` remains a verify-only diagnostic path; destructive commands require manifest version `2`.
 3. `espops restore`
-   Restore is destructive for the target scope. It verifies the source manifest first, requires manifest version `2`, requires a same-scope manifest, blocks if the manifest runtime block does not match the target runtime contract, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through staged extraction, clears target storage only after staging succeeds, applies the explicit runtime uid/gid before the final file post-check, starts the contract services, waits for Docker Compose health to go green, and only then accepts MariaDB `SELECT 1` as the final post-check.
+   Restore is destructive for the target scope. It verifies the source manifest first, requires manifest version `2`, requires a same-scope manifest, blocks if the manifest runtime block does not match the target runtime contract, creates a target snapshot before mutation, resets the target database, imports into the clean database, then restores files through adjacent staged extraction, applies the explicit runtime uid/gid to staging, switches storage by same-parent rename with rollback on switch failure, runs the final file post-check, starts the contract services, waits for Docker Compose health to go green, and only then accepts MariaDB `SELECT 1` as the final post-check.
 4. `espops migrate`
    Migrate is thin composition over verified restore flow, not a separate engine. It requires manifest version `2`, inherits the same final health contract, checks the recorded image and service contract before mutation, and is the only supported cross-scope restore path.
 

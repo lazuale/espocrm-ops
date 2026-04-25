@@ -571,7 +571,7 @@ func TestRestoreFilePhaseFailureAfterDatabaseImportStillReturnsServices(t *testi
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
-func TestRestoreOwnershipFailureAfterDatabaseImportAndFileCopyStillReturnsServices(t *testing.T) {
+func TestRestoreOwnershipFailureAfterDatabaseImportBeforeStorageSwitchStillReturnsServices(t *testing.T) {
 	sourceManifest, wantSQL, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
 
@@ -579,20 +579,29 @@ func TestRestoreOwnershipFailureAfterDatabaseImportAndFileCopyStillReturnsServic
 		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
 	}
 	oldApply := restoreApplyOwnership
+	oldRename := restoreRenamePath
 	restoreApplyOwnership = func(root string, uid, gid int) error {
-		if root != storageDir {
+		if root == storageDir {
 			t.Fatalf("unexpected ownership root: %s", root)
 		}
-		if _, err := os.Stat(filepath.Join(storageDir, "restored.txt")); err != nil {
-			t.Fatalf("expected restored file before ownership phase: %v", err)
+		if filepath.Dir(root) != filepath.Dir(storageDir) {
+			t.Fatalf("expected staging next to storage: staging=%s storage=%s", root, storageDir)
 		}
-		if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); !os.IsNotExist(err) {
-			t.Fatalf("expected old file removed before ownership phase, got %v", err)
+		if _, err := os.Stat(filepath.Join(root, "restored.txt")); err != nil {
+			t.Fatalf("expected staged file before ownership phase: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); err != nil {
+			t.Fatalf("expected old target before ownership phase: %v", err)
 		}
 		return errf("simulated ownership failure")
 	}
+	restoreRenamePath = func(oldPath, newPath string) error {
+		t.Fatalf("storage switch should not start after ownership failure: %s -> %s", oldPath, newPath)
+		return nil
+	}
 	defer func() {
 		restoreApplyOwnership = oldApply
+		restoreRenamePath = oldRename
 	}()
 
 	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
@@ -609,8 +618,8 @@ func TestRestoreOwnershipFailureAfterDatabaseImportAndFileCopyStillReturnsServic
 	if rt.restoreDBBody != wantSQL {
 		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
 	}
-	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
-	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
 func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
@@ -645,7 +654,7 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 
 func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 	cfg, storageDir := restoreTargetConfig(t)
-	probe := useRestoreStagingProbe(t)
+	probe := useRestoreStagingProbe(t, storageDir)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchiveEntries(t, archivePath, []restoreArchiveEntry{
 		{name: "restored.txt", body: "restored\n"},
@@ -664,7 +673,7 @@ func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 
 func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
 	cfg, storageDir := restoreTargetConfig(t)
-	probe := useRestoreStagingProbe(t)
+	probe := useRestoreStagingProbe(t, storageDir)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeBrokenRestoreFilesArchive(t, archivePath, "restored.txt", "restored\n")
 
@@ -678,9 +687,9 @@ func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
 	probe.assertClean(t)
 }
 
-func TestRestoreFilesBackupTargetSymlinkFailsAfterSuccessfulStaging(t *testing.T) {
+func TestRestoreFilesBackupTargetSymlinkIsNotFollowedBySwitch(t *testing.T) {
 	cfg, storageDir := restoreTargetConfig(t)
-	probe := useRestoreStagingProbe(t)
+	probe := useRestoreStagingProbe(t, storageDir)
 	linkTarget := filepath.Join(t.TempDir(), "outside.txt")
 	if err := os.WriteFile(linkTarget, []byte("outside\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -693,22 +702,19 @@ func TestRestoreFilesBackupTargetSymlinkFailsAfterSuccessfulStaging(t *testing.T
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
-	assertVerifyErrorKind(t, err, ErrorKindIO)
-	if !strings.Contains(err.Error(), "files replace failed before target clear") {
-		t.Fatalf("unexpected error: %v", err)
+	if err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
+		t.Fatalf("restoreFilesBackup failed: %v", err)
 	}
-	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
-	if _, err := os.Lstat(linkPath); err != nil {
-		t.Fatalf("expected symlink to remain: %v", err)
-	}
-	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	assertFileContains(t, linkTarget, "outside\n")
+	assertNoFile(t, linkPath)
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
 	probe.assertClean(t)
 }
 
 func TestRestoreFilesBackupStagingExtractionFailureDoesNotClearStorage(t *testing.T) {
 	cfg, storageDir := restoreTargetConfig(t)
-	probe := useRestoreStagingProbe(t)
+	probe := useRestoreStagingProbe(t, storageDir)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
 
@@ -733,9 +739,28 @@ func TestRestoreFilesBackupStagingExtractionFailureDoesNotClearStorage(t *testin
 	probe.assertClean(t)
 }
 
+func TestDefaultRestoreStagingDirCreatedNextToTarget(t *testing.T) {
+	_, storageDir := restoreTargetConfig(t)
+
+	stagingDir, err := defaultCreateRestoreStagingDir(storageDir)
+	if err != nil {
+		t.Fatalf("defaultCreateRestoreStagingDir failed: %v", err)
+	}
+	defer func() {
+		_ = os.RemoveAll(stagingDir)
+	}()
+
+	if filepath.Dir(stagingDir) != filepath.Dir(storageDir) {
+		t.Fatalf("expected staging next to storage: staging=%s storage=%s", stagingDir, storageDir)
+	}
+	if stagingDir == storageDir {
+		t.Fatal("staging must differ from storage")
+	}
+}
+
 func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
 	cfg, storageDir := restoreTargetConfig(t)
-	probe := useRestoreStagingProbe(t)
+	probe := useRestoreStagingProbe(t, storageDir)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{
 		"restored.txt":     "restored\n",
@@ -751,9 +776,117 @@ func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
 	probe.assertClean(t)
 }
 
-func TestRestoreFilesBackupAppliesOwnershipAfterReplaceBeforeFinalPostCheck(t *testing.T) {
+func TestRestoreFilesBackupTargetMoveFailureLeavesOldStorage(t *testing.T) {
 	cfg, storageDir := restoreTargetConfig(t)
-	probe := useRestoreStagingProbe(t)
+	probe := useRestoreStagingProbe(t, storageDir)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
+
+	oldRename := restoreRenamePath
+	renameCount := 0
+	restoreRenamePath = func(oldPath, newPath string) error {
+		renameCount++
+		if renameCount == 1 {
+			return errf("simulated target move failure")
+		}
+		return oldRename(oldPath, newPath)
+	}
+	defer func() {
+		restoreRenamePath = oldRename
+	}()
+
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files switch failed before target switch") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if renameCount != 1 {
+		t.Fatalf("expected only the target move to run; got %d renames", renameCount)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	assertNoRollbackDirs(t, storageDir)
+	probe.assertClean(t)
+}
+
+func TestRestoreFilesBackupSwitchFailureRollsBackOldStorage(t *testing.T) {
+	cfg, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t, storageDir)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
+
+	oldRename := restoreRenamePath
+	renameCount := 0
+	restoreRenamePath = func(oldPath, newPath string) error {
+		renameCount++
+		if renameCount == 2 {
+			return errf("simulated target switch failure")
+		}
+		return oldRename(oldPath, newPath)
+	}
+	defer func() {
+		restoreRenamePath = oldRename
+	}()
+
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files switch failed during target switch") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "rolled back current storage") {
+		t.Fatalf("expected rollback detail, got %v", err)
+	}
+	if renameCount != 3 {
+		t.Fatalf("expected target move, failed switch, and rollback rename; got %d renames", renameCount)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	assertNoRollbackDirs(t, storageDir)
+	probe.assertClean(t)
+}
+
+func TestRestoreFilesBackupSwitchCleanupFailureLeavesRestoredStorageAndRollback(t *testing.T) {
+	cfg, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t, storageDir)
+	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
+	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
+
+	oldRemoveAll := restoreRemoveAll
+	var rollbackDir string
+	restoreRemoveAll = func(path string) error {
+		if strings.HasPrefix(filepath.Base(path), strings.TrimSuffix(restoreRollbackDirPattern, "*")) {
+			rollbackDir = path
+			return errf("simulated rollback cleanup failure")
+		}
+		return oldRemoveAll(path)
+	}
+	defer func() {
+		restoreRemoveAll = oldRemoveAll
+		if rollbackDir != "" {
+			_ = os.RemoveAll(rollbackDir)
+		}
+	}()
+
+	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files switch cleanup failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), "rollback remains") {
+		t.Fatalf("expected rollback detail, got %v", err)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+	if rollbackDir == "" {
+		t.Fatal("expected rollback cleanup failure")
+	}
+	assertFileContains(t, filepath.Join(rollbackDir, "old.txt"), "old\n")
+	probe.assertClean(t)
+}
+
+func TestRestoreFilesBackupAppliesOwnershipBeforeSwitchAndFinalPostCheck(t *testing.T) {
+	cfg, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t, storageDir)
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
 
@@ -771,17 +904,23 @@ func TestRestoreFilesBackupAppliesOwnershipAfterReplaceBeforeFinalPostCheck(t *t
 	}
 	restoreApplyOwnership = func(root string, uid, gid int) error {
 		steps = append(steps, "apply_ownership")
-		if root != storageDir {
+		if root == storageDir {
 			t.Fatalf("unexpected ownership root: %s", root)
+		}
+		if filepath.Dir(root) != filepath.Dir(storageDir) {
+			t.Fatalf("expected staging next to storage: staging=%s storage=%s", root, storageDir)
 		}
 		if uid != cfg.RuntimeUID || gid != cfg.RuntimeGID {
 			t.Fatalf("unexpected ownership target: %d:%d", uid, gid)
 		}
-		if _, err := os.Stat(filepath.Join(storageDir, "restored.txt")); err != nil {
-			t.Fatalf("expected restored file before ownership phase: %v", err)
+		if _, err := os.Stat(filepath.Join(root, "restored.txt")); err != nil {
+			t.Fatalf("expected staged file before ownership phase: %v", err)
 		}
-		if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); !os.IsNotExist(err) {
-			t.Fatalf("expected old file removed before ownership phase, got %v", err)
+		if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); err != nil {
+			t.Fatalf("expected old target before ownership phase: %v", err)
+		}
+		if _, err := os.Stat(filepath.Join(storageDir, "restored.txt")); !os.IsNotExist(err) {
+			t.Fatalf("expected restored file to stay out of target before switch, got %v", err)
 		}
 		return nil
 	}
@@ -1135,6 +1274,18 @@ func assertNoFile(t *testing.T, path string) {
 	}
 }
 
+func assertNoRollbackDirs(t *testing.T, storageDir string) {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(storageDir), restoreRollbackDirPattern))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 0 {
+		t.Fatalf("unexpected rollback dirs left behind: %v", matches)
+	}
+}
+
 type restoreArchiveEntry struct {
 	name string
 	body string
@@ -1236,12 +1387,15 @@ func (i ownershipFileInfo) Sys() any {
 	return i.sys
 }
 
-func useRestoreStagingProbe(t *testing.T) *restoreStagingProbe {
+func useRestoreStagingProbe(t *testing.T, storageDir string) *restoreStagingProbe {
 	t.Helper()
 
-	probe := &restoreStagingProbe{root: t.TempDir()}
+	probe := &restoreStagingProbe{root: filepath.Dir(storageDir)}
 	oldCreate := createRestoreStagingDir
-	createRestoreStagingDir = func(_ string) (string, error) {
+	createRestoreStagingDir = func(gotStorageDir string) (string, error) {
+		if gotStorageDir != storageDir {
+			t.Fatalf("unexpected storage dir for staging: got %s want %s", gotStorageDir, storageDir)
+		}
 		dir, err := os.MkdirTemp(probe.root, restoreStagingDirPattern)
 		if err != nil {
 			return "", err
