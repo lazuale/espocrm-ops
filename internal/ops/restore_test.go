@@ -195,6 +195,34 @@ func TestRestoreStopFailureFailsBeforeMutation(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestRestoreDBServiceFailureAfterSnapshotAttemptsStart(t *testing.T) {
+	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+		upErrors: map[int]error{
+			1: errf("db up failed"),
+		},
+	}
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "failed to ensure db service") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != "" {
+		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
 func TestRestoreDBFailureAttemptsStart(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
@@ -620,6 +648,43 @@ func TestRestoreOwnershipFailureAfterDatabaseImportBeforeStorageSwitchStillRetur
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestRestoreFilesPostCheckFailureAfterStorageSwitchStillReturnsSnapshotManifest(t *testing.T) {
+	sourceManifest, wantSQL, _ := writeRestoreSourceBackupSet(t)
+	cfg, storageDir := restoreTargetConfig(t)
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+	oldValidate := restoreValidateStorageTree
+	restoreValidateStorageTree = func(path string) error {
+		if path == storageDir {
+			return errf("simulated final files post-check failure")
+		}
+		return oldValidate(path)
+	}
+	defer func() {
+		restoreValidateStorageTree = oldValidate
+	}()
+
+	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files restore post-check failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != wantSQL {
+		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
+	}
+	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+	assertNoRollbackDirs(t, storageDir)
 }
 
 func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {

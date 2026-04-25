@@ -170,6 +170,42 @@ func TestMigrateCLIJSONFailure(t *testing.T) {
 	}
 }
 
+func TestMigrateCLIJSONRestoreFailureIncludesSnapshotManifest(t *testing.T) {
+	manifestPath, _ := writeVerifiedScopedBackupSet(t, "dev")
+	projectDir, _ := writeRestoreCLIProject(t)
+
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-fail-import", "1")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"migrate", "--from-scope", "dev", "--to-scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if command := requireJSONString(t, obj, "command"); command != "migrate" {
+		t.Fatalf("unexpected command: %s", command)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "runtime" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	if errMessage := requireJSONString(t, obj, "error", "message"); !strings.Contains(errMessage, "database restore failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	requireJSONSnapshotManifest(t, obj)
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
 func TestMigrateCLIJSONVersionOneManifestFailsClosed(t *testing.T) {
 	manifestPath, _ := writeVersionOneScopedBackupSet(t, "dev")
 

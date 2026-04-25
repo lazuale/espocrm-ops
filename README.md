@@ -134,6 +134,8 @@ Retention cleanup runs only after the new set self-verifies. It deletes only com
 
 Both flows create a target snapshot before mutation, reset the target database as MariaDB root, import into a clean database, restore files through staged extraction next to target storage, apply `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`, switch storage by same-parent rename, and run final post-checks before reporting success.
 
+If `restore` or `migrate` fails after the target snapshot exists, the error JSON includes `result.snapshot_manifest`. Database and file rollback is manual: use that snapshot manifest to plan and execute recovery of the target scope.
+
 ## Manual Destructive Smoke Sequence
 
 ```bash

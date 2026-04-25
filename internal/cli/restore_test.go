@@ -291,6 +291,7 @@ func TestRestoreCLIJSONHealthFailureIsRuntimeFailure(t *testing.T) {
 	if strings.Contains(requireJSONString(t, obj, "error", "message"), "root-secret") {
 		t.Fatal("health failure must not leak secrets")
 	}
+	requireJSONSnapshotManifest(t, obj)
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
@@ -353,6 +354,177 @@ func TestRestoreCLIJSONResetFailureRedactsRootPassword(t *testing.T) {
 	}
 	if !strings.Contains(errMessage, "MYSQL_PWD=<redacted>") {
 		t.Fatalf("expected redacted json error message, got %s", errMessage)
+	}
+	requireJSONSnapshotManifest(t, obj)
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONImportFailureIncludesSnapshotManifest(t *testing.T) {
+	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
+	projectDir, _ := writeRestoreCLIProject(t)
+
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-fail-import", "1")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "runtime" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if !strings.Contains(errMessage, "database restore failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	requireJSONSnapshotManifest(t, obj)
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONFileRestoreFailureIncludesSnapshotManifest(t *testing.T) {
+	manifestPath, wantSQL := writeVerifiedRestoreBackupSetWithFiles(t, map[string]string{
+		strings.Repeat("a", 300) + ".txt": "restored\n",
+	})
+	projectDir, storageDir := writeRestoreCLIProject(t)
+
+	stdinLogPath := filepath.Join(t.TempDir(), "restore-db.sql")
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-stdin-log", stdinLogPath)
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitIO {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitIO, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "io" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if !strings.Contains(errMessage, "files staging extraction failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	requireJSONSnapshotManifest(t, obj)
+	raw, err := os.ReadFile(stdinLogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if body := string(raw); body != wantSQL {
+		t.Fatalf("unexpected restore db body: %q", body)
+	}
+	if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); err != nil {
+		t.Fatalf("expected old file to remain after staging failure: %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONStorageSwitchFailureIncludesSnapshotManifest(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("storage switch cleanup failure test requires non-root operator")
+	}
+
+	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
+	projectDir, storageDir := writeRestoreCLIProject(t)
+	nestedDir := filepath.Join(storageDir, "nested")
+	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(nestedDir, "old-child.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	defer cleanupRestoreRollbackDirs(t, storageDir)
+
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-chmod-old-nested-after-import", "1")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitIO {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitIO, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "io" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if !strings.Contains(errMessage, "files switch cleanup failed") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	requireJSONSnapshotManifest(t, obj)
+	if _, err := os.Stat(filepath.Join(storageDir, "restored.txt")); err != nil {
+		t.Fatalf("expected restored storage to be active after switch cleanup failure: %v", err)
+	}
+	if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); !os.IsNotExist(err) {
+		t.Fatalf("expected old file removed from active storage, got %v", err)
+	}
+	if stderr.Len() != 0 {
+		t.Fatalf("expected empty stderr, got %q", stderr.String())
+	}
+}
+
+func TestRestoreCLIJSONStartFailureIncludesSnapshotManifest(t *testing.T) {
+	manifestPath, _ := writeVerifiedRestoreBackupSet(t)
+	projectDir, storageDir := writeRestoreCLIProject(t)
+
+	fakeDockerRoot := prependRestoreFakeDocker(t)
+	writeCLIFakeDockerControl(t, fakeDockerRoot, "restore-fail-start-on-return", "1")
+
+	stdout := &strings.Builder{}
+	stderr := &strings.Builder{}
+	exitCode := Execute([]string{"restore", "--scope", "prod", "--project-dir", projectDir, "--manifest", manifestPath}, stdout, stderr)
+	if exitCode != exitRuntime {
+		t.Fatalf("expected exit code %d, got %d stdout=%s stderr=%s", exitRuntime, exitCode, stdout.String(), stderr.String())
+	}
+
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(stdout.String()), &obj); err != nil {
+		t.Fatal(err)
+	}
+	if requireJSONBool(t, obj, "ok") {
+		t.Fatal("expected ok=false")
+	}
+	if kind := requireJSONString(t, obj, "error", "kind"); kind != "runtime" {
+		t.Fatalf("unexpected error kind: %s", kind)
+	}
+	errMessage := requireJSONString(t, obj, "error", "message")
+	if !strings.Contains(errMessage, "failed to return app services") {
+		t.Fatalf("unexpected error message: %s", errMessage)
+	}
+	requireJSONSnapshotManifest(t, obj)
+	if _, err := os.Stat(filepath.Join(storageDir, "restored.txt")); err != nil {
+		t.Fatalf("expected files restored before start failure: %v", err)
 	}
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
@@ -480,6 +652,7 @@ func TestRestoreCLIJSONOwnershipFailureDoesNotRevealSecrets(t *testing.T) {
 	if strings.Contains(errMessage, "root-secret") || strings.Contains(errMessage, "db-secret") {
 		t.Fatalf("ownership error leaked secret: %s", errMessage)
 	}
+	requireJSONSnapshotManifest(t, obj)
 	if stderr.Len() != 0 {
 		t.Fatalf("expected empty stderr, got %q", stderr.String())
 	}
@@ -548,7 +721,83 @@ func TestRestoreCLIJSONVersionOneManifestFailsClosed(t *testing.T) {
 	}
 }
 
+func writeRestoreCLIProject(t *testing.T) (projectDir, storageDir string) {
+	t.Helper()
+
+	projectDir = t.TempDir()
+	storageDir = filepath.Join(projectDir, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(projectDir, ".env.prod"), []byte(strings.Join([]string{
+		"ESPO_CONTOUR=prod",
+		"ESPOCRM_IMAGE=espocrm/espocrm@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+		"MARIADB_IMAGE=mariadb@sha256:bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"ESPO_RUNTIME_UID=" + currentRuntimeUIDString(),
+		"ESPO_RUNTIME_GID=" + currentRuntimeGIDString(),
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_ROOT_PASSWORD=root-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	return projectDir, storageDir
+}
+
+func requireJSONSnapshotManifest(t *testing.T, obj map[string]any) string {
+	t.Helper()
+
+	snapshotManifest := requireJSONString(t, obj, "result", "snapshot_manifest")
+	if _, err := ops.VerifyBackup(context.Background(), snapshotManifest); err != nil {
+		t.Fatalf("snapshot manifest did not verify: %v", err)
+	}
+	return snapshotManifest
+}
+
+func cleanupRestoreRollbackDirs(t *testing.T, storageDir string) {
+	t.Helper()
+
+	matches, err := filepath.Glob(filepath.Join(filepath.Dir(storageDir), "espops-restore-rollback-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, match := range matches {
+		_ = filepath.WalkDir(match, func(path string, entry os.DirEntry, walkErr error) error {
+			if walkErr != nil {
+				return nil
+			}
+			if entry.IsDir() {
+				_ = os.Chmod(path, 0o700)
+			}
+			return nil
+		})
+		_ = os.RemoveAll(match)
+	}
+}
+
 func writeVerifiedRestoreBackupSet(t *testing.T) (manifestPath, dbSQL string) {
+	t.Helper()
+
+	return writeVerifiedRestoreBackupSetWithFiles(t, map[string]string{"restored.txt": "restored\n"})
+}
+
+func writeVerifiedRestoreBackupSetWithFiles(t *testing.T, files map[string]string) (manifestPath, dbSQL string) {
 	t.Helper()
 
 	root := t.TempDir()
@@ -564,7 +813,7 @@ func writeVerifiedRestoreBackupSet(t *testing.T) (manifestPath, dbSQL string) {
 
 	dbSQL = "create table restored(id int);\n"
 	writeGzipFile(t, dbPath, []byte(dbSQL))
-	writeTarGzFile(t, filesPath, map[string]string{"restored.txt": "restored\n"})
+	writeTarGzFile(t, filesPath, files)
 	rewriteSidecar(t, dbPath)
 	rewriteSidecar(t, filesPath)
 
@@ -673,6 +922,7 @@ set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fake_root="$(cd -- "$script_dir/.." && pwd)"
+project_dir="$(pwd)"
 
 default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
 stopped_ps='[{"Service":"db","State":"running","Health":"healthy"}]'
@@ -685,7 +935,11 @@ shift
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    --project-directory|-f|--env-file)
+    --project-directory)
+      project_dir="$2"
+      shift 2
+      ;;
+    -f|--env-file)
       shift 2
       ;;
     *)
@@ -727,6 +981,10 @@ case "${1:-}" in
     start_count=0
     if [[ -f "$fake_root/start-count" ]]; then
       start_count="$(cat "$fake_root/start-count")"
+    fi
+    if [[ -f "$fake_root/restore-fail-start-on-return" && "$start_count" -ge 1 ]]; then
+      printf 'start failed\n' >&2
+      exit 1
     fi
     printf '%s' "$((start_count + 1))" >"$fake_root/start-count"
     exit 0
@@ -785,6 +1043,14 @@ case "${1:-}" in
               cat >"$(cat "$fake_root/restore-stdin-log")"
             else
               cat >/dev/null
+            fi
+            if [[ -f "$fake_root/restore-chmod-old-nested-after-import" ]]; then
+              [[ -n "$project_dir" ]] || exit 1
+              chmod 500 "$project_dir/runtime/prod/espo/nested"
+            fi
+            if [[ -f "$fake_root/restore-fail-import" ]]; then
+              printf 'import failed\n' >&2
+              exit 1
             fi
             exit 0
             ;;

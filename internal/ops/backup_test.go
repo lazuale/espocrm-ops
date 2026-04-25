@@ -787,7 +787,7 @@ func TestBackupRetentionKeepsDifferentPrefixSet(t *testing.T) {
 	assertBackupSetPresent(t, result)
 }
 
-func TestBackupRetentionRefusesIncompleteSamePrefixSet(t *testing.T) {
+func TestBackupRetentionWarnsForIncompleteSamePrefixSet(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
@@ -813,17 +813,17 @@ func TestBackupRetentionRefusesIncompleteSamePrefixSet(t *testing.T) {
 	result, err := Backup(context.Background(), cfg, &fakeBackupRuntime{
 		dbDump: gzipBytes(t, "create table fresh_snapshot(id int);\n"),
 	}, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
-	assertVerifyErrorKind(t, err, ErrorKindArtifact)
-	if !strings.Contains(err.Error(), "backup retention cleanup blocked") {
-		t.Fatalf("unexpected error: %v", err)
+	if err != nil {
+		t.Fatalf("Backup failed: %v", err)
 	}
+	assertBackupWarningContains(t, result, "retention_skipped: backup retention cleanup blocked")
 	assertBackupSetPresent(t, result)
 	if _, statErr := os.Stat(oldResult.Manifest); statErr != nil {
 		t.Fatalf("expected incomplete manifest to remain for operator review: %v", statErr)
 	}
 }
 
-func TestBackupRetentionCleanupErrorFailsBackupVisibly(t *testing.T) {
+func TestBackupRetentionCleanupErrorWarnsVisibly(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")
 	if err := os.MkdirAll(storageDir, 0o755); err != nil {
@@ -853,10 +853,10 @@ func TestBackupRetentionCleanupErrorFailsBackupVisibly(t *testing.T) {
 	result, err := Backup(context.Background(), cfg, &fakeBackupRuntime{
 		dbDump: gzipBytes(t, "create table fresh_snapshot(id int);\n"),
 	}, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
-	assertVerifyErrorKind(t, err, ErrorKindIO)
-	if !strings.Contains(err.Error(), "backup retention cleanup failed") {
-		t.Fatalf("unexpected error: %v", err)
+	if err != nil {
+		t.Fatalf("Backup failed: %v", err)
 	}
+	assertBackupWarningContains(t, result, "retention_skipped: backup retention cleanup failed")
 	assertBackupSetPresent(t, result)
 	assertBackupSetPresent(t, oldResult)
 }
@@ -1038,6 +1038,17 @@ func assertBackupSetPresent(t *testing.T, result BackupResult) {
 		if _, err := os.Stat(path); err != nil {
 			t.Fatalf("expected backup artifact %s: %v", path, err)
 		}
+	}
+}
+
+func assertBackupWarningContains(t *testing.T, result BackupResult, want string) {
+	t.Helper()
+
+	if len(result.Warnings) != 1 {
+		t.Fatalf("expected one warning, got %#v", result.Warnings)
+	}
+	if !strings.Contains(result.Warnings[0], want) {
+		t.Fatalf("unexpected warning: %s", result.Warnings[0])
 	}
 }
 

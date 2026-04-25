@@ -24,6 +24,7 @@ type BackupResult struct {
 	Manifest    string
 	DBBackup    string
 	FilesBackup string
+	Warnings    []string
 }
 
 type backupRuntime interface {
@@ -257,7 +258,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 		FilesBackup: verifyResult.FilesBackup,
 	}
 	if err := runBackupRetention(ctx, cfg, layout, now); err != nil {
-		return result, err
+		result.Warnings = append(result.Warnings, backupRetentionSkippedWarning(err))
 	}
 	return result, nil
 }
@@ -524,6 +525,10 @@ func ensureArchiveSourceNotHardlinked(rel string, info os.FileInfo) error {
 
 func runtimeError(message string, err error) error {
 	return &VerifyError{Kind: ErrorKindRuntime, Message: message, Err: err}
+}
+
+func backupRetentionSkippedWarning(err error) string {
+	return "retention_skipped: " + err.Error()
 }
 
 func runBackupRetention(ctx context.Context, cfg config.BackupConfig, current backupLayout, now time.Time) error {
