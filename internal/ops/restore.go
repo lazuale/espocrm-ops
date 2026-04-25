@@ -235,7 +235,10 @@ func restoreDatabaseBackup(ctx context.Context, artifactPath string, rt restoreR
 	}
 	defer closeResource(reader, &err)
 
-	if err := rt.RestoreDatabase(ctx, target, reader); err != nil {
+	if err := rt.RestoreDatabase(ctx, target, newDBBackupLimitReader(reader)); err != nil {
+		if errors.Is(err, errDBBackupExpandedSizeLimit) {
+			return archiveError("database restore source is unsafe", err)
+		}
 		return runtimeError("database restore failed", err)
 	}
 

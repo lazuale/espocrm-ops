@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -28,10 +29,14 @@ const (
 
 const tarRegularTypeflagZero = byte(0)
 
+const defaultDBBackupMaxExpandedBytes int64 = 256 * 1024 * 1024 * 1024
 const defaultFilesArchiveMaxEntries = 200000
 const defaultFilesArchiveMaxExpandedBytes int64 = 256 * 1024 * 1024 * 1024
 
 var (
+	errDBBackupExpandedSizeLimit = errors.New("db backup expanded size exceeds limit")
+	dbBackupMaxExpandedBytes     = defaultDBBackupMaxExpandedBytes
+
 	filesArchiveMaxEntries       = defaultFilesArchiveMaxEntries
 	filesArchiveMaxExpandedBytes = defaultFilesArchiveMaxExpandedBytes
 )
@@ -219,8 +224,38 @@ func verifyGzipReadable(path string) (err error) {
 	}
 	defer closeResource(reader, &err)
 
-	_, err = io.Copy(io.Discard, reader)
+	_, err = io.Copy(io.Discard, newDBBackupLimitReader(reader))
 	return err
+}
+
+type dbBackupLimitReader struct {
+	reader    io.Reader
+	remaining int64
+}
+
+func newDBBackupLimitReader(reader io.Reader) io.Reader {
+	return &dbBackupLimitReader{
+		reader:    reader,
+		remaining: dbBackupMaxExpandedBytes,
+	}
+}
+
+func (r *dbBackupLimitReader) Read(p []byte) (int, error) {
+	if r.remaining <= 0 {
+		var probe [1]byte
+		n, err := r.reader.Read(probe[:])
+		if n > 0 {
+			return 0, errDBBackupExpandedSizeLimit
+		}
+		return 0, err
+	}
+	if int64(len(p)) > r.remaining {
+		p = p[:r.remaining]
+	}
+
+	n, err := r.reader.Read(p)
+	r.remaining -= int64(n)
+	return n, err
 }
 
 func verifyTarGzReadable(path string) (err error) {

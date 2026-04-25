@@ -246,6 +246,25 @@ func TestRestoreDBFailureAttemptsStart(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestRestoreDatabaseBackupRejectsDBGzipOverExpandedLimit(t *testing.T) {
+	restoreDBBackupMaxExpandedBytes(t, 4)
+	backupPath := filepath.Join(t.TempDir(), "db.sql.gz")
+	writeGzipFile(t, backupPath, []byte("12345"))
+	rt := &fakeRestoreRuntime{}
+
+	err := restoreDatabaseBackup(context.Background(), backupPath, rt, runtime.Target{})
+	assertVerifyErrorKind(t, err, ErrorKindArchive)
+	if !strings.Contains(err.Error(), "db backup expanded size exceeds limit") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if err := rt.requireCalls("restore_database"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != "" {
+		t.Fatalf("expected restore body to be rejected, got %q", rt.restoreDBBody)
+	}
+}
+
 func TestRestoreResetDBFailureAttemptsStartWithoutImportOrFileMutation(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)

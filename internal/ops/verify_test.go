@@ -138,6 +138,86 @@ func TestVerifyBackupBrokenDBGzip(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 }
 
+func TestVerifyGzipReadableEnforcesExpandedLimit(t *testing.T) {
+	tests := []struct {
+		name            string
+		body            []byte
+		configure       func(t *testing.T)
+		corrupt         bool
+		wantErr         bool
+		wantErrContains string
+	}{
+		{
+			name: "valid small gzip passes",
+			body: []byte("select 1;\n"),
+		},
+		{
+			name: "gzip over limit fails",
+			body: []byte("12345"),
+			configure: func(t *testing.T) {
+				restoreDBBackupMaxExpandedBytes(t, 4)
+			},
+			wantErr:         true,
+			wantErrContains: "db backup expanded size exceeds limit",
+		},
+		{
+			name:    "corrupt gzip fails",
+			body:    []byte("not gzip"),
+			corrupt: true,
+			wantErr: true,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if tt.configure != nil {
+				tt.configure(t)
+			}
+			path := filepath.Join(t.TempDir(), "db.sql.gz")
+			if tt.corrupt {
+				if err := os.WriteFile(path, tt.body, 0o644); err != nil {
+					t.Fatal(err)
+				}
+			} else {
+				writeGzipFile(t, path, tt.body)
+			}
+
+			err := verifyGzipReadable(path)
+			if !tt.wantErr {
+				if err != nil {
+					t.Fatalf("verifyGzipReadable failed: %v", err)
+				}
+				return
+			}
+			if err == nil {
+				t.Fatal("expected error")
+			}
+			if tt.wantErrContains != "" && !strings.Contains(err.Error(), tt.wantErrContains) {
+				t.Fatalf("expected %q in error, got %v", tt.wantErrContains, err)
+			}
+		})
+	}
+}
+
+func TestVerifyBackupRejectsDBGzipOverExpandedLimit(t *testing.T) {
+	restoreDBBackupMaxExpandedBytes(t, 4)
+	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
+	writeGzipFile(t, dbPath, []byte("12345"))
+	rewriteSidecar(t, dbPath)
+	writeManifest(t, manifestPath, v2ManifestDocument(
+		filepath.Base(dbPath),
+		filepath.Base(filesPath),
+		sha256OfFile(t, dbPath),
+		sha256OfFile(t, filesPath),
+	))
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindArchive)
+	if !strings.Contains(err.Error(), "db backup expanded size exceeds limit") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestVerifyBackupBrokenTarGz(t *testing.T) {
 	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
 	writeGzipFile(t, filesPath, []byte("not a tar stream"))
@@ -566,6 +646,16 @@ func restoreFilesArchiveLimits(t *testing.T, maxEntries int, maxExpandedBytes in
 	t.Cleanup(func() {
 		filesArchiveMaxEntries = oldMaxEntries
 		filesArchiveMaxExpandedBytes = oldMaxExpandedBytes
+	})
+}
+
+func restoreDBBackupMaxExpandedBytes(t *testing.T, maxExpandedBytes int64) {
+	t.Helper()
+
+	oldMaxExpandedBytes := dbBackupMaxExpandedBytes
+	dbBackupMaxExpandedBytes = maxExpandedBytes
+	t.Cleanup(func() {
+		dbBackupMaxExpandedBytes = oldMaxExpandedBytes
 	})
 }
 
