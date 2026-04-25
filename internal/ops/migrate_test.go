@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	config "github.com/lazuale/espocrm-ops/internal/config"
 	manifestpkg "github.com/lazuale/espocrm-ops/internal/manifest"
 )
 
@@ -170,6 +171,69 @@ func TestMigrateBusyTargetLockFailsBeforeMutation(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestMigrateBusyKnownSourceLockFailsBeforeTargetMutation(t *testing.T) {
+	sourceManifest, _, cfg, storageDir := writeKnownSourceMigrateBackupSet(t)
+	lock := mustAcquireScopeOperationLock(t, cfg.ProjectDir, "dev")
+	defer func() {
+		if err := lock.Release(); err != nil {
+			t.Fatalf("release lock: %v", err)
+		}
+	}()
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "migrate lock failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != "" {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
+func TestMigrateBusyKnownTargetLockFailsBeforeTargetMutation(t *testing.T) {
+	sourceManifest, _, cfg, storageDir := writeKnownSourceMigrateBackupSet(t)
+	lock := mustAcquireScopeOperationLock(t, cfg.ProjectDir, cfg.Scope)
+	defer func() {
+		if err := lock.Release(); err != nil {
+			t.Fatalf("release lock: %v", err)
+		}
+	}()
+
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	result, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "migrate lock failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != "" {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest != "" {
+		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
+	}
+	if err := rt.requireCalls(); err != nil {
+		t.Fatal(err)
+	}
+	assertScopeOperationLockAvailable(t, cfg.ProjectDir, "dev")
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+}
+
 func TestMigrateSuccessReturnsManifestAndSnapshotManifest(t *testing.T) {
 	sourceManifest, wantSQL, _ := writeScopedRestoreSourceBackupSet(t, "dev")
 	cfg, storageDir := restoreTargetConfig(t)
@@ -264,6 +328,72 @@ func writeScopedRestoreSourceBackupSet(t *testing.T, scope string) (manifestPath
 		t.Fatalf("write source backup set: %v", err)
 	}
 	return result.Manifest, dbSQL, storageDir
+}
+
+func writeKnownSourceMigrateBackupSet(t *testing.T) (manifestPath, dbSQL string, targetCfg config.BackupConfig, targetStorageDir string) {
+	t.Helper()
+
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	sourceStorageDir := filepath.Join(root, "runtime", "dev", "espo")
+	if err := os.MkdirAll(sourceStorageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(sourceStorageDir, "restored.txt"), []byte("restored\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeMigrateSourceEnv(t, root)
+
+	sourceCfg := backupTestConfig(root, sourceStorageDir)
+	sourceCfg.Scope = "dev"
+	sourceCfg.EnvFile = filepath.Join(root, ".env.dev")
+	sourceCfg.BackupRoot = filepath.Join(root, "backups", "dev")
+	sourceCfg.BackupNamePrefix = "espocrm-dev"
+	dbSQL = "create table restored(id int);\n"
+	result, err := Backup(context.Background(), sourceCfg, &fakeBackupRuntime{
+		dbDump: gzipBytes(t, dbSQL),
+	}, restoreTestTime())
+	if err != nil {
+		t.Fatalf("write source backup set: %v", err)
+	}
+
+	targetStorageDir = filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(targetStorageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(targetStorageDir, "old.txt"), []byte("old\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	targetCfg = backupTestConfig(root, targetStorageDir)
+	return result.Manifest, dbSQL, targetCfg, targetStorageDir
+}
+
+func writeMigrateSourceEnv(t *testing.T, root string) {
+	t.Helper()
+
+	body := strings.Join([]string{
+		"ESPO_CONTOUR=dev",
+		"ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache",
+		"MARIADB_IMAGE=mariadb:11.4",
+		"BACKUP_ROOT=./backups/dev",
+		"BACKUP_NAME_PREFIX=espocrm-dev",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/dev/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+		"",
+	}, "\n")
+	if err := os.WriteFile(filepath.Join(root, ".env.dev"), []byte(body), 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func writeVersionOneScopedRestoreSourceBackupSet(t *testing.T, scope string) (manifestPath, dbSQL, storageDir string) {

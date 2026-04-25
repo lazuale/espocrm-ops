@@ -204,7 +204,7 @@ Operator prerequisites:
 - `doctor` is read-only and does not take an operation lock
 - `backup` locks its scope before runtime validation, disk checks, service stop, and artifact creation
 - `restore` locks its target scope before manifest verify, snapshot backup, service stop, database reset, and storage mutation
-- `migrate` locks only its target scope because only the target mutates; the source scope is read-only manifest input
+- `migrate` locks its target scope and also locks the source scope when the manifest is inside the known source `BACKUP_ROOT`, preventing source retention from removing artifacts during migrate
 - `smoke` locks both scopes for the whole flow, in deterministic scope-key order, so it cannot overlap with manual mutating commands
 
 ## Minimal Safe Workflow
@@ -290,7 +290,7 @@ Migrate from one scope into another:
 
 `migrate` uses the same post-check contract as `restore`: storage checks plus Compose service health plus DB ping.
 
-`migrate` locks only the target scope, because the source manifest is read-only input and the target scope is the one being reset and rewritten.
+`migrate` locks the target scope. When the manifest is inside the known source `BACKUP_ROOT`, it also locks the source scope so source retention cannot remove the manifest or artifacts during migrate.
 
 `migrate` also requires manifest version `2`. It checks the recorded image and service contract before touching the target scope and blocks version `1` manifests.
 
