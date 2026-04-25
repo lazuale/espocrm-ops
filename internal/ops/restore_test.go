@@ -188,7 +188,7 @@ func TestRestoreStopFailureFailsBeforeMutation(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
@@ -211,7 +211,7 @@ func TestRestoreDBFailureAttemptsStart(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
@@ -234,7 +234,7 @@ func TestRestoreResetDBFailureAttemptsStartWithoutImportOrFileMutation(t *testin
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != "" {
@@ -358,7 +358,7 @@ func TestRestoreStartFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -384,7 +384,7 @@ func TestRestoreCancellationAfterStopStillAttemptsStart(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 2 || rt.startContextErrs[1] != nil {
@@ -421,7 +421,7 @@ func TestRestoreCancellationAfterStopAndStartFailureIncludesBothErrors(t *testin
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 2 || rt.startContextErrs[1] != nil {
@@ -447,7 +447,7 @@ func TestRestorePostCheckFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
@@ -460,7 +460,7 @@ func TestRestoreServiceHealthFailureFailsBeforeDBPing(t *testing.T) {
 	rt := &fakeRestoreRuntime{
 		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
 		healthErrors: map[int]error{
-			1: errf(`service "espocrm" health is "unhealthy" (want "healthy")`),
+			2: errf(`service "espocrm" health is "unhealthy" (want "healthy")`),
 		},
 	}
 
@@ -483,7 +483,7 @@ func TestRestoreServiceHealthFailureFailsBeforeDBPing(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
@@ -497,7 +497,7 @@ func TestRestoreHealthWaitCancellationFailsWithoutHang(t *testing.T) {
 	rt := &fakeRestoreRuntime{
 		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
 		healthErrors: map[int]error{
-			1: &runtime.ServiceHealthError{
+			2: &runtime.ServiceHealthError{
 				Service:   "espocrm",
 				State:     "running",
 				Health:    "starting",
@@ -525,10 +525,10 @@ func TestRestoreHealthWaitCancellationFailsWithoutHang(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
-	if len(rt.healthContextErrs) != 1 || rt.healthContextErrs[0] != nil {
+	if len(rt.healthContextErrs) != 2 || rt.healthContextErrs[0] != nil || rt.healthContextErrs[1] != nil {
 		t.Fatalf("expected active health context, got %v", rt.healthContextErrs)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
@@ -561,7 +561,7 @@ func TestRestoreFilePhaseFailureAfterDatabaseImportStillReturnsServices(t *testi
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
@@ -612,7 +612,7 @@ func TestRestoreOwnershipFailureAfterDatabaseImportBeforeStorageSwitchStillRetur
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
@@ -642,7 +642,7 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 	if _, err := os.Stat(result.SnapshotManifest); err != nil {
 		t.Fatalf("expected snapshot manifest: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {

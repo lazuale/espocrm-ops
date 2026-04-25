@@ -199,6 +199,7 @@ Operator prerequisites:
 - `espops` never guesses `ESPO_RUNTIME_UID` or `ESPO_RUNTIME_GID` from the image or the container runtime
 - `restore`, `migrate`, and `smoke` apply the restored storage tree to the explicit runtime uid/gid and fail closed if the operator cannot apply that ownership
 - `doctor` succeeds only when Compose config parses, backup root and storage dir checks pass, contract services are listed, contract services are `running` and `healthy`, and MariaDB `SELECT 1` succeeds
+- `backup` succeeds only after app services are returned and all contract services are `running` and `healthy`
 - `restore`, `migrate`, and `smoke` succeed only after the restored storage post-check passes and the contract services are `running` and `healthy` before MariaDB `SELECT 1`; this validates Compose service health, not a full browser or user-login flow
 - `doctor` is read-only and does not take an operation lock
 - `backup` locks its scope before runtime validation, disk checks, service stop, and artifact creation
@@ -221,7 +222,7 @@ Prepare the target scope first:
 Then use the commands in this order:
 
 1. `espops backup`
-   Backup checks `MIN_FREE_DISK_MB`, stops app services only after that guard passes, writes prefix-based artifacts under `BACKUP_ROOT`, writes manifest version `2` with the explicit runtime block, self-verifies the new set, then applies strict same-prefix retention if `BACKUP_RETENTION_DAYS` is greater than zero.
+   Backup checks `MIN_FREE_DISK_MB`, stops app services only after that guard passes, writes prefix-based artifacts under `BACKUP_ROOT`, returns app services, waits for all contract services to become healthy, writes manifest version `2` with the explicit runtime block, self-verifies the new set, then applies strict same-prefix retention if `BACKUP_RETENTION_DAYS` is greater than zero.
 2. `espops backup verify`
    Verify the manifest you plan to trust. Version `1` remains a verify-only diagnostic path; destructive commands require manifest version `2`.
 3. `espops restore`

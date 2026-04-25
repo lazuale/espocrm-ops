@@ -698,7 +698,13 @@ case "${1:-}" in
     exit 0
     ;;
   ps)
-    if [[ -f "$fake_root/restore-ps-output" ]]; then
+    ps_count=0
+    if [[ -f "$fake_root/restore-ps-count" ]]; then
+      ps_count="$(cat "$fake_root/restore-ps-count")"
+    fi
+    ps_count="$((ps_count + 1))"
+    printf '%s' "$ps_count" >"$fake_root/restore-ps-count"
+    if [[ -f "$fake_root/restore-ps-output" && "$ps_count" -gt 1 ]]; then
       cat "$fake_root/restore-ps-output"
     else
       printf '%s' "$default_ps"

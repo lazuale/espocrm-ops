@@ -31,6 +31,7 @@ type backupRuntime interface {
 	StopServices(ctx context.Context, target runtime.Target, services []string) error
 	StartServices(ctx context.Context, target runtime.Target, services []string) error
 	DumpDatabase(ctx context.Context, target runtime.Target, destPath string) error
+	RequireHealthyServices(ctx context.Context, target runtime.Target, services []string) error
 }
 
 type backupLayout struct {
@@ -212,6 +213,9 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 	}
 	cancel()
 	servicesReturned = true
+	if err := waitForRuntimeServiceHealth(ctx, target, cfg.DBService, cfg.AppServices, rt); err != nil {
+		return result, runtimeError("backup post-check failed", err)
+	}
 
 	manifestTmp, err := newTempTarget(layout.ManifestJSON)
 	if err != nil {

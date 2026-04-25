@@ -36,11 +36,15 @@ func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Backup failed: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(rt.lastServices, ",") != strings.Join(cfg.AppServices, ",") {
 		t.Fatalf("unexpected app services: %v", rt.lastServices)
+	}
+	wantHealthServices := runtimeContractServices(cfg.DBService, cfg.AppServices)
+	if strings.Join(rt.lastHealthServices, ",") != strings.Join(wantHealthServices, ",") {
+		t.Fatalf("unexpected health services: got %v want %v", rt.lastHealthServices, wantHealthServices)
 	}
 	if result.Manifest == "" || result.DBBackup == "" || result.FilesBackup == "" {
 		t.Fatalf("unexpected result: %#v", result)
@@ -85,6 +89,34 @@ func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
 	if len(matches) != 0 {
 		t.Fatalf("unexpected temporary files after success: %v", matches)
 	}
+}
+
+func TestBackupSuccessRequiresHealthCheck(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table test(id int);\n"),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Backup failed: %v", err)
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	if len(rt.healthContextErrs) != 1 || rt.healthContextErrs[0] != nil {
+		t.Fatalf("expected active health context, got %v", rt.healthContextErrs)
+	}
+	assertBackupSetPresent(t, result)
 }
 
 func TestBackupBusyLockFailsBeforeSideEffects(t *testing.T) {
@@ -211,8 +243,42 @@ func TestBackupFailsClosedWhenSelfVerifyFails(t *testing.T) {
 
 	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
+	}
+	assertBackupSetRemoved(t, result)
+}
+
+func TestBackupFailsIfReturnedServicesAreNotHealthy(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	rt := &fakeBackupRuntime{
+		dbDump:    gzipBytes(t, "create table test(id int);\n"),
+		healthErr: errf(`service "espocrm" health is "unhealthy" (want "healthy")`),
+	}
+	cfg := backupTestConfig(root, storageDir)
+
+	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	assertVerifyErrorKind(t, err, ErrorKindRuntime)
+	if !strings.Contains(err.Error(), "backup post-check failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !strings.Contains(err.Error(), `service "espocrm" health is "unhealthy"`) {
+		t.Fatalf("expected health detail, got %v", err)
+	}
+	if err := rt.requireCalls("validate", "stop_services", "dump_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	wantHealthServices := runtimeContractServices(cfg.DBService, cfg.AppServices)
+	if strings.Join(rt.lastHealthServices, ",") != strings.Join(wantHealthServices, ",") {
+		t.Fatalf("unexpected health services: got %v want %v", rt.lastHealthServices, wantHealthServices)
 	}
 	assertBackupSetRemoved(t, result)
 }
@@ -644,16 +710,19 @@ func backupTestConfig(root, storageDir string) config.BackupConfig {
 }
 
 type fakeBackupRuntime struct {
-	dbDump           []byte
-	validateErr      error
-	stopErr          error
-	startErr         error
-	dumpErr          error
-	cancelOnStop     context.CancelFunc
-	calls            []string
-	lastTarget       runtime.Target
-	lastServices     []string
-	startContextErrs []error
+	dbDump             []byte
+	validateErr        error
+	stopErr            error
+	startErr           error
+	dumpErr            error
+	healthErr          error
+	cancelOnStop       context.CancelFunc
+	calls              []string
+	lastTarget         runtime.Target
+	lastServices       []string
+	lastHealthServices []string
+	startContextErrs   []error
+	healthContextErrs  []error
 }
 
 func (f *fakeBackupRuntime) Validate(_ context.Context, target runtime.Target) error {
@@ -690,6 +759,14 @@ func (f *fakeBackupRuntime) DumpDatabase(ctx context.Context, target runtime.Tar
 		return f.dumpErr
 	}
 	return os.WriteFile(destPath, append([]byte(nil), f.dbDump...), 0o644)
+}
+
+func (f *fakeBackupRuntime) RequireHealthyServices(ctx context.Context, target runtime.Target, services []string) error {
+	f.calls = append(f.calls, "service_health")
+	f.lastTarget = target
+	f.lastHealthServices = append([]string(nil), services...)
+	f.healthContextErrs = append(f.healthContextErrs, ctx.Err())
+	return f.healthErr
 }
 
 func (f *fakeBackupRuntime) requireCalls(want ...string) error {

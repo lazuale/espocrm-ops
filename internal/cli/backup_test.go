@@ -497,6 +497,7 @@ set -Eeuo pipefail
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fake_root="$(cd -- "$script_dir/.." && pwd)"
+default_ps='[{"Service":"db","State":"running","Health":"healthy"},{"Service":"espocrm","State":"running","Health":"healthy"},{"Service":"espocrm-daemon","State":"running","Health":"healthy"},{"Service":"espocrm-websocket","State":"running","Health":"healthy"}]'
 
 if [[ "${1:-}" != "compose" ]]; then
   printf 'unexpected docker invocation: %s\n' "$*" >&2
@@ -520,6 +521,16 @@ case "${1:-}" in
     exit 0
     ;;
   stop|start)
+    exit 0
+    ;;
+  ps)
+    [[ "${2:-}" == "--format" ]] || exit 1
+    [[ "${3:-}" == "json" ]] || exit 1
+    if [[ -f "$fake_root/backup-ps-output" ]]; then
+      cat "$fake_root/backup-ps-output"
+    else
+      printf '%s' "$default_ps"
+    fi
     exit 0
     ;;
   exec)

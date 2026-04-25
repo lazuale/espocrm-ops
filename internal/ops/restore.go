@@ -27,7 +27,6 @@ type restoreRuntime interface {
 	UpService(ctx context.Context, target runtime.Target, service string) error
 	ResetDatabase(ctx context.Context, target runtime.Target) error
 	RestoreDatabase(ctx context.Context, target runtime.Target, reader io.Reader) error
-	RequireHealthyServices(ctx context.Context, target runtime.Target, services []string) error
 	DBPing(ctx context.Context, target runtime.Target) error
 }
 
