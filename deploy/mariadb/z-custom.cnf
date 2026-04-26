@@ -1,41 +1,15 @@
 [mariadb]
-# Baseline server encoding.
 character-set-server=utf8mb4
-
-# Default character collation.
 collation-server=utf8mb4_unicode_ci
-
-# InnoDB buffer pool size.
-# Shared baseline must stay below the smallest example DB_MEM_LIMIT.
 innodb_buffer_pool_size=384M
-
-# Redo log file size.
 innodb_log_file_size=128M
-
-# O_DIRECT usually reduces double caching on Linux hosts.
 innodb_flush_method=O_DIRECT
-
-# Avoid DNS stalls and unnecessary hostname lookups.
 skip-name-resolve
-
-# Disable LOCAL INFILE imports by default.
 local-infile=0
-
-# Save memory on small internal deployments.
 performance_schema=OFF
-
-# Limit the number of concurrent connections.
 max_connections=25
-
-# In-memory temporary table size.
 tmp_table_size=16M
 max_heap_table_size=16M
-
-# Open table cache.
 table_open_cache=200
-
-# Thread cache.
 thread_cache_size=16
-
-# Extra headroom for large queries and imports.
 max_allowed_packet=64M
