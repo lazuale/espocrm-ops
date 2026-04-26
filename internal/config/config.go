@@ -187,8 +187,10 @@ func loadEnvAssignments(path string) (values map[string]string, err error) {
 		if _, exists := values[key]; exists {
 			return nil, fmt.Errorf("%s:%d: duplicate assignment for %s", path, lineNo, key)
 		}
-		if err := validateEnvValue(rawValue, path, lineNo); err != nil {
-			return nil, err
+		if isRequiredKey(key) {
+			if err := validateEnvValue(rawValue, path, lineNo); err != nil {
+				return nil, err
+			}
 		}
 		values[key] = rawValue
 	}
@@ -200,7 +202,7 @@ func loadEnvAssignments(path string) (values map[string]string, err error) {
 }
 
 func parseEnvAssignment(line string) (string, string, bool) {
-	if line == "" || strings.TrimSpace(line) != line || strings.ContainsAny(line, " \t") {
+	if line == "" {
 		return "", "", false
 	}
 	sep := strings.IndexByte(line, '=')
@@ -220,6 +222,15 @@ func parseEnvAssignment(line string) (string, string, bool) {
 		}
 	}
 	return key, line[sep+1:], true
+}
+
+func isRequiredKey(key string) bool {
+	for _, requiredKey := range requiredKeys {
+		if key == requiredKey {
+			return true
+		}
+	}
+	return false
 }
 
 func validateEnvValue(rawValue, path string, lineNo int) error {

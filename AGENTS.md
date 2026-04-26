@@ -27,7 +27,7 @@
   - `db.file` and `db.sha256`
   - `files.file` and `files.sha256`
   - `db_name`
-- Env files are literal `KEY=VALUE` only; no quotes, spaces, shell expansion, or duplicate keys.
+- Env files are `KEY=VALUE` lines. For keys read by `espops`, quotes, spaces, and shell expansion fail. Duplicate keys fail.
 - Env keys read by `espops` are:
   - `BACKUP_ROOT`
   - `ESPO_STORAGE_DIR`

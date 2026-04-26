@@ -30,7 +30,7 @@ Example:
 ./bin/espops doctor --scope prod --project-dir /path/to/project
 ```
 
-Env files are parsed as literal `KEY=VALUE` lines only. Quotes, spaces, shell expansion syntax, and duplicate keys fail. Keys not used by `espops` are ignored and left for Docker Compose.
+Env files are parsed as `KEY=VALUE` lines. For keys read by `espops`, quotes, spaces, and shell expansion syntax fail. Duplicate keys fail. Other keys are left for Docker Compose.
 
 Env keys read by `espops`:
 

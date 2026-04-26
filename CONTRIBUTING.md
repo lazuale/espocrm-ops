@@ -24,7 +24,9 @@ Avoid abstractions until two real call sites need them.
 
 ## Backup Shape
 
-Env files are literal `KEY=VALUE` only. Env keys read by `espops` are:
+Env files are `KEY=VALUE` lines. For keys read by `espops`, quotes, spaces, and shell expansion fail. Duplicate keys fail.
+
+Env keys read by `espops` are:
 
 - `BACKUP_ROOT`
 - `ESPO_STORAGE_DIR`
