@@ -85,6 +85,9 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 	if err := ctx.Err(); err != nil {
 		return VerifyResult{}, ioError("backup verify interrupted", err)
 	}
+	if err := ensureNonEmptyFile(manifestPath); err != nil {
+		return VerifyResult{}, manifestError("manifest is invalid", err)
+	}
 
 	loadedManifest, err := manifest.Load(manifestPath)
 	if err != nil {
@@ -167,12 +170,18 @@ func verifyArtifact(ctx context.Context, label, artifactPath, sidecarPath, manif
 }
 
 func ensureNonEmptyFile(path string) error {
-	info, err := os.Stat(path)
+	info, err := os.Lstat(path)
 	if err != nil {
 		return err
 	}
+	if info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("expected regular file, got symlink")
+	}
 	if info.IsDir() {
 		return fmt.Errorf("expected file, got directory")
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("expected regular file")
 	}
 	if info.Size() == 0 {
 		return fmt.Errorf("file is empty")
@@ -402,11 +411,6 @@ func (v *filesArchiveValidator) addImplicitParents(name string) {
 	for parent := path.Dir(name); parent != "."; parent = path.Dir(parent) {
 		v.implicitDirs[parent] = struct{}{}
 	}
-}
-
-func validateTarHeader(header *tar.Header) error {
-	_, _, err := validateTarHeaderEntry(header)
-	return err
 }
 
 func validateTarHeaderEntry(header *tar.Header) (string, tarEntryKind, error) {

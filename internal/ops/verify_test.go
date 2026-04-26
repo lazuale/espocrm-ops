@@ -81,6 +81,15 @@ func TestVerifyBackupInvalidManifest(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindManifest)
 }
 
+func TestVerifyBackupRejectsManifestSymlink(t *testing.T) {
+	manifestPath, _, _ := writeVerifiedBackupSet(t)
+	replaceFileWithSymlink(t, manifestPath)
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindManifest)
+	assertErrorContains(t, err, "symlink")
+}
+
 func TestVerifyBackupManifestOutsideManifestsDirectory(t *testing.T) {
 	root := t.TempDir()
 	manifestPath := filepath.Join(root, "set.manifest.json")
@@ -109,6 +118,33 @@ func TestVerifyBackupMissingArtifact(t *testing.T) {
 
 	_, err := VerifyBackup(context.Background(), manifestPath)
 	assertVerifyErrorKind(t, err, ErrorKindArtifact)
+}
+
+func TestVerifyBackupRejectsDBArtifactSymlink(t *testing.T) {
+	manifestPath, dbPath, _ := writeVerifiedBackupSet(t)
+	replaceFileWithSymlink(t, dbPath)
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindArtifact)
+	assertErrorContains(t, err, "symlink")
+}
+
+func TestVerifyBackupRejectsFilesArtifactSymlink(t *testing.T) {
+	manifestPath, _, filesPath := writeVerifiedBackupSet(t)
+	replaceFileWithSymlink(t, filesPath)
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindArtifact)
+	assertErrorContains(t, err, "symlink")
+}
+
+func TestVerifyBackupRejectsSidecarSymlink(t *testing.T) {
+	manifestPath, dbPath, _ := writeVerifiedBackupSet(t)
+	replaceFileWithSymlink(t, dbPath+".sha256")
+
+	_, err := VerifyBackup(context.Background(), manifestPath)
+	assertVerifyErrorKind(t, err, ErrorKindChecksum)
+	assertErrorContains(t, err, "symlink")
 }
 
 func TestVerifyBackupChecksumMismatch(t *testing.T) {
@@ -423,6 +459,29 @@ func assertVerifyErrorKind(t *testing.T, err error, want string) {
 	if verifyErr.Kind != want {
 		t.Fatalf("expected kind %s, got %s", want, verifyErr.Kind)
 	}
+}
+
+func assertErrorContains(t *testing.T, err error, want string) {
+	t.Helper()
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), want) {
+		t.Fatalf("expected %q in error, got %v", want, err)
+	}
+}
+
+func replaceFileWithSymlink(t *testing.T, path string) string {
+	t.Helper()
+
+	target := path + ".target"
+	if err := os.Rename(path, target); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(target, path); err != nil {
+		t.Skipf("symlink unavailable: %v", err)
+	}
+	return target
 }
 
 func writeVerifiedBackupSet(t *testing.T) (manifestPath, dbPath, filesPath string) {

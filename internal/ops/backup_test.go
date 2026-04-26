@@ -971,6 +971,46 @@ func TestBackupRetentionWarnsForIncompleteSamePrefixSet(t *testing.T) {
 	}
 }
 
+func TestBackupRetentionRefusesSymlinkArtifact(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	setupCfg := backupTestConfig(root, storageDir)
+	setupCfg.BackupRetentionDays = 0
+	oldResult, err := Backup(context.Background(), setupCfg, &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table old_snapshot(id int);\n"),
+	}, time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("setup backup failed: %v", err)
+	}
+	replaceFileWithSymlink(t, oldResult.DBBackup)
+
+	cfg := backupTestConfig(root, storageDir)
+	result, err := Backup(context.Background(), cfg, &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table fresh_snapshot(id int);\n"),
+	}, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("Backup failed: %v", err)
+	}
+	assertBackupWarningContains(t, result, "retention_skipped: backup retention cleanup blocked")
+	assertBackupWarningContains(t, result, "symlink")
+	assertBackupSetPresent(t, result)
+	assertBackupSetPresent(t, oldResult)
+	info, err := os.Lstat(oldResult.DBBackup)
+	if err != nil {
+		t.Fatalf("expected old artifact symlink to remain: %v", err)
+	}
+	if info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("expected old artifact to remain a symlink, got %s", info.Mode())
+	}
+}
+
 func TestBackupRetentionCleanupErrorWarnsVisibly(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")
