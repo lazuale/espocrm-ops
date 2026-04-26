@@ -19,7 +19,7 @@ func TestLoadConfigValid(t *testing.T) {
 		"DB_NAME=espocrm",
 	})
 
-	cfg, err := Load(Request{Scope: "prod", ProjectDir: projectDir})
+	cfg, err := Load("prod", projectDir)
 	if err != nil {
 		t.Fatalf("Load failed: %v", err)
 	}
@@ -53,7 +53,7 @@ func TestLoadConfigAllowsUnknownComposeKeys(t *testing.T) {
 		"PHP_MEMORY_LIMIT=256M",
 	})
 
-	if _, err := Load(Request{Scope: "prod", ProjectDir: projectDir}); err != nil {
+	if _, err := Load("prod", projectDir); err != nil {
 		t.Fatalf("Load should ignore unknown compose keys: %v", err)
 	}
 }
@@ -70,7 +70,7 @@ func TestLoadConfigRejectsShellLikeEnv(t *testing.T) {
 		"DB_NAME=espocrm",
 	})
 
-	_, err := Load(Request{Scope: "prod", ProjectDir: projectDir})
+	_, err := Load("prod", projectDir)
 	if err == nil || !strings.Contains(err.Error(), "shell expansion") {
 		t.Fatalf("expected shell expansion error, got %v", err)
 	}

@@ -2,17 +2,13 @@ package runtime
 
 import (
 	"bytes"
-	"compress/gzip"
 	"context"
-	"encoding/json"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
 	"strings"
 )
-
-const redactedSecret = "<redacted>"
 
 type Target struct {
 	ProjectDir     string
@@ -25,127 +21,36 @@ type Target struct {
 	DBName         string
 }
 
-type ServiceStatus struct {
-	Name   string `json:"Service"`
-	State  string `json:"State"`
-	Health string `json:"Health"`
-}
-
-type ServiceHealthError struct {
-	Service   string
-	State     string
-	Health    string
-	Message   string
-	Retryable bool
-}
-
-func (e *ServiceHealthError) Error() string {
-	if e == nil {
-		return ""
-	}
-	return e.Message
-}
-
-type DockerCompose struct{}
-
-func TarExists() error {
-	if _, err := exec.LookPath("tar"); err != nil {
-		return fmt.Errorf("native tar is required: %w", err)
+func RequireCommands(names ...string) error {
+	for _, name := range names {
+		if _, err := exec.LookPath(name); err != nil {
+			return fmt.Errorf("%s is required: %w", name, err)
+		}
 	}
 	return nil
 }
 
-func TestTarGz(ctx context.Context, path string) error {
-	return runTar(ctx, "-tzf", path)
+func ComposeConfig(ctx context.Context, target Target) error {
+	return runCompose(ctx, target, nil, "config")
 }
 
-func CreateStorageArchive(ctx context.Context, sourceDir, destPath string) error {
-	if strings.TrimSpace(sourceDir) == "" {
-		return fmt.Errorf("storage source dir is required")
-	}
-	if strings.TrimSpace(destPath) == "" {
-		return fmt.Errorf("storage archive destination is required")
-	}
-	return runTar(ctx, "-C", sourceDir, "-czf", destPath, ".")
+func StopServices(ctx context.Context, target Target, services []string) error {
+	return runCompose(ctx, target, nil, append([]string{"stop"}, cleanServices(services)...)...)
 }
 
-func ExtractStorageArchive(ctx context.Context, archivePath, destDir string) error {
-	if strings.TrimSpace(archivePath) == "" {
-		return fmt.Errorf("storage archive path is required")
-	}
-	if strings.TrimSpace(destDir) == "" {
-		return fmt.Errorf("storage archive destination is required")
-	}
-	return runTar(ctx, "-xzf", archivePath, "-C", destDir)
+func StartServices(ctx context.Context, target Target, services []string) error {
+	return runCompose(ctx, target, nil, append([]string{"up", "-d"}, cleanServices(services)...)...)
 }
 
-func (DockerCompose) ComposeConfig(ctx context.Context, target Target) error {
-	return runCompose(ctx, target, runOptions{}, "config")
-}
-
-func (DockerCompose) StopServices(ctx context.Context, target Target, services []string) error {
-	args, err := serviceArgs("stop", services)
+func DumpDatabase(ctx context.Context, target Target, destPath string) error {
+	out, err := os.Create(destPath)
 	if err != nil {
 		return err
 	}
-	return runCompose(ctx, target, runOptions{}, args...)
-}
+	defer out.Close()
 
-func (DockerCompose) StartServices(ctx context.Context, target Target, services []string) error {
-	args, err := upServiceArgs(services)
-	if err != nil {
-		return err
-	}
-	return runCompose(ctx, target, runOptions{}, args...)
-}
-
-func (DockerCompose) ServiceStatuses(ctx context.Context, target Target) ([]ServiceStatus, error) {
-	var stdout bytes.Buffer
-	if err := runCompose(ctx, target, runOptions{stdout: &stdout}, "ps", "--format", "json"); err != nil {
-		return nil, err
-	}
-	statuses, err := decodeServiceStatuses(stdout.Bytes())
-	if err != nil {
-		return nil, fmt.Errorf("decode docker compose ps output: %w", err)
-	}
-	return statuses, nil
-}
-
-func (rt DockerCompose) RequireHealthyServices(ctx context.Context, target Target, services []string) error {
-	statuses, err := rt.ServiceStatuses(ctx, target)
-	if err != nil {
-		return err
-	}
-	return requireHealthyServices(statuses, services)
-}
-
-func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath string) (err error) {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	password, err := requiredPassword("db password", target.DBPassword)
-	if err != nil {
-		return err
-	}
-	service, err := dbServiceName(target)
-	if err != nil {
-		return err
-	}
-
-	file, err := os.Create(destPath)
-	if err != nil {
-		return fmt.Errorf("create db backup file: %w", err)
-	}
-	defer closeResource(file, &err)
-
-	writer := gzip.NewWriter(file)
-	defer closeResource(writer, &err)
-
-	return runCompose(ctx, target, runOptions{
-		env:    []string{"MYSQL_PWD=" + password},
-		stdout: writer,
-	},
-		"exec", "-T", "-e", "MYSQL_PWD", service,
+	dump := composeCommand(ctx, target, []string{"MYSQL_PWD=" + target.DBPassword},
+		"exec", "-T", "-e", "MYSQL_PWD", target.DBService,
 		"mariadb-dump",
 		"--single-transaction",
 		"--quick",
@@ -157,62 +62,33 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 		"-u", target.DBUser,
 		target.DBName,
 	)
+	gzip := exec.CommandContext(ctx, "gzip", "-c")
+	return pipeCommands(dump, gzip, nil, out)
 }
 
-func (DockerCompose) ResetDatabase(ctx context.Context, target Target) error {
-	password, err := requiredPassword("db root password", target.DBRootPassword)
-	if err != nil {
-		return err
-	}
-	return runMariaDBExec(ctx, target, password,
+func ResetDatabase(ctx context.Context, target Target) error {
+	return runCompose(ctx, target, []string{"MYSQL_PWD=" + target.DBRootPassword},
+		"exec", "-T", "-e", "MYSQL_PWD", target.DBService,
 		"mariadb",
 		"-u", "root",
 		"-e", resetDatabaseSQL(target.DBName),
 	)
 }
 
-func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, sourcePath string) (err error) {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
-	password, err := requiredPassword("db password", target.DBPassword)
-	if err != nil {
-		return err
-	}
-	service, err := dbServiceName(target)
-	if err != nil {
-		return err
-	}
-
-	file, err := os.Open(sourcePath)
-	if err != nil {
-		return fmt.Errorf("open db backup file: %w", err)
-	}
-	defer closeResource(file, &err)
-
-	reader, err := gzip.NewReader(file)
-	if err != nil {
-		return fmt.Errorf("open db backup gzip stream: %w", err)
-	}
-	defer closeResource(reader, &err)
-
-	return runCompose(ctx, target, runOptions{
-		env:   []string{"MYSQL_PWD=" + password},
-		stdin: reader,
-	},
-		"exec", "-T", "-e", "MYSQL_PWD", service,
+func RestoreDatabase(ctx context.Context, target Target, sourcePath string) error {
+	gzip := exec.CommandContext(ctx, "gzip", "-dc", sourcePath)
+	mysql := composeCommand(ctx, target, []string{"MYSQL_PWD=" + target.DBPassword},
+		"exec", "-T", "-e", "MYSQL_PWD", target.DBService,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
 	)
+	return pipeCommands(gzip, mysql, nil, nil)
 }
 
-func (DockerCompose) DBPing(ctx context.Context, target Target) error {
-	password, err := requiredPassword("db password", target.DBPassword)
-	if err != nil {
-		return err
-	}
-	return runMariaDBExec(ctx, target, password,
+func DBPing(ctx context.Context, target Target) error {
+	return runCompose(ctx, target, []string{"MYSQL_PWD=" + target.DBPassword},
+		"exec", "-T", "-e", "MYSQL_PWD", target.DBService,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
@@ -220,390 +96,125 @@ func (DockerCompose) DBPing(ctx context.Context, target Target) error {
 	)
 }
 
-type runOptions struct {
-	stdin  io.Reader
-	stdout io.Writer
-	env    []string
+func CreateStorageArchive(ctx context.Context, sourceDir, destPath string) error {
+	return runCommand(ctx, "", nil, nil, nil, "tar", "-C", sourceDir, "-czf", destPath, ".")
 }
 
-func runCompose(ctx context.Context, target Target, opts runOptions, args ...string) error {
-	cmd := composeCommand(ctx, target, opts, args...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Run(); err != nil {
-		return commandError(target, "docker "+sanitizeComposeCommand(target, composeArgs(target, args...)), stderr.String(), err)
+func ExtractStorageArchive(ctx context.Context, archivePath, destDir string) error {
+	return runCommand(ctx, "", nil, nil, nil, "tar", "-xzf", archivePath, "-C", destDir)
+}
+
+func TestGzip(ctx context.Context, path string) error {
+	return runCommand(ctx, "", nil, nil, nil, "gzip", "-t", path)
+}
+
+func SHA256(ctx context.Context, path string) (string, error) {
+	var stdout bytes.Buffer
+	if err := runCommand(ctx, "", nil, nil, &stdout, "sha256sum", path); err != nil {
+		return "", err
 	}
-	return nil
-}
-
-func composeCommand(ctx context.Context, target Target, opts runOptions, args ...string) *exec.Cmd {
-	cmdArgs := composeArgs(target, args...)
-	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
-	cmd.Dir = strings.TrimSpace(target.ProjectDir)
-	cmd.Stdin = opts.stdin
-	if opts.stdout != nil {
-		cmd.Stdout = opts.stdout
+	fields := strings.Fields(stdout.String())
+	if len(fields) == 0 {
+		return "", fmt.Errorf("sha256sum returned no checksum for %s", path)
 	}
-	cmd.Env = commandEnv(os.Environ(), opts.env)
-	return cmd
+	return strings.ToLower(fields[0]), nil
 }
 
-func composeArgs(target Target, args ...string) []string {
-	out := []string{
+func runCompose(ctx context.Context, target Target, env []string, args ...string) error {
+	cmd := composeCommand(ctx, target, env, args...)
+	return runPreparedCommand(cmd, nil, nil)
+}
+
+func composeCommand(ctx context.Context, target Target, env []string, args ...string) *exec.Cmd {
+	cmdArgs := append([]string{
 		"compose",
 		"--env-file", strings.TrimSpace(target.EnvFile),
 		"-f", strings.TrimSpace(target.ComposeFile),
-	}
-	return append(out, args...)
+	}, args...)
+	cmd := exec.CommandContext(ctx, "docker", cmdArgs...)
+	cmd.Dir = strings.TrimSpace(target.ProjectDir)
+	cmd.Env = append(os.Environ(), env...)
+	return cmd
 }
 
-func runTar(ctx context.Context, args ...string) error {
-	if err := ctx.Err(); err != nil {
-		return err
-	}
+func runCommand(ctx context.Context, dir string, env []string, stdin io.Reader, stdout io.Writer, name string, args ...string) error {
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Dir = dir
+	cmd.Env = append(os.Environ(), env...)
+	return runPreparedCommand(cmd, stdin, stdout)
+}
 
-	cmd := exec.CommandContext(ctx, "tar", args...)
-	cmd.Env = commandEnv(os.Environ(), nil)
-
+func runPreparedCommand(cmd *exec.Cmd, stdin io.Reader, stdout io.Writer) error {
 	var stderr bytes.Buffer
+	cmd.Stdin = stdin
+	cmd.Stdout = stdout
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return commandError(Target{}, "tar "+strings.Join(args, " "), stderr.String(), err)
+		return commandError(cmd, stderr.String(), err)
 	}
 	return nil
 }
 
-func runMariaDBExec(ctx context.Context, target Target, password string, args ...string) error {
-	service, err := dbServiceName(target)
-	if err != nil {
-		return err
+func pipeCommands(first, second *exec.Cmd, stdin io.Reader, stdout io.Writer) error {
+	reader, writer := io.Pipe()
+	var firstErr, secondErr bytes.Buffer
+
+	first.Stdin = stdin
+	first.Stdout = writer
+	first.Stderr = &firstErr
+	second.Stdin = reader
+	second.Stdout = stdout
+	second.Stderr = &secondErr
+
+	if err := second.Start(); err != nil {
+		_ = reader.Close()
+		_ = writer.Close()
+		return commandError(second, secondErr.String(), err)
 	}
-	return runCompose(ctx, target, runOptions{
-		env: []string{"MYSQL_PWD=" + password},
-	}, append([]string{"exec", "-T", "-e", "MYSQL_PWD", service}, args...)...)
+	if err := first.Start(); err != nil {
+		_ = writer.CloseWithError(err)
+		_ = reader.Close()
+		_ = second.Wait()
+		return commandError(first, firstErr.String(), err)
+	}
+
+	err1 := first.Wait()
+	if err1 != nil {
+		_ = writer.CloseWithError(err1)
+	} else {
+		_ = writer.Close()
+	}
+	err2 := second.Wait()
+
+	if err1 != nil {
+		return commandError(first, firstErr.String(), err1)
+	}
+	if err2 != nil {
+		return commandError(second, secondErr.String(), err2)
+	}
+	return nil
 }
 
-func requiredPassword(label, value string) (string, error) {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "", fmt.Errorf("%s is required", label)
+func commandError(cmd *exec.Cmd, stderr string, err error) error {
+	message := strings.TrimSpace(stderr)
+	if message == "" {
+		return fmt.Errorf("%s: %w", strings.Join(cmd.Args, " "), err)
 	}
-	return value, nil
+	return fmt.Errorf("%s: %s: %w", strings.Join(cmd.Args, " "), message, err)
 }
 
-func dbServiceName(target Target) (string, error) {
-	service := strings.TrimSpace(target.DBService)
-	if service == "" {
-		return "", fmt.Errorf("db service is required")
+func cleanServices(services []string) []string {
+	out := make([]string, 0, len(services))
+	for _, service := range services {
+		service = strings.TrimSpace(service)
+		if service != "" {
+			out = append(out, service)
+		}
 	}
-	return service, nil
+	return out
 }
 
 func resetDatabaseSQL(name string) string {
-	return fmt.Sprintf(
-		"DROP DATABASE IF EXISTS %s; CREATE DATABASE %s CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;",
-		quoteSQLIdentifier(name),
-		quoteSQLIdentifier(name),
-	)
-}
-
-func quoteSQLIdentifier(name string) string {
-	return "`" + strings.ReplaceAll(name, "`", "``") + "`"
-}
-
-func commandError(target Target, command, stderr string, err error) error {
-	message := sanitizeComposeText(target, strings.TrimSpace(stderr))
-	command = sanitizeComposeText(target, command)
-	if message == "" {
-		return fmt.Errorf("%s: %w", command, err)
-	}
-	return fmt.Errorf("%s: %s: %w", command, message, err)
-}
-
-func commandEnv(base, overrides []string) []string {
-	return mergeCommandEnv(allowedDockerEnv(base), explicitDockerEnv(overrides))
-}
-
-func allowedDockerEnv(env []string) []string {
-	out := make([]string, 0, len(env))
-	for _, entry := range env {
-		key, _, ok := strings.Cut(entry, "=")
-		if !ok || !isAllowedDockerEnvKey(key) {
-			continue
-		}
-		out = append(out, entry)
-	}
-	return out
-}
-
-func isAllowedDockerEnvKey(key string) bool {
-	switch key {
-	case "PATH",
-		"HOME",
-		"DOCKER_HOST",
-		"DOCKER_CONTEXT",
-		"DOCKER_CONFIG",
-		"DOCKER_CERT_PATH",
-		"DOCKER_TLS_VERIFY",
-		"SSH_AUTH_SOCK",
-		"XDG_RUNTIME_DIR",
-		"HTTP_PROXY",
-		"HTTPS_PROXY",
-		"NO_PROXY",
-		"ALL_PROXY",
-		"http_proxy",
-		"https_proxy",
-		"no_proxy",
-		"all_proxy":
-		return true
-	default:
-		return false
-	}
-}
-
-func explicitDockerEnv(env []string) []string {
-	out := make([]string, 0, len(env))
-	for _, entry := range env {
-		key, _, ok := strings.Cut(entry, "=")
-		if ok && key == "MYSQL_PWD" {
-			out = append(out, entry)
-		}
-	}
-	return out
-}
-
-func mergeCommandEnv(base, overrides []string) []string {
-	if len(overrides) == 0 {
-		return append([]string(nil), base...)
-	}
-
-	indexByKey := make(map[string]int, len(base)+len(overrides))
-	out := make([]string, 0, len(base)+len(overrides))
-	for _, entry := range base {
-		key, _, _ := strings.Cut(entry, "=")
-		if idx, ok := indexByKey[key]; ok {
-			out[idx] = entry
-			continue
-		}
-		indexByKey[key] = len(out)
-		out = append(out, entry)
-	}
-	for _, entry := range overrides {
-		key, _, _ := strings.Cut(entry, "=")
-		if idx, ok := indexByKey[key]; ok {
-			out[idx] = entry
-			continue
-		}
-		indexByKey[key] = len(out)
-		out = append(out, entry)
-	}
-	return out
-}
-
-func sanitizeComposeCommand(target Target, args []string) string {
-	sanitized := make([]string, len(args))
-	for i, arg := range args {
-		sanitized[i] = sanitizeComposeText(target, arg)
-	}
-	return strings.Join(sanitized, " ")
-}
-
-func sanitizeComposeText(target Target, text string) string {
-	text = redactEnvAssignments(text, "MYSQL_PWD", "DB_PASSWORD", "DB_ROOT_PASSWORD")
-	for _, secret := range []string{target.DBPassword, target.DBRootPassword} {
-		secret = strings.TrimSpace(secret)
-		if secret == "" {
-			continue
-		}
-		text = strings.ReplaceAll(text, secret, redactedSecret)
-	}
-	return text
-}
-
-func redactEnvAssignments(text string, keys ...string) string {
-	for _, key := range keys {
-		text = redactEnvAssignment(text, key)
-	}
-	return text
-}
-
-func redactEnvAssignment(text, key string) string {
-	marker := key + "="
-	searchFrom := 0
-	for {
-		relativeStart := strings.Index(text[searchFrom:], marker)
-		if relativeStart < 0 {
-			return text
-		}
-		start := searchFrom + relativeStart
-		end := start + len(marker)
-		for end < len(text) && !isSecretDelimiter(text[end]) {
-			end++
-		}
-		text = text[:start] + marker + redactedSecret + text[end:]
-		searchFrom = start + len(marker) + len(redactedSecret)
-	}
-}
-
-func isSecretDelimiter(b byte) bool {
-	switch b {
-	case ' ', '\t', '\n', '\r', '"', '\'', ',', ';', ')', '(':
-		return true
-	default:
-		return false
-	}
-}
-
-func serviceArgs(action string, services []string) ([]string, error) {
-	out := make([]string, 1, len(services)+1)
-	out[0] = action
-	for _, service := range services {
-		service = strings.TrimSpace(service)
-		if service == "" {
-			return nil, fmt.Errorf("%s service names must be non-empty", action)
-		}
-		out = append(out, service)
-	}
-	if len(out) == 1 {
-		return nil, fmt.Errorf("%s requires at least one service", action)
-	}
-	return out, nil
-}
-
-func upServiceArgs(services []string) ([]string, error) {
-	out := make([]string, 0, len(services)+2)
-	out = append(out, "up", "-d")
-	for _, service := range services {
-		service = strings.TrimSpace(service)
-		if service == "" {
-			return nil, fmt.Errorf("up service names must be non-empty")
-		}
-		out = append(out, service)
-	}
-	if len(out) == 2 {
-		return nil, fmt.Errorf("up requires at least one service")
-	}
-	return out, nil
-}
-
-func decodeServiceStatuses(raw []byte) ([]ServiceStatus, error) {
-	raw = bytes.TrimSpace(raw)
-	if len(raw) == 0 {
-		return nil, io.ErrUnexpectedEOF
-	}
-
-	if raw[0] == '[' {
-		var services []ServiceStatus
-		if err := json.Unmarshal(raw, &services); err != nil {
-			return nil, err
-		}
-		normalizeServiceStatuses(services)
-		return services, nil
-	}
-
-	decoder := json.NewDecoder(bytes.NewReader(raw))
-	services := make([]ServiceStatus, 0, 4)
-	for {
-		var service ServiceStatus
-		if err := decoder.Decode(&service); err != nil {
-			if err == io.EOF {
-				break
-			}
-			return nil, err
-		}
-		normalizeServiceStatus(&service)
-		services = append(services, service)
-	}
-	return services, nil
-}
-
-func normalizeServiceStatuses(services []ServiceStatus) {
-	for i := range services {
-		normalizeServiceStatus(&services[i])
-	}
-}
-
-func normalizeServiceStatus(service *ServiceStatus) {
-	if service == nil {
-		return
-	}
-	service.Name = strings.TrimSpace(service.Name)
-	service.State = strings.ToLower(strings.TrimSpace(service.State))
-	service.Health = strings.ToLower(strings.TrimSpace(service.Health))
-}
-
-func requireHealthyServices(statuses []ServiceStatus, services []string) error {
-	available := make(map[string]ServiceStatus, len(statuses))
-	for _, status := range statuses {
-		name := strings.TrimSpace(status.Name)
-		if name == "" {
-			continue
-		}
-		available[name] = status
-	}
-
-	for _, service := range services {
-		name := strings.TrimSpace(service)
-		if name == "" {
-			return fmt.Errorf("service names must be non-empty")
-		}
-
-		status, ok := available[name]
-		if !ok {
-			return &ServiceHealthError{
-				Service: name,
-				Message: fmt.Sprintf("service %q not found in docker compose ps output", name),
-			}
-		}
-		if status.State != "running" {
-			return &ServiceHealthError{
-				Service: name,
-				State:   statusValue(status.State),
-				Message: fmt.Sprintf("service %q state is %q (want \"running\")", name, statusValue(status.State)),
-			}
-		}
-		if status.Health == "" {
-			return &ServiceHealthError{
-				Service: name,
-				State:   status.State,
-				Message: fmt.Sprintf("service %q has no docker compose health status", name),
-			}
-		}
-		if status.Health == "starting" {
-			return &ServiceHealthError{
-				Service:   name,
-				State:     status.State,
-				Health:    status.Health,
-				Message:   fmt.Sprintf("service %q health is %q (want \"healthy\")", name, status.Health),
-				Retryable: true,
-			}
-		}
-		if status.Health != "healthy" {
-			return &ServiceHealthError{
-				Service: name,
-				State:   status.State,
-				Health:  status.Health,
-				Message: fmt.Sprintf("service %q health is %q (want \"healthy\")", name, status.Health),
-			}
-		}
-	}
-
-	return nil
-}
-
-func statusValue(value string) string {
-	value = strings.TrimSpace(value)
-	if value == "" {
-		return "unknown"
-	}
-	return value
-}
-
-func closeResource(closer io.Closer, errp *error) {
-	if closer == nil {
-		return
-	}
-	if closeErr := closer.Close(); closeErr != nil && *errp == nil {
-		*errp = closeErr
-	}
+	quoted := "`" + strings.ReplaceAll(name, "`", "``") + "`"
+	return fmt.Sprintf("DROP DATABASE IF EXISTS %s; CREATE DATABASE %s CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;", quoted, quoted)
 }

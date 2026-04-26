@@ -4,7 +4,6 @@ import (
 	"compress/gzip"
 	"context"
 	"encoding/json"
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -12,185 +11,230 @@ import (
 	"time"
 
 	"github.com/lazuale/espocrm-ops/internal/config"
-	"github.com/lazuale/espocrm-ops/internal/manifest"
 	"github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
-func TestBackupCreatesMinimalBackupSet(t *testing.T) {
+func TestBackupAndRestoreStayLinear(t *testing.T) {
 	cfg := testConfig(t)
-	rt := &fakeRuntime{dumpSQL: "create table account(id int);\n"}
-	now := time.Date(2026, 4, 26, 13, 14, 15, 16, time.UTC)
+	dumpPath := filepath.Join(t.TempDir(), "dump.sql")
+	importPath := filepath.Join(t.TempDir(), "import.sql")
+	callsPath := filepath.Join(t.TempDir(), "calls")
+	if err := os.WriteFile(dumpPath, []byte("create table account(id int);\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	installFakeDocker(t, callsPath, dumpPath, importPath)
 
-	result, err := Backup(context.Background(), cfg, rt, now)
+	now := time.Date(2026, 4, 26, 13, 14, 15, 0, time.UTC)
+	result, err := Backup(context.Background(), cfg, now)
 	if err != nil {
 		t.Fatalf("Backup failed: %v", err)
 	}
 
-	wantDir := filepath.Join(cfg.BackupRoot, "prod", now.Format(backupTimestampFormat))
-	if result.Manifest != filepath.Join(wantDir, manifest.ManifestName) {
-		t.Fatalf("unexpected manifest path: %s", result.Manifest)
+	wantDir := filepath.Join(cfg.BackupRoot, cfg.Scope, now.Format(backupTimestampFormat))
+	if result.Manifest != filepath.Join(wantDir, ManifestName) {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
 	}
-	for _, path := range []string{
-		filepath.Join(wantDir, manifest.ManifestName),
-		filepath.Join(wantDir, manifest.DBFileName),
-		filepath.Join(wantDir, manifest.FilesFileName),
-	} {
-		if _, err := os.Stat(path); err != nil {
-			t.Fatalf("expected backup artifact %s: %v", path, err)
-		}
-	}
-	loaded, err := manifest.Load(result.Manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if loaded.DB.File != manifest.DBFileName || loaded.Files.File != manifest.FilesFileName {
-		t.Fatalf("unexpected manifest: %#v", loaded)
-	}
-	if loaded.DBName != cfg.DBName {
-		t.Fatalf("unexpected manifest db name: %s", loaded.DBName)
-	}
-	rawManifest, err := os.ReadFile(result.Manifest)
-	if err != nil {
-		t.Fatal(err)
-	}
-	var rawFields map[string]json.RawMessage
-	if err := json.Unmarshal(rawManifest, &rawFields); err != nil {
-		t.Fatal(err)
-	}
-	wantFields := map[string]bool{
-		"scope":      true,
-		"created_at": true,
-		"db":         true,
-		"files":      true,
-		"db_name":    true,
-	}
-	if len(rawFields) != len(wantFields) {
-		t.Fatalf("unexpected manifest fields: %#v", rawFields)
-	}
-	for field := range rawFields {
-		if !wantFields[field] {
-			t.Fatalf("unexpected manifest field %q", field)
-		}
-	}
-	if strings.Join(rt.calls, ",") != "compose_config,stop_services,dump_database,start_services,service_health" {
-		t.Fatalf("unexpected calls: %s", strings.Join(rt.calls, ","))
-	}
-}
+	assertManifestOnlyHasChecksums(t, result.Manifest)
 
-func TestRestoreCreatesSnapshotAndSwitchesStorage(t *testing.T) {
-	cfg := testConfig(t)
-	rt := &fakeRuntime{dumpSQL: "source db\n"}
-	sourceNow := time.Date(2026, 4, 26, 13, 0, 0, 0, time.UTC)
-
-	source, err := Backup(context.Background(), cfg, rt, sourceNow)
-	if err != nil {
-		t.Fatalf("source Backup failed: %v", err)
-	}
-	writeStorageFile(t, cfg.StorageDir, "data/file.txt", "target before restore\n")
-	rt.calls = nil
-	rt.dumpSQL = "snapshot db\n"
-
-	restoreNow := sourceNow.Add(time.Second)
-	result, err := Restore(context.Background(), cfg, source.Manifest, rt, restoreNow)
-	if err != nil {
+	writeStorageFile(t, cfg.StorageDir, "data/file.txt", "changed\n")
+	if err := Restore(context.Background(), cfg, result.Manifest); err != nil {
 		t.Fatalf("Restore failed: %v", err)
 	}
-	if result.SnapshotManifest == "" {
-		t.Fatal("restore must create target snapshot")
-	}
-	body, err := os.ReadFile(filepath.Join(cfg.StorageDir, "data", "file.txt"))
+
+	restored, err := os.ReadFile(filepath.Join(cfg.StorageDir, "data", "file.txt"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(body) != "initial storage\n" {
-		t.Fatalf("storage was not restored from source backup: %q", body)
+	if string(restored) != "initial storage\n" {
+		t.Fatalf("storage was not restored: %q", restored)
 	}
-	if rt.restoredSQL != "source db\n" {
-		t.Fatalf("database restore used wrong source: %q", rt.restoredSQL)
-	}
-
-	wantCalls := "compose_config,stop_services,dump_database,start_services,service_health,stop_services,reset_database,restore_database,start_services,service_health,db_ping"
-	if strings.Join(rt.calls, ",") != wantCalls {
-		t.Fatalf("unexpected restore calls:\nwant %s\ngot  %s", wantCalls, strings.Join(rt.calls, ","))
-	}
-}
-
-func TestRestoreRejectsDifferentScopeBeforeSnapshot(t *testing.T) {
-	cfg := testConfig(t)
-	rt := &fakeRuntime{dumpSQL: "source db\n"}
-	source, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 26, 13, 0, 0, 0, time.UTC))
-	if err != nil {
-		t.Fatalf("source Backup failed: %v", err)
-	}
-
-	loaded, err := manifest.Load(source.Manifest)
+	imported, err := os.ReadFile(importPath)
 	if err != nil {
 		t.Fatal(err)
 	}
-	loaded.Scope = "dev"
-	if err := manifest.Write(source.Manifest, loaded); err != nil {
+	if string(imported) != "create table account(id int);\n" {
+		t.Fatalf("wrong imported sql: %q", imported)
+	}
+
+	calls, err := os.ReadFile(callsPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := strings.Join(strings.Fields(strings.TrimSpace(string(calls))), " ")
+	want := "stop espocrm,espocrm-daemon dump db start espocrm,espocrm-daemon stop espocrm,espocrm-daemon reset db import db start espocrm,espocrm-daemon"
+	if got != want {
+		t.Fatalf("unexpected calls:\nwant %s\ngot  %s", want, got)
+	}
+}
+
+func TestVerifyDoesNotInspectTarContents(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, DBFileName)
+	filesPath := filepath.Join(dir, FilesFileName)
+	writeGzipFile(t, dbPath, "sql\n")
+	writeGzipFile(t, filesPath, "not a tar stream\n")
+
+	dbSHA, err := runtime.SHA256(context.Background(), dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	filesSHA, err := runtime.SHA256(context.Background(), filesPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	manifestPath := filepath.Join(dir, ManifestName)
+	if err := writeManifest(manifestPath, dbSHA, filesSHA); err != nil {
 		t.Fatal(err)
 	}
 
-	rt.calls = nil
-	_, err = Restore(context.Background(), cfg, source.Manifest, rt, time.Date(2026, 4, 26, 13, 0, 1, 0, time.UTC))
-	if err == nil || !strings.Contains(err.Error(), "manifest scope") {
-		t.Fatalf("expected scope error, got %v", err)
-	}
-	if len(rt.calls) != 0 {
-		t.Fatalf("restore should fail before snapshot or mutation, got calls %#v", rt.calls)
+	if _, err := VerifyBackup(context.Background(), manifestPath); err != nil {
+		t.Fatalf("VerifyBackup should only require gzip readability: %v", err)
 	}
 }
 
-type fakeRuntime struct {
-	calls       []string
-	dumpSQL     string
-	restoredSQL string
-}
+func TestVerifyRejectsChecksumMismatch(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := filepath.Join(dir, DBFileName)
+	filesPath := filepath.Join(dir, FilesFileName)
+	writeGzipFile(t, dbPath, "sql\n")
+	writeGzipFile(t, filesPath, "files\n")
 
-func (f *fakeRuntime) ComposeConfig(context.Context, runtime.Target) error {
-	f.calls = append(f.calls, "compose_config")
-	return nil
-}
-
-func (f *fakeRuntime) StopServices(context.Context, runtime.Target, []string) error {
-	f.calls = append(f.calls, "stop_services")
-	return nil
-}
-
-func (f *fakeRuntime) StartServices(context.Context, runtime.Target, []string) error {
-	f.calls = append(f.calls, "start_services")
-	return nil
-}
-
-func (f *fakeRuntime) DumpDatabase(_ context.Context, _ runtime.Target, destPath string) error {
-	f.calls = append(f.calls, "dump_database")
-	return writeGzipFile(destPath, f.dumpSQL)
-}
-
-func (f *fakeRuntime) RequireHealthyServices(context.Context, runtime.Target, []string) error {
-	f.calls = append(f.calls, "service_health")
-	return nil
-}
-
-func (f *fakeRuntime) ResetDatabase(context.Context, runtime.Target) error {
-	f.calls = append(f.calls, "reset_database")
-	return nil
-}
-
-func (f *fakeRuntime) RestoreDatabase(_ context.Context, _ runtime.Target, sourcePath string) error {
-	f.calls = append(f.calls, "restore_database")
-	body, err := readGzipFile(sourcePath)
+	filesSHA, err := runtime.SHA256(context.Background(), filesPath)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	f.restoredSQL = body
-	return nil
+	manifestPath := filepath.Join(dir, ManifestName)
+	if err := writeManifest(manifestPath, strings.Repeat("0", 64), filesSHA); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := VerifyBackup(context.Background(), manifestPath); err == nil || !strings.Contains(err.Error(), "checksum mismatch") {
+		t.Fatalf("expected checksum mismatch, got %v", err)
+	}
 }
 
-func (f *fakeRuntime) DBPing(context.Context, runtime.Target) error {
-	f.calls = append(f.calls, "db_ping")
-	return nil
+func assertManifestOnlyHasChecksums(t *testing.T, path string) {
+	t.Helper()
+
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var values map[string]string
+	if err := json.Unmarshal(raw, &values); err != nil {
+		t.Fatal(err)
+	}
+	if len(values) != 2 || values["db"] == "" || values["files"] == "" {
+		t.Fatalf("manifest must contain only db/files checksums: %#v", values)
+	}
+}
+
+func installFakeDocker(t *testing.T, callsPath, dumpPath, importPath string) {
+	t.Helper()
+
+	bin := t.TempDir()
+	script := `#!/bin/sh
+set -eu
+
+log() {
+  printf '%s\n' "$1" >> "$ESP_TEST_CALLS"
+}
+
+if [ "${1:-}" = "compose" ]; then
+  shift
+fi
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --env-file|-f)
+      shift 2
+      ;;
+    *)
+      break
+      ;;
+  esac
+done
+
+cmd="${1:-}"
+if [ "$#" -gt 0 ]; then
+  shift
+fi
+
+case "$cmd" in
+  config)
+    exit 0
+    ;;
+  stop)
+    log "stop $*"
+    exit 0
+    ;;
+  up)
+    if [ "${1:-}" = "-d" ]; then
+      shift
+    fi
+    log "start $*"
+    exit 0
+    ;;
+  exec)
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        -T)
+          shift
+          ;;
+        -e)
+          shift 2
+          ;;
+        *)
+          break
+          ;;
+      esac
+    done
+    service="${1:-}"
+    if [ "$#" -gt 0 ]; then
+      shift
+    fi
+    tool="${1:-}"
+    if [ "$#" -gt 0 ]; then
+      shift
+    fi
+    case "$tool" in
+      mariadb-dump)
+        log "dump $service"
+        cat "$ESP_TEST_DUMP"
+        exit 0
+        ;;
+      mariadb)
+        args="$*"
+        case "$args" in
+          *"SELECT 1"*)
+            log "ping $service"
+            exit 0
+            ;;
+          *"DROP DATABASE"*)
+            log "reset $service"
+            exit 0
+            ;;
+          *)
+            log "import $service"
+            cat > "$ESP_TEST_IMPORT"
+            exit 0
+            ;;
+        esac
+        ;;
+    esac
+    ;;
+esac
+
+echo "unexpected docker args: $cmd $*" >&2
+exit 1
+`
+	path := filepath.Join(bin, "docker")
+	if err := os.WriteFile(path, []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+	t.Setenv("ESP_TEST_CALLS", callsPath)
+	t.Setenv("ESP_TEST_DUMP", dumpPath)
+	t.Setenv("ESP_TEST_IMPORT", importPath)
 }
 
 func testConfig(t *testing.T) config.Config {
@@ -224,7 +268,7 @@ func testConfig(t *testing.T) config.Config {
 		EnvFile:        filepath.Join(projectDir, ".env.prod"),
 		BackupRoot:     backupRoot,
 		StorageDir:     storageDir,
-		AppServices:    []string{"espocrm", "espocrm-daemon"},
+		AppServices:    []string{"espocrm,espocrm-daemon"},
 		DBService:      "db",
 		DBUser:         "espocrm",
 		DBPassword:     "dbpass",
@@ -244,35 +288,20 @@ func writeStorageFile(t *testing.T, root, rel, body string) {
 	}
 }
 
-func writeGzipFile(path, body string) (err error) {
+func writeGzipFile(t *testing.T, path, body string) {
+	t.Helper()
 	file, err := os.Create(path)
 	if err != nil {
-		return err
+		t.Fatal(err)
 	}
-	defer closeResource(file, &err)
-
 	writer := gzip.NewWriter(file)
-	defer closeResource(writer, &err)
-	_, err = writer.Write([]byte(body))
-	return err
-}
-
-func readGzipFile(path string) (body string, err error) {
-	file, err := os.Open(path)
-	if err != nil {
-		return "", err
+	if _, err := writer.Write([]byte(body)); err != nil {
+		t.Fatal(err)
 	}
-	defer closeResource(file, &err)
-
-	reader, err := gzip.NewReader(file)
-	if err != nil {
-		return "", err
+	if err := writer.Close(); err != nil {
+		t.Fatal(err)
 	}
-	defer closeResource(reader, &err)
-
-	raw, err := io.ReadAll(reader)
-	if err != nil {
-		return "", err
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
 	}
-	return string(raw), nil
 }

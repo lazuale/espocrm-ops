@@ -1,6 +1,6 @@
 # Contributing
 
-This repository is intentionally small.
+This repository is intentionally small. Keep it stupid.
 
 ## Product Shape
 
@@ -14,30 +14,14 @@ The product commands are exactly:
 ## Code Boundaries
 
 - `cmd/espops/` is only the process entrypoint.
-- `internal/cli/` owns command parsing and JSON output.
-- `internal/config/` owns literal env parsing and config validation.
-- `internal/manifest/` owns manifest read/write/validation.
-- `internal/ops/` owns command orchestration.
-- `internal/runtime/docker.go` owns Docker Compose, MariaDB, native tar execution, Go gzip DB streams, and process env forwarding.
+- `internal/cli/` owns argument parsing and plain text output.
+- `internal/config/` owns literal env parsing.
+- `internal/ops/` owns the direct command order.
+- `internal/runtime/docker.go` owns calls to `docker compose`, `mariadb-dump`, `mariadb`, `tar`, `gzip`, and `sha256sum`.
 
-Avoid abstractions until two real call sites need them.
+Do not add runtime interfaces, adapters, DI, JSON output, structured error taxonomies, health polling, rollback, staging, snapshots, or retry loops.
 
 ## Backup Shape
-
-Env files are `KEY=VALUE` lines. For keys read by `espops`, quotes, spaces, and shell expansion fail. Duplicate keys fail.
-
-Env keys read by `espops` are:
-
-- `BACKUP_ROOT`
-- `ESPO_STORAGE_DIR`
-- `APP_SERVICES`
-- `DB_SERVICE`
-- `DB_USER`
-- `DB_PASSWORD`
-- `DB_ROOT_PASSWORD`
-- `DB_NAME`
-
-Other env keys are ignored by `espops` and left for Docker Compose.
 
 Backup layout:
 
@@ -52,31 +36,26 @@ Manifest:
 
 ```json
 {
-  "scope": "...",
-  "created_at": "...",
-  "db": {"file": "db.sql.gz", "sha256": "..."},
-  "files": {"file": "files.tar.gz", "sha256": "..."},
-  "db_name": "..."
+  "db": "...",
+  "files": "..."
 }
 ```
 
+Do not duplicate scope, timestamp, database name, or fixed file names in the manifest.
+
 ## Restore Order
 
-`restore` must:
+`restore` must stay linear:
 
-1. Acquire the simple project lock.
-2. Verify the source manifest and checksums.
-3. Create a target snapshot backup.
-4. Extract files to staging.
-5. Stop app services.
-6. Reset the DB as MariaDB root.
-7. Import the DB dump.
-8. Switch storage by same-parent rename.
-9. Start app services.
-10. Check service health.
-11. Run DB ping.
+1. Verify manifest/checksums/gzip readability.
+2. Stop app services.
+3. Reset the DB as MariaDB root.
+4. Import the DB dump.
+5. Replace the storage directory.
+6. Extract files.
+7. Start app services.
 
-Do not report success before health and DB ping pass.
+No rollback. No staging. No snapshot.
 
 ## Verification
 

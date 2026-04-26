@@ -9,11 +9,6 @@ import (
 	"strings"
 )
 
-type Request struct {
-	Scope      string
-	ProjectDir string
-}
-
 type Config struct {
 	Scope          string
 	ProjectDir     string
@@ -40,13 +35,13 @@ var requiredKeys = []string{
 	"DB_NAME",
 }
 
-func Load(req Request) (Config, error) {
-	scope := strings.TrimSpace(req.Scope)
+func Load(scopeValue, projectDirValue string) (Config, error) {
+	scope := strings.TrimSpace(scopeValue)
 	if err := validateScope(scope); err != nil {
 		return Config{}, err
 	}
 
-	projectDir, err := filepath.Abs(filepath.Clean(strings.TrimSpace(req.ProjectDir)))
+	projectDir, err := filepath.Abs(filepath.Clean(strings.TrimSpace(projectDirValue)))
 	if err != nil {
 		return Config{}, fmt.Errorf("resolve project dir: %w", err)
 	}

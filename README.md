@@ -1,6 +1,6 @@
 # espocrm-ops
 
-`espops` is a small internal JSON CLI for one EspoCRM Docker Compose server.
+`espops` is a small internal CLI wrapper for one EspoCRM Docker Compose server.
 
 Commands:
 
@@ -43,7 +43,7 @@ Env keys read by `espops`:
 - `DB_ROOT_PASSWORD`
 - `DB_NAME`
 
-`APP_SERVICES` is a comma-separated list. `DB_SERVICE` and every service in `APP_SERVICES` must expose a Docker Compose healthcheck.
+`APP_SERVICES` is a comma-separated list.
 
 ## Backup Set
 
@@ -56,15 +56,12 @@ BACKUP_ROOT/<scope>/<timestamp>/
   files.tar.gz
 ```
 
-The manifest schema is:
+`manifest.json` contains only checksums:
 
 ```json
 {
-  "scope": "prod",
-  "created_at": "2026-04-26T13:00:00Z",
-  "db": {"file": "db.sql.gz", "sha256": "..."},
-  "files": {"file": "files.tar.gz", "sha256": "..."},
-  "db_name": "espocrm"
+  "db": "...",
+  "files": "..."
 }
 ```
 
@@ -73,12 +70,11 @@ The manifest schema is:
 `doctor` fails unless:
 
 - config parses
+- `docker`, `tar`, `gzip`, and `sha256sum` exist
 - `docker compose config` works
-- `BACKUP_ROOT` is writable
+- `BACKUP_ROOT` exists and is writable
 - `ESPO_STORAGE_DIR` exists and is a directory
-- native `tar` exists
-- configured services are healthy
-- MariaDB ping works
+- MariaDB accepts `SELECT 1`
 
 ## Backup
 
@@ -87,7 +83,9 @@ The manifest schema is:
 ./bin/espops backup verify --manifest /path/to/backups/prod/<timestamp>/manifest.json
 ```
 
-`backup` acquires the project lock, checks prerequisites, creates the backup directory, stops app services, dumps MariaDB to `db.sql.gz`, archives storage to `files.tar.gz`, starts app services, waits for health, writes SHA-256 checksums into `manifest.json`, and verifies the new backup set before reporting success.
+`backup` runs `docker compose stop`, dumps MariaDB through `mariadb-dump | gzip`, archives storage with `tar`, starts app services with `docker compose up -d`, and writes `sha256sum` values to `manifest.json`.
+
+`backup verify` only checks that the fixed files exist, `sha256sum` matches, and `gzip -t` accepts both `db.sql.gz` and `files.tar.gz`. It does not inspect tar contents.
 
 ## Restore
 
@@ -96,10 +94,8 @@ The manifest schema is:
 ./bin/espops restore --scope prod --project-dir /path/to/project --manifest /path/to/backups/prod/<timestamp>/manifest.json
 ```
 
-`restore` is destructive and same-scope only. The manifest scope and `db_name` must match the target config. It acquires the project lock, verifies the manifest, creates a target snapshot backup, extracts `files.tar.gz` to staging, stops app services, resets the configured database as MariaDB root, imports `db.sql.gz`, switches storage by same-parent rename, starts app services, waits for health, and runs DB ping.
+`restore` is destructive and linear: verify, stop app services, reset the database as MariaDB root, import `db.sql.gz`, replace `ESPO_STORAGE_DIR`, extract `files.tar.gz`, start app services.
 
-If restore fails after the snapshot exists, the JSON result includes `snapshot_manifest`.
+## Output
 
-## JSON Output
-
-Every command writes one JSON object to stdout. Success has `"ok": true`; failure has `"ok": false` and an `error` object.
+Stdout is plain text. Errors go to stderr. Exit codes are `0` for success, `1` for failure, and `2` for bad CLI usage.
