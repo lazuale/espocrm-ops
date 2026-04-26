@@ -170,6 +170,8 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 		"--routines",
 		"--triggers",
 		"--events",
+		"--hex-blob",
+		"--default-character-set=utf8mb4",
 		"-u", target.DBUser,
 		target.DBName,
 	); err != nil {

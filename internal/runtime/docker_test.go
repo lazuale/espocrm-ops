@@ -192,10 +192,27 @@ func TestDockerComposeDumpDatabaseRunsMariadbDump(t *testing.T) {
 		t.Fatalf("DumpDatabase failed: %v", err)
 	}
 
-	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" exec -T -e MYSQL_PWD db mariadb-dump --single-transaction --quick --routines --triggers --events -u espocrm espocrm") {
-		t.Fatalf("unexpected docker log:\n%s", log)
+	wantArgv := []string{
+		"compose",
+		"--env-file", filepath.Join(projectDir, ".env.prod"),
+		"-f", filepath.Join(projectDir, "compose.yaml"),
+		"exec", "-T", "-e", "MYSQL_PWD", "db",
+		"mariadb-dump",
+		"--single-transaction",
+		"--quick",
+		"--routines",
+		"--triggers",
+		"--events",
+		"--hex-blob",
+		"--default-character-set=utf8mb4",
+		"-u", "espocrm",
+		"espocrm",
 	}
+	if gotArgv := fakeDockerArgv(t, logPath); strings.Join(gotArgv, "\n") != strings.Join(wantArgv, "\n") {
+		t.Fatalf("unexpected docker argv:\ngot  %#v\nwant %#v", gotArgv, wantArgv)
+	}
+
+	log := mustReadFile(t, logPath)
 	if strings.Contains(log, "db-secret") {
 		t.Fatalf("docker log leaked db password:\n%s", log)
 	}
@@ -691,6 +708,12 @@ func fakeDockerEnvLogPath(logPath string) string {
 	return filepath.Join(fakeDockerRoot(logPath), "docker.env")
 }
 
+func fakeDockerArgv(t *testing.T, logPath string) []string {
+	t.Helper()
+	raw := mustReadFile(t, filepath.Join(fakeDockerRoot(logPath), "docker.argv"))
+	return strings.Split(strings.TrimSuffix(raw, "\n"), "\n")
+}
+
 func mustReadFile(t *testing.T, path string) string {
 	t.Helper()
 
@@ -774,6 +797,10 @@ script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 fake_root="$(cd -- "$script_dir/.." && pwd)"
 
 printf '%s\n' "$*" >>"$fake_root/docker.log"
+: >"$fake_root/docker.argv"
+for arg in "$@"; do
+  printf '%s\n' "$arg" >>"$fake_root/docker.argv"
+done
 env | LC_ALL=C sort >>"$fake_root/docker.env"
 printf '\n' >>"$fake_root/docker.env"
 
@@ -832,6 +859,28 @@ case "${1:-}" in
     case "${1:-}" in
       mariadb-dump)
         [[ "${MYSQL_PWD:-}" == "db-secret" ]] || exit 1
+        shift
+        [[ "${1:-}" == "--single-transaction" ]] || exit 1
+        shift
+        [[ "${1:-}" == "--quick" ]] || exit 1
+        shift
+        [[ "${1:-}" == "--routines" ]] || exit 1
+        shift
+        [[ "${1:-}" == "--triggers" ]] || exit 1
+        shift
+        [[ "${1:-}" == "--events" ]] || exit 1
+        shift
+        [[ "${1:-}" == "--hex-blob" ]] || exit 1
+        shift
+        [[ "${1:-}" == "--default-character-set=utf8mb4" ]] || exit 1
+        shift
+        [[ "${1:-}" == "-u" ]] || exit 1
+        shift
+        [[ "${1:-}" == "espocrm" ]] || exit 1
+        shift
+        [[ "${1:-}" == "espocrm" ]] || exit 1
+        shift
+        [[ $# -eq 0 ]] || exit 1
         printf 'create table test(id int);\n'
         exit 0
         ;;
