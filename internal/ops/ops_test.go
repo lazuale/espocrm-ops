@@ -53,6 +53,16 @@ func TestBackupCreatesMinimalV1BackupSet(t *testing.T) {
 	if loaded.Version != manifest.Version || loaded.DB.File != manifest.DBFileName || loaded.Files.File != manifest.FilesFileName {
 		t.Fatalf("unexpected manifest: %#v", loaded)
 	}
+	if loaded.DBName != cfg.DBName {
+		t.Fatalf("unexpected manifest db name: %s", loaded.DBName)
+	}
+	rawManifest, err := os.ReadFile(result.Manifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(rawManifest), "db_service") || strings.Contains(string(rawManifest), "app_services") {
+		t.Fatalf("manifest must not store runtime service names: %s", string(rawManifest))
+	}
 	if strings.Join(rt.calls, ",") != "compose_config,stop_services,dump_database,start_services,service_health" {
 		t.Fatalf("unexpected calls: %s", strings.Join(rt.calls, ","))
 	}

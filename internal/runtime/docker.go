@@ -2,9 +2,9 @@ package runtime
 
 import (
 	"bytes"
+	"compress/gzip"
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -55,12 +55,8 @@ func TarExists() error {
 	return nil
 }
 
-func TestGzip(ctx context.Context, path string) error {
-	return runNative(ctx, "gzip", runOptions{}, "-t", path)
-}
-
 func TestTarGz(ctx context.Context, path string) error {
-	return runNative(ctx, "tar", runOptions{}, "-tzf", path)
+	return runTar(ctx, "-tzf", path)
 }
 
 func CreateStorageArchive(ctx context.Context, sourceDir, destPath string) error {
@@ -70,7 +66,7 @@ func CreateStorageArchive(ctx context.Context, sourceDir, destPath string) error
 	if strings.TrimSpace(destPath) == "" {
 		return fmt.Errorf("storage archive destination is required")
 	}
-	return runNative(ctx, "tar", runOptions{}, "-C", sourceDir, "-czf", destPath, ".")
+	return runTar(ctx, "-C", sourceDir, "-czf", destPath, ".")
 }
 
 func ExtractStorageArchive(ctx context.Context, archivePath, destDir string) error {
@@ -80,7 +76,7 @@ func ExtractStorageArchive(ctx context.Context, archivePath, destDir string) err
 	if strings.TrimSpace(destDir) == "" {
 		return fmt.Errorf("storage archive destination is required")
 	}
-	return runNative(ctx, "tar", runOptions{}, "-xzf", archivePath, "-C", destDir)
+	return runTar(ctx, "-xzf", archivePath, "-C", destDir)
 }
 
 func (DockerCompose) ComposeConfig(ctx context.Context, target Target) error {
@@ -142,8 +138,12 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 	}
 	defer closeResource(file, &err)
 
-	dump := composeCommand(ctx, target, runOptions{
-		env: []string{"MYSQL_PWD=" + password},
+	writer := gzip.NewWriter(file)
+	defer closeResource(writer, &err)
+
+	return runCompose(ctx, target, runOptions{
+		env:    []string{"MYSQL_PWD=" + password},
+		stdout: writer,
 	},
 		"exec", "-T", "-e", "MYSQL_PWD", service,
 		"mariadb-dump",
@@ -157,11 +157,6 @@ func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath s
 		"-u", target.DBUser,
 		target.DBName,
 	)
-	gzipCmd := exec.CommandContext(ctx, "gzip", "-c")
-	gzipCmd.Env = commandEnv(os.Environ(), nil)
-	gzipCmd.Stdout = file
-
-	return runPipeline(target, dump, gzipCmd, "database dump", "gzip")
 }
 
 func (DockerCompose) ResetDatabase(ctx context.Context, target Target) error {
@@ -176,7 +171,7 @@ func (DockerCompose) ResetDatabase(ctx context.Context, target Target) error {
 	)
 }
 
-func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, sourcePath string) error {
+func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, sourcePath string) (err error) {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -189,18 +184,27 @@ func (DockerCompose) RestoreDatabase(ctx context.Context, target Target, sourceP
 		return err
 	}
 
-	gzipCmd := exec.CommandContext(ctx, "gzip", "-dc", sourcePath)
-	gzipCmd.Env = commandEnv(os.Environ(), nil)
-	restore := composeCommand(ctx, target, runOptions{
-		env: []string{"MYSQL_PWD=" + password},
+	file, err := os.Open(sourcePath)
+	if err != nil {
+		return fmt.Errorf("open db backup file: %w", err)
+	}
+	defer closeResource(file, &err)
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		return fmt.Errorf("open db backup gzip stream: %w", err)
+	}
+	defer closeResource(reader, &err)
+
+	return runCompose(ctx, target, runOptions{
+		env:   []string{"MYSQL_PWD=" + password},
+		stdin: reader,
 	},
 		"exec", "-T", "-e", "MYSQL_PWD", service,
 		"mariadb",
 		"-u", target.DBUser,
 		target.DBName,
 	)
-
-	return runPipeline(target, gzipCmd, restore, "gzip", "database import")
 }
 
 func (DockerCompose) DBPing(ctx context.Context, target Target) error {
@@ -253,62 +257,20 @@ func composeArgs(target Target, args ...string) []string {
 	return append(out, args...)
 }
 
-func runNative(ctx context.Context, name string, opts runOptions, args ...string) error {
+func runTar(ctx context.Context, args ...string) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
 
-	cmd := exec.CommandContext(ctx, name, args...)
-	cmd.Stdin = opts.stdin
-	if opts.stdout != nil {
-		cmd.Stdout = opts.stdout
-	}
-	cmd.Env = commandEnv(os.Environ(), opts.env)
+	cmd := exec.CommandContext(ctx, "tar", args...)
+	cmd.Env = commandEnv(os.Environ(), nil)
 
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
-		return commandError(Target{}, nativeCommand(name, args), stderr.String(), err)
+		return commandError(Target{}, "tar "+strings.Join(args, " "), stderr.String(), err)
 	}
 	return nil
-}
-
-func runPipeline(target Target, first, second *exec.Cmd, firstLabel, secondLabel string) error {
-	var firstErrOut bytes.Buffer
-	var secondErrOut bytes.Buffer
-	first.Stderr = &firstErrOut
-	second.Stderr = &secondErrOut
-
-	reader, err := first.StdoutPipe()
-	if err != nil {
-		return fmt.Errorf("%s stdout pipe: %w", firstLabel, err)
-	}
-	second.Stdin = reader
-
-	if err := second.Start(); err != nil {
-		return commandError(target, secondLabel, secondErrOut.String(), err)
-	}
-	if err := first.Start(); err != nil {
-		_ = second.Process.Kill()
-		_ = second.Wait()
-		return commandError(target, firstLabel, firstErrOut.String(), err)
-	}
-
-	firstErr := first.Wait()
-	secondErr := second.Wait()
-	switch {
-	case firstErr != nil && secondErr != nil:
-		return errors.Join(
-			commandError(target, firstLabel, firstErrOut.String(), firstErr),
-			commandError(target, secondLabel, secondErrOut.String(), secondErr),
-		)
-	case firstErr != nil:
-		return commandError(target, firstLabel, firstErrOut.String(), firstErr)
-	case secondErr != nil:
-		return commandError(target, secondLabel, secondErrOut.String(), secondErr)
-	default:
-		return nil
-	}
 }
 
 func runMariaDBExec(ctx context.Context, target Target, password string, args ...string) error {
@@ -356,13 +318,6 @@ func commandError(target Target, command, stderr string, err error) error {
 		return fmt.Errorf("%s: %w", command, err)
 	}
 	return fmt.Errorf("%s: %s: %w", command, message, err)
-}
-
-func nativeCommand(name string, args []string) string {
-	command := make([]string, 0, len(args)+1)
-	command = append(command, name)
-	command = append(command, args...)
-	return strings.Join(command, " ")
 }
 
 func commandEnv(base, overrides []string) []string {

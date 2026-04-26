@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 )
 
@@ -58,9 +57,6 @@ func Load(req Request) (Config, error) {
 	envFile := filepath.Join(projectDir, ".env."+scope)
 	values, err := loadEnvAssignments(envFile)
 	if err != nil {
-		return Config{}, err
-	}
-	if err := requireOnlyKnownKeys(values, envFile); err != nil {
 		return Config{}, err
 	}
 	for _, key := range requiredKeys {
@@ -137,16 +133,6 @@ func requireFile(path, label string) error {
 	}
 	if info.IsDir() {
 		return fmt.Errorf("%s %s must be a file", label, path)
-	}
-	return nil
-}
-
-func requireOnlyKnownKeys(values map[string]string, envFile string) error {
-	for key := range values {
-		if slices.Contains(requiredKeys, key) {
-			continue
-		}
-		return fmt.Errorf("%s contains unknown key %s", envFile, key)
 	}
 	return nil
 }

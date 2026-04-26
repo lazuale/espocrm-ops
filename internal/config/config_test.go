@@ -34,7 +34,7 @@ func TestLoadConfigValid(t *testing.T) {
 	}
 }
 
-func TestLoadConfigRejectsUnknownKey(t *testing.T) {
+func TestLoadConfigAllowsUnknownComposeKeys(t *testing.T) {
 	projectDir := writeProject(t, []string{
 		"BACKUP_ROOT=backups",
 		"ESPO_STORAGE_DIR=storage",
@@ -44,12 +44,12 @@ func TestLoadConfigRejectsUnknownKey(t *testing.T) {
 		"DB_PASSWORD=dbpass",
 		"DB_ROOT_PASSWORD=rootpass",
 		"DB_NAME=espocrm",
-		"BACKUP_RETENTION_DAYS=7",
+		"ESPOCRM_IMAGE=espocrm:latest",
+		"SITE_URL=https://crm.example.test",
 	})
 
-	_, err := Load(Request{Scope: "prod", ProjectDir: projectDir})
-	if err == nil || !strings.Contains(err.Error(), "unknown key BACKUP_RETENTION_DAYS") {
-		t.Fatalf("expected unknown key error, got %v", err)
+	if _, err := Load(Request{Scope: "prod", ProjectDir: projectDir}); err != nil {
+		t.Fatalf("Load should ignore unknown compose keys: %v", err)
 	}
 }
 

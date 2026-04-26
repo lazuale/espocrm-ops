@@ -10,14 +10,12 @@ import (
 )
 
 type backupVerifyResult struct {
-	Manifest    string   `json:"manifest,omitempty"`
-	Scope       string   `json:"scope,omitempty"`
-	CreatedAt   string   `json:"created_at,omitempty"`
-	DBBackup    string   `json:"db_backup,omitempty"`
-	FilesBackup string   `json:"files_backup,omitempty"`
-	DBName      string   `json:"db_name,omitempty"`
-	DBService   string   `json:"db_service,omitempty"`
-	AppServices []string `json:"app_services,omitempty"`
+	Manifest    string `json:"manifest,omitempty"`
+	Scope       string `json:"scope,omitempty"`
+	CreatedAt   string `json:"created_at,omitempty"`
+	DBBackup    string `json:"db_backup,omitempty"`
+	FilesBackup string `json:"files_backup,omitempty"`
+	DBName      string `json:"db_name,omitempty"`
 }
 
 func newBackupVerifyCmd() *cobra.Command {
@@ -72,7 +70,5 @@ func backupVerifyResultFromOps(result ops.VerifyResult) backupVerifyResult {
 		DBBackup:    result.DBBackup,
 		FilesBackup: result.FilesBackup,
 		DBName:      result.DBName,
-		DBService:   result.DBService,
-		AppServices: append([]string(nil), result.AppServices...),
 	}
 }

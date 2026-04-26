@@ -20,13 +20,13 @@ Do not add `migrate`, retention, sidecar checksum files, warnings, digest pinnin
 - `internal/config/` owns literal env parsing and config validation.
 - `internal/manifest/` owns manifest read/write/validation.
 - `internal/ops/` owns command orchestration.
-- `internal/runtime/docker.go` owns Docker Compose, MariaDB, native tar/gzip execution, and process env forwarding.
+- `internal/runtime/docker.go` owns Docker Compose, MariaDB, native tar execution, Go gzip DB streams, and process env forwarding.
 
 Avoid abstractions until two real call sites need them.
 
 ## Runtime Contract
 
-Env files are literal `KEY=VALUE` only. The product env keys are:
+Env files are literal `KEY=VALUE` only. The product env keys read by `espops` are:
 
 - `BACKUP_ROOT`
 - `ESPO_STORAGE_DIR`
@@ -55,9 +55,7 @@ Manifest version `1`:
   "created_at": "...",
   "db": {"file": "db.sql.gz", "sha256": "..."},
   "files": {"file": "files.tar.gz", "sha256": "..."},
-  "db_name": "...",
-  "db_service": "...",
-  "app_services": ["..."]
+  "db_name": "..."
 }
 ```
 

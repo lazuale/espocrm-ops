@@ -32,7 +32,7 @@ Example:
 ./bin/espops doctor --scope prod --project-dir /path/to/project
 ```
 
-Env files are parsed as literal `KEY=VALUE` lines only. Quotes, spaces, shell expansion syntax, duplicate keys, and unknown product keys fail.
+Env files are parsed as literal `KEY=VALUE` lines only. Quotes, spaces, shell expansion syntax, and duplicate keys fail. Keys not used by `espops` are ignored and left for Docker Compose.
 
 Required env keys:
 
@@ -67,9 +67,7 @@ The manifest schema is:
   "created_at": "2026-04-26T13:00:00Z",
   "db": {"file": "db.sql.gz", "sha256": "..."},
   "files": {"file": "files.tar.gz", "sha256": "..."},
-  "db_name": "espocrm",
-  "db_service": "db",
-  "app_services": ["espocrm", "espocrm-daemon"]
+  "db_name": "espocrm"
 }
 ```
 
@@ -103,7 +101,7 @@ No `.sha256` sidecars are written. The manifest is the authority for artifact id
 ./bin/espops restore --scope prod --project-dir /path/to/project --manifest /path/to/backups/prod/<timestamp>/manifest.json
 ```
 
-`restore` is destructive and same-scope only. It acquires the project lock, verifies the manifest, creates a target snapshot backup, extracts `files.tar.gz` to staging, stops app services, resets the configured database as MariaDB root, imports `db.sql.gz`, switches storage by same-parent rename, starts app services, waits for health, and runs DB ping.
+`restore` is destructive and same-scope only. The manifest scope and `db_name` must match the target config. It acquires the project lock, verifies the manifest, creates a target snapshot backup, extracts `files.tar.gz` to staging, stops app services, resets the configured database as MariaDB root, imports `db.sql.gz`, switches storage by same-parent rename, starts app services, waits for health, and runs DB ping.
 
 If restore fails after the snapshot exists, the JSON result includes `snapshot_manifest`.
 

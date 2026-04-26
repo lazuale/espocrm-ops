@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"slices"
 	"strings"
 	"time"
 
@@ -133,12 +132,6 @@ func requireRestoreManifestMatchesTarget(cfg config.Config, result VerifyResult)
 	}
 	if result.DBName != cfg.DBName {
 		return manifestError("manifest database does not match target", fmt.Errorf("manifest db_name %q does not match target DB_NAME %q", result.DBName, cfg.DBName))
-	}
-	if result.DBService != cfg.DBService {
-		return manifestError("manifest db service does not match target", fmt.Errorf("manifest db_service %q does not match target DB_SERVICE %q", result.DBService, cfg.DBService))
-	}
-	if !slices.Equal(result.AppServices, cfg.AppServices) {
-		return manifestError("manifest app services do not match target", fmt.Errorf("manifest app_services %q does not match target APP_SERVICES %q", strings.Join(result.AppServices, ","), strings.Join(cfg.AppServices, ",")))
 	}
 	return nil
 }

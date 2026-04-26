@@ -8,7 +8,7 @@
 - `cmd/espops/` owns only the process entrypoint.
 - `internal/` owns product behavior.
 - Keep one direct Go code path; do not add a second runtime or hidden alternate path.
-- Keep Docker Compose execution, MariaDB execution, native tar/gzip execution, and process env forwarding in `internal/runtime/docker.go`.
+- Keep Docker Compose execution, MariaDB execution, native tar execution, Go gzip DB streams, and process env forwarding in `internal/runtime/docker.go`.
 
 ## Runtime Contract
 
@@ -28,8 +28,6 @@
   - `db.file` and `db.sha256`
   - `files.file` and `files.sha256`
   - `db_name`
-  - `db_service`
-  - `app_services`
 - Env files are literal `KEY=VALUE` only; no quotes, spaces, shell expansion, or duplicate keys.
 - The only env keys read by `espops` are:
   - `BACKUP_ROOT`

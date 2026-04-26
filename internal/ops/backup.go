@@ -150,9 +150,7 @@ func backupCore(ctx context.Context, cfg config.Config, rt backupRuntime, now ti
 			File:   manifest.FilesFileName,
 			SHA256: filesChecksum,
 		},
-		DBName:      cfg.DBName,
-		DBService:   cfg.DBService,
-		AppServices: append([]string(nil), cfg.AppServices...),
+		DBName: cfg.DBName,
 	}); err != nil {
 		return result, ioError("failed to write backup manifest", err)
 	}

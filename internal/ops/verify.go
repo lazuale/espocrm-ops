@@ -1,6 +1,7 @@
 package ops
 
 import (
+	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -30,8 +31,6 @@ type VerifyResult struct {
 	DBBackup    string
 	FilesBackup string
 	DBName      string
-	DBService   string
-	AppServices []string
 }
 
 type VerifyError struct {
@@ -81,7 +80,7 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 	}
 
 	paths := manifest.ResolveArtifacts(manifestPath, loadedManifest)
-	if err := verifyArtifact(ctx, "db backup", paths.DBPath, loadedManifest.DB.SHA256, runtime.TestGzip); err != nil {
+	if err := verifyArtifact(ctx, "db backup", paths.DBPath, loadedManifest.DB.SHA256, testGzip); err != nil {
 		return VerifyResult{}, err
 	}
 	if err := verifyArtifact(ctx, "files backup", paths.FilesPath, loadedManifest.Files.SHA256, runtime.TestTarGz); err != nil {
@@ -95,9 +94,30 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 		DBBackup:    paths.DBPath,
 		FilesBackup: paths.FilesPath,
 		DBName:      loadedManifest.DBName,
-		DBService:   loadedManifest.DBService,
-		AppServices: append([]string(nil), loadedManifest.AppServices...),
 	}, nil
+}
+
+func testGzip(ctx context.Context, path string) (err error) {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	file, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer closeResource(file, &err)
+
+	reader, err := gzip.NewReader(file)
+	if err != nil {
+		return err
+	}
+	defer closeResource(reader, &err)
+
+	if _, err := io.Copy(io.Discard, reader); err != nil {
+		return err
+	}
+	return ctx.Err()
 }
 
 func verifyArtifact(ctx context.Context, label, path, manifestChecksum string, verifyReadable func(context.Context, string) error) error {

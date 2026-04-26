@@ -18,11 +18,6 @@ func TestManifestValidateV1(t *testing.T) {
 		DB:        Artifact{File: DBFileName, SHA256: testSHA},
 		Files:     Artifact{File: FilesFileName, SHA256: testSHA},
 		DBName:    "espocrm",
-		DBService: "db",
-		AppServices: []string{
-			"espocrm",
-			"espocrm-daemon",
-		},
 	}
 	if err := Validate(path, m); err != nil {
 		t.Fatalf("Validate failed: %v", err)
@@ -38,10 +33,6 @@ func TestManifestValidateRejectsSidecarEraShape(t *testing.T) {
 		DB:        Artifact{File: "prod.sql.gz", SHA256: testSHA},
 		Files:     Artifact{File: "prod.tar.gz", SHA256: testSHA},
 		DBName:    "espocrm",
-		DBService: "db",
-		AppServices: []string{
-			"espocrm",
-		},
 	}
 	err := Validate(path, m)
 	if err == nil || !strings.Contains(err.Error(), "manifest file must be named manifest.json") {

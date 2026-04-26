@@ -19,14 +19,12 @@ const (
 )
 
 type Manifest struct {
-	Version     int      `json:"version"`
-	Scope       string   `json:"scope"`
-	CreatedAt   string   `json:"created_at"`
-	DB          Artifact `json:"db"`
-	Files       Artifact `json:"files"`
-	DBName      string   `json:"db_name"`
-	DBService   string   `json:"db_service"`
-	AppServices []string `json:"app_services"`
+	Version   int      `json:"version"`
+	Scope     string   `json:"scope"`
+	CreatedAt string   `json:"created_at"`
+	DB        Artifact `json:"db"`
+	Files     Artifact `json:"files"`
+	DBName    string   `json:"db_name"`
 }
 
 type Artifact struct {
@@ -85,24 +83,8 @@ func Validate(path string, manifest Manifest) error {
 	if err := validateArtifact("files", manifest.Files, FilesFileName); err != nil {
 		return err
 	}
-	for _, field := range []struct {
-		name  string
-		value string
-	}{
-		{name: "db_name", value: manifest.DBName},
-		{name: "db_service", value: manifest.DBService},
-	} {
-		if strings.TrimSpace(field.value) == "" {
-			return fmt.Errorf("manifest %s is required", field.name)
-		}
-	}
-	if len(manifest.AppServices) == 0 {
-		return fmt.Errorf("manifest app_services is required")
-	}
-	for _, service := range manifest.AppServices {
-		if strings.TrimSpace(service) == "" {
-			return fmt.Errorf("manifest app_services contains empty service name")
-		}
+	if strings.TrimSpace(manifest.DBName) == "" {
+		return fmt.Errorf("manifest db_name is required")
 	}
 	return nil
 }
