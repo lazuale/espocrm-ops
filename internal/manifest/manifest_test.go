@@ -1,134 +1,50 @@
 package manifest
 
 import (
-	"encoding/json"
-	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
-func TestManifestValid(t *testing.T) {
-	root := t.TempDir()
-	path := filepath.Join(root, "manifests", "set.manifest.json")
-	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
-		t.Fatal(err)
-	}
+const testSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-	raw, err := json.Marshal(map[string]any{
-		"version":    2,
-		"scope":      "prod",
-		"created_at": "2026-04-24T12:00:00Z",
-		"artifacts": map[string]any{
-			"db_backup":    "db.sql.gz",
-			"files_backup": "files.tar.gz",
+func TestManifestValidateV1(t *testing.T) {
+	path := filepath.Join(t.TempDir(), ManifestName)
+	m := Manifest{
+		Version:   Version,
+		Scope:     "prod",
+		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		DB:        Artifact{File: DBFileName, SHA256: testSHA},
+		Files:     Artifact{File: FilesFileName, SHA256: testSHA},
+		DBName:    "espocrm",
+		DBService: "db",
+		AppServices: []string{
+			"espocrm",
+			"espocrm-daemon",
 		},
-		"checksums": map[string]any{
-			"db_backup":    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			"files_backup": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		},
-		"runtime": map[string]any{
-			"espo_crm_image":     "espocrm/espocrm:9.3.4-apache",
-			"mariadb_image":      "mariadb:11.4",
-			"db_name":            "espocrm",
-			"db_service":         "db",
-			"app_services":       []string{"espocrm", "espocrm-daemon", "espocrm-websocket"},
-			"backup_name_prefix": "espocrm-prod",
-			"storage_contract":   StorageContractEspoCRMFullStorageV1,
-		},
-	})
-	if err != nil {
-		t.Fatal(err)
 	}
-	if err := os.WriteFile(path, raw, 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	manifest, err := Load(path)
-	if err != nil {
-		t.Fatalf("Load failed: %v", err)
-	}
-	if err := Validate(path, manifest); err != nil {
+	if err := Validate(path, m); err != nil {
 		t.Fatalf("Validate failed: %v", err)
 	}
-
-	paths, err := ResolveArtifacts(path, manifest)
-	if err != nil {
-		t.Fatalf("ResolveArtifacts failed: %v", err)
-	}
-	if paths.DBPath != filepath.Join(root, "db", "db.sql.gz") {
-		t.Fatalf("unexpected db path: %s", paths.DBPath)
-	}
-	if paths.FilesPath != filepath.Join(root, "files", "files.tar.gz") {
-		t.Fatalf("unexpected files path: %s", paths.FilesPath)
-	}
 }
 
-func TestManifestVersionOneStillValidForVerify(t *testing.T) {
-	manifest := Manifest{
-		Version:   VersionOne,
+func TestManifestValidateRejectsSidecarEraShape(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "old.manifest.json")
+	m := Manifest{
+		Version:   2,
 		Scope:     "prod",
-		CreatedAt: "2026-04-24T12:00:00Z",
-		Artifacts: Artifacts{
-			DBBackup:    "db.sql.gz",
-			FilesBackup: "files.tar.gz",
-		},
-		Checksums: Checksums{
-			DBBackup:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			FilesBackup: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
-		},
-	}
-	if err := Validate("/tmp/manifests/set.manifest.json", manifest); err != nil {
-		t.Fatalf("Validate failed: %v", err)
-	}
-	if err := RequireRestoreRuntimeContract(manifest); err == nil {
-		t.Fatal("expected restore runtime contract error")
-	}
-}
-
-func TestManifestInvalid(t *testing.T) {
-	manifest := Manifest{
-		Version:   VersionCurrent,
-		Scope:     "",
-		CreatedAt: "nope",
-	}
-	if err := Validate("/tmp/manifests/set.manifest.json", manifest); err == nil {
-		t.Fatal("expected validation error")
-	}
-}
-
-func TestManifestVersionTwoRequiresRuntime(t *testing.T) {
-	manifest := Manifest{
-		Version:   VersionCurrent,
-		Scope:     "prod",
-		CreatedAt: "2026-04-24T12:00:00Z",
-		Artifacts: Artifacts{
-			DBBackup:    "db.sql.gz",
-			FilesBackup: "files.tar.gz",
-		},
-		Checksums: Checksums{
-			DBBackup:    "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
-			FilesBackup: "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
+		DB:        Artifact{File: "prod.sql.gz", SHA256: testSHA},
+		Files:     Artifact{File: "prod.tar.gz", SHA256: testSHA},
+		DBName:    "espocrm",
+		DBService: "db",
+		AppServices: []string{
+			"espocrm",
 		},
 	}
-	if err := Validate("/tmp/manifests/set.manifest.json", manifest); err == nil {
-		t.Fatal("expected validation error")
-	}
-}
-
-func TestManifestOutsideManifestsDirectory(t *testing.T) {
-	paths, err := ResolveArtifacts("/tmp/set.manifest.json", Manifest{
-		Artifacts: Artifacts{
-			DBBackup:    "db.sql.gz",
-			FilesBackup: "files.tar.gz",
-		},
-	})
-	if err == nil {
-		t.Fatal("expected resolve error")
-	}
-	if err.Error() != "manifest must be located in manifests directory" {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if paths != (ArtifactPaths{}) {
-		t.Fatalf("expected zero paths, got %#v", paths)
+	err := Validate(path, m)
+	if err == nil || !strings.Contains(err.Error(), "manifest file must be named manifest.json") {
+		t.Fatalf("expected manifest name error, got %v", err)
 	}
 }

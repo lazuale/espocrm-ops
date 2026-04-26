@@ -1,12 +1,11 @@
 package cli
 
 import (
-	"fmt"
 	"time"
 
-	config "github.com/lazuale/espocrm-ops/internal/config"
+	"github.com/lazuale/espocrm-ops/internal/config"
 	"github.com/lazuale/espocrm-ops/internal/ops"
-	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
+	"github.com/lazuale/espocrm-ops/internal/runtime"
 	"github.com/spf13/cobra"
 )
 
@@ -26,98 +25,62 @@ func newBackupCmd() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "backup",
-		Short: "Create full verified backup set",
+		Short: "Create verified backup set",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, args []string) error {
-			cfg, err := loadBackupConfig(scope, projectDir)
+			cfg, err := config.Load(config.Request{Scope: scope, ProjectDir: projectDir})
 			if err != nil {
-				return &commandError{
-					command:  "backup",
-					kind:     ops.ErrorKindUsage,
-					exitCode: exitUsage,
-					message:  "backup failed",
-					err:      err,
-				}
+				return commandFailure("backup", ops.ErrorKindUsage, exitUsage, "backup failed", err, nil)
 			}
 
 			result, backupErr := ops.Backup(cmd.Context(), cfg, runtime.DockerCompose{}, backupNow())
 			if backupErr != nil {
-				return backupCommandError(result, backupErr)
+				return opsCommandError("backup", "backup failed", backupResultFromOps(result), backupErr)
 			}
 
 			return writeJSON(cmd.OutOrStdout(), envelope{
-				Command:  "backup",
-				OK:       true,
-				Message:  "backup completed",
-				Error:    nil,
-				Warnings: combineWarnings(cfg.Warnings, result.Warnings),
-				Result: backupResult{
-					Manifest:    result.Manifest,
-					DBBackup:    result.DBBackup,
-					FilesBackup: result.FilesBackup,
-				},
+				Command: "backup",
+				OK:      true,
+				Message: "backup completed",
+				Error:   nil,
+				Result:  backupResultFromOps(result),
 			})
 		},
 	}
 
-	cmd.Flags().StringVar(&scope, "scope", "", "backup contour")
-	cmd.Flags().StringVar(&projectDir, "project-dir", ".", "project directory containing the compose file and env files")
+	cmd.Flags().StringVar(&scope, "scope", "", "backup scope")
+	cmd.Flags().StringVar(&projectDir, "project-dir", ".", "project directory containing compose.yaml and .env.<scope>")
 	return cmd
 }
 
-func loadBackupConfig(scope, projectDir string) (config.BackupConfig, error) {
-	if scope == "" {
-		return config.BackupConfig{}, fmt.Errorf("--scope is required")
+func backupResultFromOps(result ops.BackupResult) backupResult {
+	return backupResult{
+		Manifest:    result.Manifest,
+		DBBackup:    result.DBBackup,
+		FilesBackup: result.FilesBackup,
 	}
-	return config.LoadBackup(config.BackupRequest{
-		Scope:      scope,
-		ProjectDir: projectDir,
-	})
 }
 
-func combineWarnings(groups ...[]string) []string {
-	var warnings []string
-	for _, group := range groups {
-		warnings = append(warnings, group...)
+func commandFailure(command, kind string, exitCode int, message string, err error, result any) error {
+	return &commandError{
+		command:  command,
+		kind:     kind,
+		exitCode: exitCode,
+		message:  message,
+		err:      err,
+		result:   result,
 	}
-	if len(warnings) == 0 {
-		return []string{}
-	}
-	return append([]string(nil), warnings...)
 }
 
-func backupCommandError(result ops.BackupResult, err error) error {
+func opsCommandError(command, message string, result any, err error) error {
 	verifyErr, ok := err.(*ops.VerifyError)
 	if !ok {
-		return &commandError{
-			command:  "backup",
-			kind:     ops.ErrorKindIO,
-			exitCode: exitIO,
-			message:  "backup failed",
-			err:      err,
-			result: backupResult{
-				Manifest:    result.Manifest,
-				DBBackup:    result.DBBackup,
-				FilesBackup: result.FilesBackup,
-			},
-		}
+		return commandFailure(command, ops.ErrorKindIO, exitIO, message, err, result)
 	}
-
-	return &commandError{
-		command:  "backup",
-		kind:     verifyErr.Kind,
-		exitCode: backupExitCode(verifyErr.Kind),
-		message:  "backup failed",
-		err:      verifyErr,
-		result: backupResult{
-			Manifest:    result.Manifest,
-			DBBackup:    result.DBBackup,
-			FilesBackup: result.FilesBackup,
-		},
-	}
+	return commandFailure(command, verifyErr.Kind, exitCodeForKind(verifyErr.Kind), message, verifyErr, result)
 }
 
-func backupExitCode(kind string) int {
+func exitCodeForKind(kind string) int {
 	switch kind {
 	case ops.ErrorKindUsage:
 		return exitUsage

@@ -1,106 +1,90 @@
 # Contributing
 
-`README.md` is the operator contract. This file is for changing the product without widening that contract by accident.
+This repository is intentionally small. Treat old code as donor material only.
 
 ## Product Shape
 
-The shipped command surface is fixed:
+The product commands are exactly:
 
 - `doctor`
 - `backup`
 - `backup verify`
 - `restore`
-- `migrate`
 
-Production behavior lives in:
+Do not add `migrate`, retention, sidecar checksum files, warnings, digest pinning policy, runtime contract v2, `storage_contract`, `BACKUP_NAME_PREFIX`, `BACKUP_RETENTION_DAYS`, `ESPO_CONTOUR`, cloud/offsite storage, or a secrets framework.
 
-- `cmd/espops/`: process entrypoint only
-- `internal/cli/`: command wiring, argument validation, JSON envelopes, exit mapping
-- `internal/config/`: env-file parsing and config loading
-- `internal/ops/`: operation workflows, locks, post-checks
-- `internal/runtime/`: Docker Compose and MariaDB process execution
-- `internal/manifest/`: manifest validation and artifact path resolution
+## Code Boundaries
 
-Keep shell execution and `os.Environ()` confined to `internal/runtime/docker.go`.
+- `cmd/espops/` is only the process entrypoint.
+- `internal/cli/` owns command parsing and JSON output.
+- `internal/config/` owns literal env parsing and config validation.
+- `internal/manifest/` owns manifest read/write/validation.
+- `internal/ops/` owns command orchestration.
+- `internal/runtime/docker.go` owns Docker Compose, MariaDB, native tar/gzip execution, and process env forwarding.
 
-Do not add a second runtime, hidden alternate path, auto-repair, guessed service names, or product commands beyond the shipped set.
+Avoid abstractions until two real call sites need them.
 
-## Runtime Invariants
+## Runtime Contract
 
-Keep `compose.yaml`, `env/.env.*.example`, `README.md`, `internal/config/`, and `repository_test.go` on one contract.
+Env files are literal `KEY=VALUE` only. The product env keys are:
 
-Required invariants:
+- `BACKUP_ROOT`
+- `ESPO_STORAGE_DIR`
+- `APP_SERVICES`
+- `DB_SERVICE`
+- `DB_USER`
+- `DB_PASSWORD`
+- `DB_ROOT_PASSWORD`
+- `DB_NAME`
 
-- `DB_SERVICE` and `APP_SERVICES` stay explicit; no inferred defaults.
-- `DB_SERVICE` and every `APP_SERVICES` entry must have a Compose healthcheck.
-- Env files stay literal `KEY=VALUE` only; no quotes, spaces, or shell expansion syntax.
-- Success requires service health plus explicit operation post-checks; MariaDB reachability alone is not enough.
-- Mutating operations must acquire the per-scope cross-process operation lock before mutation.
-- New backups write manifest version `2` with runtime metadata; `restore` and `migrate` must block manifest version `1` before mutation.
-- `restore` and `migrate` require explicit `DB_ROOT_PASSWORD`; never fall back to `DB_USER` for database reset.
-- `restore` and `migrate` require explicit `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`; never infer ownership from the image, container, or operator account.
-- Shipped Compose/env contract uses inline `DB_PASSWORD` and `DB_ROOT_PASSWORD`; do not advertise file-based password env keys.
-- `prod` env hygiene issues such as symlinked files or non-`0600` modes are warnings, not blockers; unreadable or unparsable env files still fail.
-- Do not call mutable image tags safer than digest-pinned refs; missing digest pinning is a warning for internal deployments.
-- For `migrate` from `dev` to `prod`, both scopes must use the same `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs; digest pinning remains recommended but is not a hard fail.
-- Do not add decorative env keys to examples.
+Backup layout:
 
-## Local Tools
-
-Recommended:
-
-- Go `1.26.x`
-- Docker with the Compose plugin
-- `staticcheck`
-- `golangci-lint`
-
-Install Go-side health tools:
-
-```bash
-make install-health-tools
+```text
+BACKUP_ROOT/<scope>/<timestamp>/
+  manifest.json
+  db.sql.gz
+  files.tar.gz
 ```
 
-## Test Paths
+Manifest version `1`:
 
-Fast local layer:
-
-```bash
-make test
-make test-race
-make test-readonly
-make ci-fast
+```json
+{
+  "version": 1,
+  "scope": "...",
+  "created_at": "...",
+  "db": {"file": "db.sql.gz", "sha256": "..."},
+  "files": {"file": "files.tar.gz", "sha256": "..."},
+  "db_name": "...",
+  "db_service": "...",
+  "app_services": ["..."]
+}
 ```
 
-Docker integration layer:
+## Restore Order
+
+`restore` must:
+
+1. Acquire the simple project lock.
+2. Verify the source manifest and checksums.
+3. Create a target snapshot backup.
+4. Extract files to staging.
+5. Stop app services.
+6. Reset the DB as MariaDB root.
+7. Import the DB dump.
+8. Switch storage by same-parent rename.
+9. Start app services.
+10. Check service health.
+11. Run DB ping.
+
+Do not report success before health and DB ping pass.
+
+## Verification
+
+Before handing off repository health, run:
 
 ```bash
-make pull-images
-make integration
-make ci-integration
+go test ./...
 ```
 
-Full health claim:
-
-```bash
-make ci
-```
-
-`make test` may use fake docker scripts where CLI wiring or failure shaping is the unit under test. Do not claim integration coverage from those tests.
-
-`make integration` is the real Docker layer. It requires a live Docker daemon, the Compose plugin, and required images available locally. It must not silently pass with zero real integration tests.
-
-`make ci-fast` is the pull-request path and must not pull Docker images. `make ci` runs both fast checks and Docker integration.
-
-## Change Flow
-
-1. Make the smallest product change that preserves the command surface and package ownership.
-2. Run the smallest relevant tests while iterating.
-3. Add scenario proof for reliability-sensitive changes:
-   - health/post-check changes need `internal/runtime/` and `internal/ops/` coverage
-   - lock changes need lock tests plus flow tests proving lock acquisition before mutation
-   - manifest/runtime-contract changes need `internal/manifest/` and `internal/ops/` coverage proving destructive commands block before mutation
-4. Run `make ci-fast` before claiming pull-request health.
-5. Run `make ci` before claiming full repository health after product, workflow, or contributor-path changes.
-6. Update `README.md`, `CONTRIBUTING.md`, and `AGENTS.md` when command behavior or the runtime contract changes.
-
-Repo-wide guards live in `repository_test.go`.
+Use `make build` for a local binary.

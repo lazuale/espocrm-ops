@@ -4,6 +4,6 @@ package ops
 
 import "fmt"
 
-func acquireOperationFileLock(request operationLockRequest) (operationFileLock, error) {
-	return nil, fmt.Errorf("operation locks are unsupported on this platform for %s", request.Path)
+func acquireProjectFileLock(path string) (projectFileLock, error) {
+	return nil, fmt.Errorf("project locks are unsupported on this platform for %s", path)
 }

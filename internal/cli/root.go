@@ -19,12 +19,11 @@ const (
 )
 
 type envelope struct {
-	Command  string        `json:"command"`
-	OK       bool          `json:"ok"`
-	Message  string        `json:"message"`
-	Error    *errorPayload `json:"error"`
-	Warnings []string      `json:"warnings"`
-	Result   any           `json:"result"`
+	Command string        `json:"command"`
+	OK      bool          `json:"ok"`
+	Message string        `json:"message"`
+	Error   *errorPayload `json:"error"`
+	Result  any           `json:"result"`
 }
 
 type errorPayload struct {
@@ -57,7 +56,7 @@ func (e *commandError) Error() string {
 func NewRootCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:           "espops",
-		Short:         "EspoCRM backup and recovery utilities",
+		Short:         "EspoCRM backup and restore utilities",
 		SilenceUsage:  true,
 		SilenceErrors: true,
 		CompletionOptions: cobra.CompletionOptions{
@@ -70,7 +69,6 @@ func NewRootCmd() *cobra.Command {
 	cmd.AddCommand(newDoctorCmd())
 	cmd.AddCommand(backupCmd)
 	cmd.AddCommand(newRestoreCmd())
-	cmd.AddCommand(newMigrateCmd())
 
 	return cmd
 }
@@ -84,7 +82,6 @@ func Execute(args []string, stdout, stderr io.Writer) int {
 	if err := root.Execute(); err != nil {
 		return renderExecutionError(root.OutOrStdout(), err)
 	}
-
 	return exitOK
 }
 
@@ -102,23 +99,21 @@ func renderExecutionError(w io.Writer, err error) int {
 			message = "command failed"
 		}
 		_ = writeJSON(w, envelope{
-			Command:  cmdErr.command,
-			OK:       false,
-			Message:  message,
-			Error:    &errorPayload{Kind: cmdErr.kind, Message: cmdErr.messageForOperator()},
-			Warnings: []string{},
-			Result:   cmdErr.resultValue(),
+			Command: cmdErr.command,
+			OK:      false,
+			Message: message,
+			Error:   &errorPayload{Kind: cmdErr.kind, Message: cmdErr.messageForOperator()},
+			Result:  cmdErr.resultValue(),
 		})
 		return cmdErr.exitCode
 	}
 
 	_ = writeJSON(w, envelope{
-		Command:  "espops",
-		OK:       false,
-		Message:  "espops command failed",
-		Error:    &errorPayload{Kind: "io", Message: err.Error()},
-		Warnings: []string{},
-		Result:   struct{}{},
+		Command: "espops",
+		OK:      false,
+		Message: "espops command failed",
+		Error:   &errorPayload{Kind: "internal", Message: err.Error()},
+		Result:  struct{}{},
 	})
 	return exitInternal
 }
@@ -141,14 +136,4 @@ func (e *commandError) resultValue() any {
 		return struct{}{}
 	}
 	return e.result
-}
-
-func backupVerifyUsageError(message string) error {
-	return &commandError{
-		command:  "backup verify",
-		kind:     "usage",
-		exitCode: exitUsage,
-		message:  "backup verify failed",
-		err:      errors.New(message),
-	}
 }

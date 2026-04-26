@@ -7,12 +7,12 @@ import (
 	"strings"
 	"time"
 
-	runtime "github.com/lazuale/espocrm-ops/internal/runtime"
+	"github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
 const (
 	serviceHealthCheckTimeout  = 2 * time.Minute
-	serviceHealthCheckInterval = 1 * time.Second
+	serviceHealthCheckInterval = time.Second
 )
 
 var serviceHealthSleep = sleepWithContext
@@ -22,21 +22,21 @@ type serviceHealthRuntime interface {
 }
 
 func requireRuntimeServiceHealth(ctx context.Context, target runtime.Target, dbService string, appServices []string, rt serviceHealthRuntime) error {
-	return rt.RequireHealthyServices(ctx, target, runtimeContractServices(dbService, appServices))
+	return rt.RequireHealthyServices(ctx, target, configuredServices(dbService, appServices))
 }
 
 func waitForRuntimeServiceHealth(ctx context.Context, target runtime.Target, dbService string, appServices []string, rt serviceHealthRuntime) error {
 	waitCtx, cancel := context.WithTimeout(ctx, serviceHealthCheckTimeout)
 	defer cancel()
 
-	services := runtimeContractServices(dbService, appServices)
+	services := configuredServices(dbService, appServices)
 	attempts := serviceHealthCheckAttempts(serviceHealthCheckTimeout, serviceHealthCheckInterval)
 	var lastErr error
 
 	for attempt := 0; attempt < attempts; attempt++ {
 		if err := waitCtx.Err(); err != nil {
 			if err == context.DeadlineExceeded && lastErr != nil {
-				return fmt.Errorf("timed out waiting for docker compose service health: %s: %w", lastErr.Error(), err)
+				return fmt.Errorf("timed out waiting for service health: %s: %w", lastErr.Error(), err)
 			}
 			return err
 		}
@@ -49,13 +49,12 @@ func waitForRuntimeServiceHealth(ctx context.Context, target runtime.Target, dbS
 		if !isRetryableServiceHealthError(err) {
 			return err
 		}
-
 		if attempt == attempts-1 {
 			break
 		}
 		if err := serviceHealthSleep(waitCtx, serviceHealthCheckInterval); err != nil {
 			if err == context.DeadlineExceeded && lastErr != nil {
-				return fmt.Errorf("timed out waiting for docker compose service health: %s: %w", lastErr.Error(), err)
+				return fmt.Errorf("timed out waiting for service health: %s: %w", lastErr.Error(), err)
 			}
 			return err
 		}
@@ -64,10 +63,10 @@ func waitForRuntimeServiceHealth(ctx context.Context, target runtime.Target, dbS
 	if lastErr == nil {
 		lastErr = context.DeadlineExceeded
 	}
-	return fmt.Errorf("timed out waiting for docker compose service health: %s: %w", lastErr.Error(), context.DeadlineExceeded)
+	return fmt.Errorf("timed out waiting for service health: %s: %w", lastErr.Error(), context.DeadlineExceeded)
 }
 
-func runtimeContractServices(dbService string, appServices []string) []string {
+func configuredServices(dbService string, appServices []string) []string {
 	services := make([]string, 0, len(appServices)+1)
 	services = append(services, dbService)
 	services = append(services, appServices...)
@@ -90,10 +89,7 @@ func serviceHealthCheckAttempts(timeout, interval time.Duration) int {
 
 func sleepWithContext(ctx context.Context, delay time.Duration) error {
 	if delay <= 0 {
-		if err := ctx.Err(); err != nil {
-			return err
-		}
-		return nil
+		return ctx.Err()
 	}
 
 	timer := time.NewTimer(delay)
