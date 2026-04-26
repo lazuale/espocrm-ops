@@ -57,7 +57,7 @@ func newRestoreCmd() *cobra.Command {
 				OK:       true,
 				Message:  "restore completed",
 				Error:    nil,
-				Warnings: []string{},
+				Warnings: combineWarnings(cfg.Warnings, result.Warnings),
 				Result: restoreResult{
 					Manifest:         result.Manifest,
 					SnapshotManifest: result.SnapshotManifest,

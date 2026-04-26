@@ -36,6 +36,7 @@ type BackupConfig struct {
 	RuntimeUID                 int
 	RuntimeGID                 int
 	RuntimeOwnershipConfigured bool
+	Warnings                   []string
 }
 
 func LoadBackup(req BackupRequest) (BackupConfig, error) {
@@ -63,11 +64,14 @@ func load(req BackupRequest, restoreMode bool) (BackupConfig, error) {
 		return BackupConfig{}, err
 	}
 
+	warnings := []string{}
 	envFile := filepath.Join(projectDir, ".env."+scope)
 	if scope == "prod" {
-		if err := requireSecureProdEnvFile(envFile); err != nil {
+		envWarnings, err := inspectProdEnvFile(envFile)
+		if err != nil {
 			return BackupConfig{}, err
 		}
+		warnings = append(warnings, envWarnings...)
 	}
 
 	values, err := loadEnvAssignments(envFile)
@@ -130,12 +134,8 @@ func load(req BackupRequest, restoreMode bool) (BackupConfig, error) {
 	espoCRMImage := strings.TrimSpace(values["ESPOCRM_IMAGE"])
 	mariaDBImage := strings.TrimSpace(values["MARIADB_IMAGE"])
 	if scope == "prod" {
-		if err := requireDigestPinnedImage("ESPOCRM_IMAGE", espoCRMImage, envFile); err != nil {
-			return BackupConfig{}, err
-		}
-		if err := requireDigestPinnedImage("MARIADB_IMAGE", mariaDBImage, envFile); err != nil {
-			return BackupConfig{}, err
-		}
+		warnings = append(warnings, digestPinnedImageWarnings(envFile, "ESPOCRM_IMAGE", espoCRMImage)...)
+		warnings = append(warnings, digestPinnedImageWarnings(envFile, "MARIADB_IMAGE", mariaDBImage)...)
 	}
 
 	return BackupConfig{
@@ -159,6 +159,7 @@ func load(req BackupRequest, restoreMode bool) (BackupConfig, error) {
 		RuntimeUID:                 runtimeUID,
 		RuntimeGID:                 runtimeGID,
 		RuntimeOwnershipConfigured: runtimeOwnershipConfigured,
+		Warnings:                   warnings,
 	}, nil
 }
 
@@ -184,33 +185,33 @@ func requireFile(path, label string) error {
 	return nil
 }
 
-func requireSecureProdEnvFile(path string) error {
+func inspectProdEnvFile(path string) ([]string, error) {
 	info, err := os.Lstat(path)
 	if err != nil {
-		return fmt.Errorf("stat prod env file %s: %w", path, err)
+		return nil, fmt.Errorf("stat prod env file %s: %w", path, err)
 	}
+	warnings := []string{}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("prod env file %s must be a regular file, not a symlink", path)
+		warnings = append(warnings, fmt.Sprintf("prod env file %s is a symlink; regular file mode 0600 is recommended", path))
+		return warnings, nil
 	}
 	if !info.Mode().IsRegular() {
-		return fmt.Errorf("prod env file %s must be a regular file", path)
+		warnings = append(warnings, fmt.Sprintf("prod env file %s is not a regular file; regular file mode 0600 is recommended", path))
+		return warnings, nil
 	}
 
 	mode := info.Mode()
 	if mode != 0o600 {
-		return fmt.Errorf("prod env file %s has unsafe permissions %04o; run chmod 600 %s", path, mode.Perm(), path)
+		warnings = append(warnings, fmt.Sprintf("prod env file %s has permissions %04o; mode 0600 is recommended", path, mode.Perm()))
 	}
-	return nil
+	return warnings, nil
 }
 
-func requireDigestPinnedImage(key, ref, envFile string) error {
-	if ref == "" {
-		return fmt.Errorf("%s is required in %s and must be digest-pinned as prefix@sha256:<64-lower-hex-digest> for prod", key, envFile)
+func digestPinnedImageWarnings(envFile, key, ref string) []string {
+	if ref == "" || isDigestPinnedImageRef(ref) {
+		return nil
 	}
-	if !isDigestPinnedImageRef(ref) {
-		return fmt.Errorf("%s in %s must be digest-pinned as prefix@sha256:<64-lower-hex-digest> for prod, got %q", key, envFile, ref)
-	}
-	return nil
+	return []string{fmt.Sprintf("%s in %s is not digest-pinned; mutable image refs are accepted here but reduce restore reproducibility", key, envFile)}
 }
 
 func isDigestPinnedImageRef(ref string) bool {

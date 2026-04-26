@@ -29,7 +29,7 @@ Run `espops` against a project directory containing:
 
 Start from `env/.env.dev.example` and `env/.env.prod.example`.
 
-For `prod`, `.env.prod` must be a regular file, not a symlink, with mode exactly `0600`.
+For `prod`, keep `.env.prod` as a regular file with mode `0600` when practical. `espops` warns when that hygiene is not met, but it only blocks when the env file cannot be read or parsed.
 
 ```bash
 chmod 600 .env.prod
@@ -63,8 +63,8 @@ Optional `espops` keys:
 
 Operator requirements:
 
-- `BACKUP_ROOT` must already exist and be writable by the operator account.
-- `ESPO_STORAGE_DIR` must already exist, point at the selected scope storage, be clearable by the operator account, and have a writable parent for adjacent staging during `restore` and `migrate`.
+- `BACKUP_ROOT` should be writable by the operator account. `doctor` reports write-probe failures as warnings; `backup` still fails if it cannot create artifacts.
+- `ESPO_STORAGE_DIR` must already exist, point at the selected scope storage, and have a writable parent for adjacent staging during `restore` and `migrate`.
 - `BACKUP_NAME_PREFIX` is used directly in artifact names: `<prefix>_<YYYY-MM-DD_HH-MM-SS>.sql.gz`, `.tar.gz`, and `.manifest.json`.
 - `MIN_FREE_DISK_MB` is checked before `backup` stops app services and is kept as the free-space reserve when `restore` or `migrate` preflights files staging next to `ESPO_STORAGE_DIR`.
 - `BACKUP_RETENTION_DAYS=0` disables retention cleanup.
@@ -81,7 +81,7 @@ The env examples use readable tag-based images:
 - `ESPOCRM_IMAGE=espocrm/espocrm:9.3.4-apache`
 - `MARIADB_IMAGE=mariadb:11.4`
 
-Mutable tags are not production-safe. For `--scope prod`, `espops` requires digest-pinned image refs such as `prefix@sha256:<64-lower-hex-digest>` and does not resolve digests for you.
+Digest-pinned image refs such as `prefix@sha256:<64-lower-hex-digest>` improve restore reproducibility. For `--scope prod`, `espops` warns when image refs are not digest-pinned, but it does not block tag-based internal deployments.
 
 Before first production use, pre-pull the exact `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs from the env file you intend to trust.
 
@@ -98,7 +98,7 @@ Mutating commands use cross-process operation locks under `PROJECT_DIR/.espops/l
 
 Success requires explicit health or post-check evidence. A MariaDB ping alone is not success.
 
-- `doctor` succeeds only when config parses, backup/storage prerequisites pass, contract services are present, `running`, and `healthy`, and MariaDB `SELECT 1` succeeds.
+- `doctor` succeeds only when config parses, storage prerequisites pass, contract services are present, `running`, and `healthy`, and MariaDB `SELECT 1` succeeds. Non-blocking hygiene issues are reported as warnings.
 - `backup` succeeds only after app services are returned, all contract services are `running` and `healthy`, and the new backup set self-verifies.
 - `restore` and `migrate` succeed only after restored storage passes post-check, contract services are `running` and `healthy`, and MariaDB `SELECT 1` succeeds.
 
@@ -130,7 +130,7 @@ Retention cleanup runs only after the new set self-verifies. It deletes only com
 
 `restore` is same-scope only: `manifest.scope` must match `--scope`, and the manifest runtime block must match the target runtime contract.
 
-`migrate` is the supported cross-scope restore path. It requires manifest version `2` and checks the recorded image, service, and storage contract before target mutation. For `dev` to `prod` migration, both scopes must use the same digest-pinned `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs.
+`migrate` is the supported cross-scope restore path. It requires manifest version `2` and checks the recorded image, service, and storage contract before target mutation. For `dev` to `prod` migration, both scopes must use the same `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs; digest pinning is recommended and reported as a warning when absent.
 
 Both flows create a target snapshot before mutation, verify target storage parent free space for files staging, reset the target database as MariaDB root, import into a clean database, restore files through staged extraction next to target storage, apply `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`, switch storage by same-parent rename, and run final post-checks before reporting success.
 

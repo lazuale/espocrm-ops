@@ -16,7 +16,8 @@ type DoctorCheck struct {
 }
 
 type DoctorResult struct {
-	Checks []DoctorCheck `json:"checks"`
+	Checks   []DoctorCheck `json:"checks"`
+	Warnings []string      `json:"-"`
 }
 
 type doctorRuntime interface {
@@ -36,11 +37,14 @@ func Doctor(ctx context.Context, req config.BackupRequest, rt doctorRuntime) (Do
 	if err != nil {
 		return failDoctorCheck(result, "config", ErrorKindUsage, "doctor config check failed", err)
 	}
+	result.Warnings = append(result.Warnings, cfg.Warnings...)
 	result.Checks = append(result.Checks, passedDoctorCheck("config"))
 
-	if err := checkDoctorBackupRoot(cfg.BackupRoot); err != nil {
+	backupRootWarnings, err := checkDoctorBackupRoot(cfg.BackupRoot)
+	if err != nil {
 		return failDoctorCheck(result, "backup_root", ErrorKindIO, "doctor backup root check failed", err)
 	}
+	result.Warnings = append(result.Warnings, backupRootWarnings...)
 	result.Checks = append(result.Checks, passedDoctorCheck("backup_root"))
 
 	if err := checkDoctorStorageDir(cfg.StorageDir); err != nil {
@@ -85,33 +89,33 @@ func failDoctorCheck(result DoctorResult, name, kind, message string, err error)
 	return result, &VerifyError{Kind: kind, Message: message, Err: err}
 }
 
-func checkDoctorBackupRoot(path string) error {
+func checkDoctorBackupRoot(path string) ([]string, error) {
 	path = strings.TrimSpace(path)
 	if path == "" {
-		return fmt.Errorf("backup root is required")
+		return nil, fmt.Errorf("backup root is required")
 	}
 	info, err := os.Stat(path)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("backup root must be a directory")
+		return nil, fmt.Errorf("backup root must be a directory")
 	}
 
 	probe, err := os.CreateTemp(path, ".doctor-write-*")
 	if err != nil {
-		return err
+		return []string{fmt.Sprintf("backup root %s is not writable by the operator account: %v", path, err)}, nil
 	}
 	probePath := probe.Name()
 	if err := probe.Close(); err != nil {
 		_ = os.Remove(probePath)
-		return err
+		return []string{fmt.Sprintf("backup root %s write probe close failed: %v", path, err)}, nil
 	}
 	if err := os.Remove(probePath); err != nil {
-		return err
+		return []string{fmt.Sprintf("backup root %s write probe cleanup failed: %v", path, err)}, nil
 	}
 
-	return nil
+	return nil, nil
 }
 
 func checkDoctorStorageDir(path string) error {

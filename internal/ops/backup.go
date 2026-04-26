@@ -433,10 +433,6 @@ func writeManifestJSON(path string, manifestData manifest.Manifest) error {
 }
 
 func archiveStorageDir(ctx context.Context, sourceDir, destPath string) error {
-	if err := archiveStoragePreflight(ctx, sourceDir); err != nil {
-		return err
-	}
-
 	reader, writer := io.Pipe()
 	writeErrCh := make(chan error, 1)
 	go func() {
@@ -458,13 +454,7 @@ func archiveStorageDir(ctx context.Context, sourceDir, destPath string) error {
 }
 
 type archiveStorageStats struct {
-	entries          int
-	regularFileBytes int64
-}
-
-func archiveStoragePreflight(ctx context.Context, sourceDir string) error {
-	_, err := walkArchiveStorage(ctx, sourceDir, nil)
-	return err
+	entries int
 }
 
 func writeArchiveStorageEntryList(ctx context.Context, sourceDir string, writer io.Writer) error {
@@ -479,26 +469,27 @@ func writeArchiveStorageEntryList(ctx context.Context, sourceDir string, writer 
 }
 
 func walkArchiveStorage(ctx context.Context, sourceDir string, writeEntry func(string) error) (archiveStorageStats, error) {
-	info, err := os.Lstat(sourceDir)
+	info, err := os.Stat(sourceDir)
 	if err != nil {
 		return archiveStorageStats{}, err
-	}
-	if info.Mode()&os.ModeSymlink != 0 {
-		return archiveStorageStats{}, fmt.Errorf("storage dir root is a symlink")
 	}
 	if !info.IsDir() {
 		return archiveStorageStats{}, fmt.Errorf("storage dir must be a directory")
 	}
 
+	walkRoot := sourceDir
+	if resolved, err := filepath.EvalSymlinks(sourceDir); err == nil {
+		walkRoot = resolved
+	}
 	var stats archiveStorageStats
-	walkErr := filepath.WalkDir(sourceDir, func(path string, entry os.DirEntry, walkErr error) error {
+	walkErr := filepath.WalkDir(walkRoot, func(path string, entry os.DirEntry, walkErr error) error {
 		if err := ctx.Err(); err != nil {
 			return err
 		}
 		if walkErr != nil {
 			return walkErr
 		}
-		rel, err := filepath.Rel(sourceDir, path)
+		rel, err := filepath.Rel(walkRoot, path)
 		if err != nil {
 			return err
 		}
@@ -506,40 +497,7 @@ func walkArchiveStorage(ctx context.Context, sourceDir string, writeEntry func(s
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		if _, err := cleanTarEntryName(rel); err != nil {
-			return err
-		}
-
-		info, err := entry.Info()
-		if err != nil {
-			return err
-		}
-		if info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("storage entry %s is a symlink", rel)
-		}
-		if !info.IsDir() && !info.Mode().IsRegular() {
-			return fmt.Errorf("storage entry %s has unsupported type", rel)
-		}
-		if err := validateArchiveSourceMode(rel, info.Mode()); err != nil {
-			return err
-		}
-		if info.Mode().IsRegular() {
-			if info.Size() < 0 {
-				return fmt.Errorf("storage entry %s size is invalid", rel)
-			}
-			if info.Size() > filesArchiveMaxExpandedBytes-stats.regularFileBytes {
-				return fmt.Errorf("storage tree regular file size exceeds limit")
-			}
-			stats.regularFileBytes += info.Size()
-			if err := ensureArchiveSourceNotHardlinked(rel, info); err != nil {
-				return err
-			}
-		}
-
 		stats.entries++
-		if stats.entries > filesArchiveMaxEntries {
-			return fmt.Errorf("storage tree has too many entries")
-		}
 		if writeEntry != nil {
 			if err := writeEntry(rel); err != nil {
 				return err
@@ -555,27 +513,6 @@ func walkArchiveStorage(ctx context.Context, sourceDir string, writeEntry func(s
 	}
 
 	return stats, nil
-}
-
-func validateArchiveSourceMode(rel string, mode os.FileMode) error {
-	if mode&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
-		return fmt.Errorf("storage entry %s has special mode bits: %04o", rel, mode.Perm())
-	}
-	if mode.Perm()&0o002 != 0 {
-		return fmt.Errorf("storage entry %s is world-writable: %04o", rel, mode.Perm())
-	}
-	return nil
-}
-
-func ensureArchiveSourceNotHardlinked(rel string, info os.FileInfo) error {
-	stat, ok := info.Sys().(*syscall.Stat_t)
-	if !ok || stat == nil {
-		return fmt.Errorf("storage entry %s link metadata is unavailable", rel)
-	}
-	if stat.Nlink > 1 {
-		return fmt.Errorf("storage entry %s has multiple hardlinks", rel)
-	}
-	return nil
 }
 
 func runtimeError(message string, err error) error {

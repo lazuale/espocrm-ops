@@ -29,7 +29,7 @@ func newDoctorCmd() *cobra.Command {
 				OK:       true,
 				Message:  "doctor passed",
 				Error:    nil,
-				Warnings: []string{},
+				Warnings: combineWarnings(result.Warnings),
 				Result:   result,
 			})
 		},

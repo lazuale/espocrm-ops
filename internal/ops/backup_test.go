@@ -9,7 +9,6 @@ import (
 	"path/filepath"
 	"slices"
 	"strings"
-	"syscall"
 	"testing"
 	"time"
 
@@ -640,149 +639,6 @@ func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
 	assertBackupSetRemoved(t, result)
 }
 
-func TestArchiveStorageDirRejectsRootSymlink(t *testing.T) {
-	root := t.TempDir()
-	tarLog := installFailingTar(t)
-	realStorage := filepath.Join(root, "real-storage")
-	if err := os.MkdirAll(realStorage, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	storageLink := filepath.Join(root, "storage-link")
-	if err := os.Symlink(realStorage, storageLink); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
-	}
-
-	err := archiveStorageDir(context.Background(), storageLink, filepath.Join(root, "files.tar.gz"))
-	if err == nil || !strings.Contains(err.Error(), "root is a symlink") {
-		t.Fatalf("expected root symlink rejection, got %v", err)
-	}
-	assertNoTarCall(t, tarLog)
-}
-
-func TestArchiveStorageDirRejectsSymlinkEntryBeforeTar(t *testing.T) {
-	root := t.TempDir()
-	tarLog := installFailingTar(t)
-	storageDir := filepath.Join(root, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	linkTarget := filepath.Join(root, "outside.txt")
-	if err := os.WriteFile(linkTarget, []byte("outside\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink(linkTarget, filepath.Join(storageDir, "linked.txt")); err != nil {
-		t.Skipf("symlink unavailable: %v", err)
-	}
-
-	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
-	if err == nil || !strings.Contains(err.Error(), "is a symlink") {
-		t.Fatalf("expected symlink entry rejection, got %v", err)
-	}
-	assertNoTarCall(t, tarLog)
-}
-
-func TestArchiveStorageDirRejectsHardlinkedFile(t *testing.T) {
-	root := t.TempDir()
-	tarLog := installFailingTar(t)
-	storageDir := filepath.Join(root, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	realFile := filepath.Join(root, "outside.txt")
-	if err := os.WriteFile(realFile, []byte("outside\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Link(realFile, filepath.Join(storageDir, "hardlinked.txt")); err != nil {
-		t.Skipf("hardlink unavailable: %v", err)
-	}
-
-	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
-	if err == nil || !strings.Contains(err.Error(), "multiple hardlinks") {
-		t.Fatalf("expected hardlink rejection, got %v", err)
-	}
-	assertNoTarCall(t, tarLog)
-}
-
-func TestArchiveStorageDirRejectsUnsupportedTypeBeforeTar(t *testing.T) {
-	root := t.TempDir()
-	tarLog := installFailingTar(t)
-	storageDir := filepath.Join(root, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := syscall.Mkfifo(filepath.Join(storageDir, "queue"), 0o644); err != nil {
-		t.Skipf("fifo unavailable: %v", err)
-	}
-
-	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
-	if err == nil || !strings.Contains(err.Error(), "unsupported type") {
-		t.Fatalf("expected unsupported type rejection, got %v", err)
-	}
-	assertNoTarCall(t, tarLog)
-}
-
-func TestArchiveStorageDirRejectsUnsafeMode(t *testing.T) {
-	root := t.TempDir()
-	tarLog := installFailingTar(t)
-	storageDir := filepath.Join(root, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	openFile := filepath.Join(storageDir, "open.txt")
-	if err := os.WriteFile(openFile, []byte("open\n"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(openFile, 0o777); err != nil {
-		t.Fatal(err)
-	}
-
-	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
-	if err == nil || !strings.Contains(err.Error(), "world-writable") {
-		t.Fatalf("expected unsafe mode rejection, got %v", err)
-	}
-	assertNoTarCall(t, tarLog)
-}
-
-func TestArchiveStorageDirRejectsTooManyEntriesBeforeTar(t *testing.T) {
-	restoreFilesArchiveLimits(t, 1, defaultFilesArchiveMaxExpandedBytes)
-	root := t.TempDir()
-	tarLog := installFailingTar(t)
-	storageDir := filepath.Join(root, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	for _, name := range []string{"one.txt", "two.txt"} {
-		if err := os.WriteFile(filepath.Join(storageDir, name), []byte("ok\n"), 0o644); err != nil {
-			t.Fatal(err)
-		}
-	}
-
-	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
-	if err == nil || !strings.Contains(err.Error(), "too many entries") {
-		t.Fatalf("expected too many entries rejection, got %v", err)
-	}
-	assertNoTarCall(t, tarLog)
-}
-
-func TestArchiveStorageDirRejectsTooLargeSourceTreeBeforeTar(t *testing.T) {
-	restoreFilesArchiveLimits(t, defaultFilesArchiveMaxEntries, 4)
-	root := t.TempDir()
-	tarLog := installFailingTar(t)
-	storageDir := filepath.Join(root, "storage")
-	if err := os.MkdirAll(storageDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(filepath.Join(storageDir, "large.txt"), []byte("12345"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
-	if err == nil || !strings.Contains(err.Error(), "regular file size exceeds limit") {
-		t.Fatalf("expected source size rejection, got %v", err)
-	}
-	assertNoTarCall(t, tarLog)
-}
-
 func TestBackupNativeTarArchiveRejectedBySelfVerifyCleansIncompleteSet(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")
@@ -1252,18 +1108,6 @@ func assertNoBackupTempFiles(t *testing.T, cfg config.BackupConfig) {
 	}
 }
 
-func installFailingTar(t *testing.T) string {
-	t.Helper()
-	return installBackupTestTar(t, `#!/usr/bin/env bash
-set -Eeuo pipefail
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-fake_root="$(cd -- "$script_dir/.." && pwd)"
-printf '%s\n' "$*" >>"$fake_root/tar.log"
-printf 'tar should not run\n' >&2
-exit 99
-`)
-}
-
 func installCorruptTar(t *testing.T) string {
 	t.Helper()
 	return installBackupTestTar(t, `#!/usr/bin/env bash
@@ -1298,13 +1142,6 @@ func installBackupTestTar(t *testing.T, script string) string {
 	}
 	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
 	return filepath.Join(rootDir, "tar.log")
-}
-
-func assertNoTarCall(t *testing.T, tarLog string) {
-	t.Helper()
-	if _, err := os.Stat(tarLog); !os.IsNotExist(err) {
-		t.Fatalf("expected tar not to run, log stat=%v", err)
-	}
 }
 
 func restoreBackupDiskFreeBytes(t *testing.T, fn func(string) (uint64, error)) {

@@ -12,6 +12,7 @@ import (
 type MigrateResult struct {
 	Manifest         string
 	SnapshotManifest string
+	Warnings         []string
 }
 
 func Migrate(ctx context.Context, fromScope string, targetCfg config.BackupConfig, manifestPath string, rt restoreRuntime, now time.Time) (result MigrateResult, err error) {
@@ -36,6 +37,7 @@ func Migrate(ctx context.Context, fromScope string, targetCfg config.BackupConfi
 	})
 	result.Manifest = restoreResult.Manifest
 	result.SnapshotManifest = restoreResult.SnapshotManifest
+	result.Warnings = append(result.Warnings, restoreResult.Warnings...)
 	if restoreErr != nil {
 		return result, restoreErr
 	}

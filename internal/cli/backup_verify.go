@@ -48,7 +48,7 @@ func newBackupVerifyCmd() *cobra.Command {
 				return backupVerifyError(path, verifyErr)
 			}
 
-			warnings := []string{}
+			warnings := combineWarnings(result.Warnings)
 			if result.ManifestVersion == manifestpkg.VersionOne {
 				warnings = append(warnings, "manifest version 1 is checksum-valid, but restore and migrate require manifest version 2 with runtime metadata")
 			}

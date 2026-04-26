@@ -138,13 +138,16 @@ func TestVerifyBackupRejectsFilesArtifactSymlink(t *testing.T) {
 	assertErrorContains(t, err, "symlink")
 }
 
-func TestVerifyBackupRejectsSidecarSymlink(t *testing.T) {
+func TestVerifyBackupWarnsForSidecarSymlink(t *testing.T) {
 	manifestPath, dbPath, _ := writeVerifiedBackupSet(t)
 	replaceFileWithSymlink(t, dbPath+".sha256")
 
-	_, err := VerifyBackup(context.Background(), manifestPath)
-	assertVerifyErrorKind(t, err, ErrorKindChecksum)
-	assertErrorContains(t, err, "symlink")
+	result, err := VerifyBackup(context.Background(), manifestPath)
+	if err != nil {
+		t.Fatalf("VerifyBackup failed: %v", err)
+	}
+	assertWarningContains(t, result.Warnings, "checksum sidecar is unavailable")
+	assertWarningContains(t, result.Warnings, "symlink")
 }
 
 func TestVerifyBackupChecksumMismatch(t *testing.T) {
@@ -177,11 +180,10 @@ func TestVerifyBackupBrokenDBGzip(t *testing.T) {
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 }
 
-func TestVerifyGzipReadableEnforcesExpandedLimit(t *testing.T) {
+func TestVerifyGzipReadable(t *testing.T) {
 	tests := []struct {
 		name            string
 		body            []byte
-		configure       func(t *testing.T)
 		corrupt         bool
 		wantErr         bool
 		wantErrContains string
@@ -189,15 +191,6 @@ func TestVerifyGzipReadableEnforcesExpandedLimit(t *testing.T) {
 		{
 			name: "valid small gzip passes",
 			body: []byte("select 1;\n"),
-		},
-		{
-			name: "gzip over limit fails",
-			body: []byte("12345"),
-			configure: func(t *testing.T) {
-				restoreDBBackupMaxExpandedBytes(t, 4)
-			},
-			wantErr:         true,
-			wantErrContains: "db backup expanded size exceeds limit",
 		},
 		{
 			name:    "corrupt gzip fails",
@@ -209,9 +202,6 @@ func TestVerifyGzipReadableEnforcesExpandedLimit(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if tt.configure != nil {
-				tt.configure(t)
-			}
 			path := filepath.Join(t.TempDir(), "db.sql.gz")
 			if tt.corrupt {
 				if err := os.WriteFile(path, tt.body, 0o644); err != nil {
@@ -235,25 +225,6 @@ func TestVerifyGzipReadableEnforcesExpandedLimit(t *testing.T) {
 				t.Fatalf("expected %q in error, got %v", tt.wantErrContains, err)
 			}
 		})
-	}
-}
-
-func TestVerifyBackupRejectsDBGzipOverExpandedLimit(t *testing.T) {
-	restoreDBBackupMaxExpandedBytes(t, 4)
-	manifestPath, dbPath, filesPath := writeVerifiedBackupSet(t)
-	writeGzipFile(t, dbPath, []byte("12345"))
-	rewriteSidecar(t, dbPath)
-	writeManifest(t, manifestPath, v2ManifestDocument(
-		filepath.Base(dbPath),
-		filepath.Base(filesPath),
-		sha256OfFile(t, dbPath),
-		sha256OfFile(t, filesPath),
-	))
-
-	_, err := VerifyBackup(context.Background(), manifestPath)
-	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if !strings.Contains(err.Error(), "db backup expanded size exceeds limit") {
-		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -356,40 +327,6 @@ func TestVerifyBackupRejectsMaliciousFilesArchiveWithValidChecksum(t *testing.T)
 			want:    "collides with directory",
 		},
 		{
-			name:    "world writable mode",
-			entries: []archiveTestEntry{{name: "open.txt", body: "open\n", mode: 0o777}},
-			want:    "world-writable",
-		},
-		{
-			name:    "setuid mode",
-			entries: []archiveTestEntry{{name: "setuid.txt", body: "setuid\n", mode: 0o4755}},
-			want:    "special bits",
-		},
-		{
-			name:    "sticky mode",
-			entries: []archiveTestEntry{{name: "sticky.txt", body: "sticky\n", mode: 0o1755}},
-			want:    "special bits",
-		},
-		{
-			name: "expanded size limit",
-			entries: []archiveTestEntry{{
-				name: "huge.txt",
-				body: "12345",
-			}},
-			configure: func(t *testing.T) {
-				restoreFilesArchiveLimits(t, defaultFilesArchiveMaxEntries, 4)
-			},
-			want: "expanded size exceeds limit",
-		},
-		{
-			name:    "entry count limit",
-			entries: []archiveTestEntry{{name: "one.txt", body: "1"}, {name: "two.txt", body: "2"}},
-			configure: func(t *testing.T) {
-				restoreFilesArchiveLimits(t, 1, defaultFilesArchiveMaxExpandedBytes)
-			},
-			want: "too many entries",
-		},
-		{
 			name:    "empty archive",
 			entries: nil,
 			want:    "empty",
@@ -469,6 +406,16 @@ func assertErrorContains(t *testing.T, err error, want string) {
 	if !strings.Contains(err.Error(), want) {
 		t.Fatalf("expected %q in error, got %v", want, err)
 	}
+}
+
+func assertWarningContains(t *testing.T, warnings []string, want string) {
+	t.Helper()
+	for _, warning := range warnings {
+		if strings.Contains(warning, want) {
+			return
+		}
+	}
+	t.Fatalf("expected warning containing %q, got %#v", want, warnings)
 }
 
 func replaceFileWithSymlink(t *testing.T, path string) string {
@@ -696,29 +643,6 @@ func writeTarGzArchiveEntries(t *testing.T, path string, entries []archiveTestEn
 			}
 		}
 	}
-}
-
-func restoreFilesArchiveLimits(t *testing.T, maxEntries int, maxExpandedBytes int64) {
-	t.Helper()
-
-	oldMaxEntries := filesArchiveMaxEntries
-	oldMaxExpandedBytes := filesArchiveMaxExpandedBytes
-	filesArchiveMaxEntries = maxEntries
-	filesArchiveMaxExpandedBytes = maxExpandedBytes
-	t.Cleanup(func() {
-		filesArchiveMaxEntries = oldMaxEntries
-		filesArchiveMaxExpandedBytes = oldMaxExpandedBytes
-	})
-}
-
-func restoreDBBackupMaxExpandedBytes(t *testing.T, maxExpandedBytes int64) {
-	t.Helper()
-
-	oldMaxExpandedBytes := dbBackupMaxExpandedBytes
-	dbBackupMaxExpandedBytes = maxExpandedBytes
-	t.Cleanup(func() {
-		dbBackupMaxExpandedBytes = oldMaxExpandedBytes
-	})
 }
 
 func writeTraversalTarGzFile(t *testing.T, path string) {

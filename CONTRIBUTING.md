@@ -40,9 +40,9 @@ Required invariants:
 - `restore` and `migrate` require explicit `DB_ROOT_PASSWORD`; never fall back to `DB_USER` for database reset.
 - `restore` and `migrate` require explicit `ESPO_RUNTIME_UID` and `ESPO_RUNTIME_GID`; never infer ownership from the image, container, or operator account.
 - Shipped Compose/env contract uses inline `DB_PASSWORD` and `DB_ROOT_PASSWORD`; do not advertise file-based password env keys.
-- `prod` env loading stays fail-closed: `.env.prod` must be a regular non-symlink file with mode exactly `0600`.
-- Do not call mutable image tags production-safe unless deployed image refs are digest-pinned.
-- For `migrate` from `dev` to `prod`, both scopes must use the same digest-pinned `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs.
+- `prod` env hygiene issues such as symlinked files or non-`0600` modes are warnings, not blockers; unreadable or unparsable env files still fail.
+- Do not call mutable image tags safer than digest-pinned refs; missing digest pinning is a warning for internal deployments.
+- For `migrate` from `dev` to `prod`, both scopes must use the same `ESPOCRM_IMAGE` and `MARIADB_IMAGE` refs; digest pinning remains recommended but is not a hard fail.
 - Do not add decorative env keys to examples.
 
 ## Local Tools

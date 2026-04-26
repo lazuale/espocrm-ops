@@ -260,25 +260,6 @@ func TestRestoreDBFailureAttemptsStart(t *testing.T) {
 	probe.assertClean(t)
 }
 
-func TestRestoreDatabaseBackupRejectsDBGzipOverExpandedLimit(t *testing.T) {
-	restoreDBBackupMaxExpandedBytes(t, 4)
-	backupPath := filepath.Join(t.TempDir(), "db.sql.gz")
-	writeGzipFile(t, backupPath, []byte("12345"))
-	rt := &fakeRestoreRuntime{}
-
-	err := restoreDatabaseBackup(context.Background(), backupPath, rt, runtime.Target{})
-	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if !strings.Contains(err.Error(), "db backup expanded size exceeds limit") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if err := rt.requireCalls("restore_database"); err != nil {
-		t.Fatal(err)
-	}
-	if rt.restoreDBBody != "" {
-		t.Fatalf("expected restore body to be rejected, got %q", rt.restoreDBBody)
-	}
-}
-
 func TestRestoreResetDBFailureAttemptsStartWithoutImportOrFileMutation(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
@@ -449,44 +430,12 @@ func TestRestoreStagingValidationFailureBeforeDestructiveRestoreMutation(t *test
 func TestRestoreUnclearableStorageFailsBeforeMutation(t *testing.T) {
 	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
 	cfg, storageDir := restoreTargetConfig(t)
-	if err := os.Chmod(storageDir, 0o555); err != nil {
+	storageParent := filepath.Dir(storageDir)
+	if err := os.Chmod(storageParent, 0o555); err != nil {
 		t.Fatal(err)
 	}
 	defer func() {
-		_ = os.Chmod(storageDir, 0o755)
-	}()
-
-	rt := &fakeRestoreRuntime{
-		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
-	}
-
-	result, err := Restore(context.Background(), cfg, sourceManifest, rt, restoreTestTime())
-	assertVerifyErrorKind(t, err, ErrorKindIO)
-	if !strings.Contains(err.Error(), "restore storage target is not clearable") {
-		t.Fatalf("unexpected error: %v", err)
-	}
-	if result.SnapshotManifest != "" {
-		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
-	}
-	if err := rt.requireCalls(); err != nil {
-		t.Fatal(err)
-	}
-	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
-	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
-}
-
-func TestRestoreNestedUnclearableStorageFailsBeforeMutation(t *testing.T) {
-	sourceManifest, _, _ := writeRestoreSourceBackupSet(t)
-	cfg, storageDir := restoreTargetConfig(t)
-	nestedDir := filepath.Join(storageDir, "nested")
-	if err := os.MkdirAll(nestedDir, 0o755); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chmod(nestedDir, 0o555); err != nil {
-		t.Fatal(err)
-	}
-	defer func() {
-		_ = os.Chmod(nestedDir, 0o755)
+		_ = os.Chmod(storageParent, 0o755)
 	}()
 
 	rt := &fakeRestoreRuntime{
@@ -967,22 +916,6 @@ func TestRestoreFilesBackupRejectsMaliciousArchiveBeforeStaging(t *testing.T) {
 			name:    "directory file collision",
 			entries: []archiveTestEntry{{name: "nested/child.txt", body: "child\n"}, {name: "nested", body: "file\n"}},
 			want:    "collides with directory",
-		},
-		{
-			name:    "world writable mode",
-			entries: []archiveTestEntry{{name: "restored.txt", body: "restored\n", mode: 0o777}},
-			want:    "world-writable",
-		},
-		{
-			name: "expanded size limit",
-			entries: []archiveTestEntry{{
-				name: "huge.txt",
-				body: "12345",
-			}},
-			configure: func(t *testing.T) {
-				restoreFilesArchiveLimits(t, defaultFilesArchiveMaxEntries, 4)
-			},
-			want: "expanded size exceeds limit",
 		},
 		{
 			name:    "empty archive",

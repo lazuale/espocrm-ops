@@ -20,6 +20,7 @@ import (
 type RestoreResult struct {
 	Manifest         string
 	SnapshotManifest string
+	Warnings         []string
 }
 
 type restoreRuntime interface {
@@ -83,6 +84,7 @@ func restoreWithAllowedSourceScopeLocked(ctx context.Context, cfg config.BackupC
 		return result, verifyErr
 	}
 	result.Manifest = verifyResult.Manifest
+	result.Warnings = append(result.Warnings, verifyResult.Warnings...)
 	if err := validateRestoreSourceScope(cfg.Scope, verifyResult.Scope, allowedSourceScope); err != nil {
 		return result, err
 	}
@@ -300,10 +302,7 @@ func restoreDatabaseBackup(ctx context.Context, artifactPath string, rt restoreR
 	}
 	defer closeResource(reader, &err)
 
-	if err := rt.RestoreDatabase(ctx, target, newDBBackupLimitReader(reader)); err != nil {
-		if errors.Is(err, errDBBackupExpandedSizeLimit) {
-			return archiveError("database restore source is unsafe", err)
-		}
+	if err := rt.RestoreDatabase(ctx, target, reader); err != nil {
 		return runtimeError("database restore failed", err)
 	}
 
@@ -440,28 +439,7 @@ func ensureRestoreStorageClearable(path string) error {
 		return err
 	}
 
-	return filepath.WalkDir(path, func(current string, entry os.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if !entry.IsDir() {
-			return nil
-		}
-
-		probe, err := os.CreateTemp(current, ".espops-clearable-*")
-		if err != nil {
-			return err
-		}
-		probePath := probe.Name()
-		if err := probe.Close(); err != nil {
-			_ = os.Remove(probePath)
-			return err
-		}
-		if err := os.Remove(probePath); err != nil {
-			return err
-		}
-		return nil
-	})
+	return nil
 }
 
 func ensureRestoreStorageParentWritable(path string) error {

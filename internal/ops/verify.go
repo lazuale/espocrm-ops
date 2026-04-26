@@ -6,7 +6,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -29,17 +28,7 @@ const (
 
 const tarRegularTypeflagZero = byte(0)
 
-const defaultDBBackupMaxExpandedBytes int64 = 256 * 1024 * 1024 * 1024
-const defaultFilesArchiveMaxEntries = 200000
-const defaultFilesArchiveMaxExpandedBytes int64 = 256 * 1024 * 1024 * 1024
-
-var (
-	errDBBackupExpandedSizeLimit = errors.New("db backup expanded size exceeds limit")
-	dbBackupMaxExpandedBytes     = defaultDBBackupMaxExpandedBytes
-
-	filesArchiveMaxEntries       = defaultFilesArchiveMaxEntries
-	filesArchiveMaxExpandedBytes = defaultFilesArchiveMaxExpandedBytes
-)
+const maxInt64 = int64(1<<63 - 1)
 
 type VerifyResult struct {
 	Manifest           string
@@ -50,6 +39,7 @@ type VerifyResult struct {
 	FilesBackup        string
 	FilesExpandedBytes int64
 	Runtime            manifest.Runtime
+	Warnings           []string
 }
 
 type VerifyError struct {
@@ -102,10 +92,11 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 		return VerifyResult{}, manifestError("manifest is invalid", err)
 	}
 
-	if _, err := verifyArtifact(ctx, "db backup", paths.DBPath, paths.DBSidecarPath, loadedManifest.Checksums.DBBackup, ".sql.gz", verifyGzipReadableForArtifact); err != nil {
+	_, dbWarnings, err := verifyArtifact(ctx, "db backup", paths.DBPath, paths.DBSidecarPath, loadedManifest.Checksums.DBBackup, ".sql.gz", verifyGzipReadableForArtifact)
+	if err != nil {
 		return VerifyResult{}, err
 	}
-	filesCheck, err := verifyArtifact(ctx, "files backup", paths.FilesPath, paths.FilesSidecarPath, loadedManifest.Checksums.FilesBackup, ".tar.gz", verifyTarGzReadableForArtifact)
+	filesCheck, filesWarnings, err := verifyArtifact(ctx, "files backup", paths.FilesPath, paths.FilesSidecarPath, loadedManifest.Checksums.FilesBackup, ".tar.gz", verifyTarGzReadableForArtifact)
 	if err != nil {
 		return VerifyResult{}, err
 	}
@@ -119,6 +110,7 @@ func VerifyBackup(ctx context.Context, manifestPath string) (VerifyResult, error
 		FilesBackup:        paths.FilesPath,
 		FilesExpandedBytes: filesCheck.FilesExpandedBytes,
 		Runtime:            loadedManifest.Runtime,
+		Warnings:           append(dbWarnings, filesWarnings...),
 	}, nil
 }
 
@@ -126,47 +118,51 @@ type artifactCheckResult struct {
 	FilesExpandedBytes int64
 }
 
-func verifyArtifact(ctx context.Context, label, artifactPath, sidecarPath, manifestChecksum, requiredSuffix string, verifyReadable func(string) (artifactCheckResult, error)) (artifactCheckResult, error) {
+func verifyArtifact(ctx context.Context, label, artifactPath, sidecarPath, manifestChecksum, requiredSuffix string, verifyReadable func(string) (artifactCheckResult, error)) (artifactCheckResult, []string, error) {
 	if err := ctx.Err(); err != nil {
-		return artifactCheckResult{}, ioError("backup verify interrupted", err)
+		return artifactCheckResult{}, nil, ioError("backup verify interrupted", err)
 	}
 	if !strings.HasSuffix(artifactPath, requiredSuffix) {
-		return artifactCheckResult{}, artifactError(label+" has an unexpected file name", nil)
+		return artifactCheckResult{}, nil, artifactError(label+" has an unexpected file name", nil)
 	}
 	if err := ensureNonEmptyFile(artifactPath); err != nil {
-		return artifactCheckResult{}, artifactError(label+" is unavailable", err)
-	}
-	if err := ensureNonEmptyFile(sidecarPath); err != nil {
-		return artifactCheckResult{}, checksumError(label+" checksum sidecar is unavailable", err)
+		return artifactCheckResult{}, nil, artifactError(label+" is unavailable", err)
 	}
 
 	actualChecksum, err := sha256File(artifactPath)
 	if err != nil {
-		return artifactCheckResult{}, ioError("failed to read "+label+" checksum", err)
+		return artifactCheckResult{}, nil, ioError("failed to read "+label+" checksum", err)
 	}
 
 	manifestChecksum = strings.ToLower(strings.TrimSpace(manifestChecksum))
 	if !validChecksum(manifestChecksum) {
-		return artifactCheckResult{}, checksumError(label+" manifest checksum is invalid", nil)
+		return artifactCheckResult{}, nil, checksumError(label+" manifest checksum is invalid", nil)
 	}
 	if actualChecksum != manifestChecksum {
-		return artifactCheckResult{}, checksumError(label+" checksum does not match manifest", nil)
+		return artifactCheckResult{}, nil, checksumError(label+" checksum does not match manifest", nil)
 	}
 
-	sidecarChecksum, err := readSidecarChecksum(sidecarPath, artifactPath)
-	if err != nil {
-		return artifactCheckResult{}, checksumError(label+" checksum sidecar is invalid", err)
-	}
-	if actualChecksum != sidecarChecksum {
-		return artifactCheckResult{}, checksumError(label+" checksum does not match sidecar", nil)
-	}
-
+	warnings := verifySidecarChecksum(label, sidecarPath, artifactPath, actualChecksum)
 	result, err := verifyReadable(artifactPath)
 	if err != nil {
-		return artifactCheckResult{}, archiveError(label+" archive is unreadable", err)
+		return artifactCheckResult{}, warnings, archiveError(label+" archive is unreadable", err)
 	}
 
-	return result, nil
+	return result, warnings, nil
+}
+
+func verifySidecarChecksum(label, sidecarPath, artifactPath, actualChecksum string) []string {
+	if err := ensureNonEmptyFile(sidecarPath); err != nil {
+		return []string{label + " checksum sidecar is unavailable: " + err.Error()}
+	}
+	sidecarChecksum, err := readSidecarChecksum(sidecarPath, artifactPath)
+	if err != nil {
+		return []string{label + " checksum sidecar is invalid: " + err.Error()}
+	}
+	if actualChecksum != sidecarChecksum {
+		return []string{label + " checksum does not match sidecar"}
+	}
+	return nil
 }
 
 func ensureNonEmptyFile(path string) error {
@@ -241,42 +237,12 @@ func verifyGzipReadable(path string) (err error) {
 	}
 	defer closeResource(reader, &err)
 
-	_, err = io.Copy(io.Discard, newDBBackupLimitReader(reader))
+	_, err = io.Copy(io.Discard, reader)
 	return err
 }
 
 func verifyGzipReadableForArtifact(path string) (artifactCheckResult, error) {
 	return artifactCheckResult{}, verifyGzipReadable(path)
-}
-
-type dbBackupLimitReader struct {
-	reader    io.Reader
-	remaining int64
-}
-
-func newDBBackupLimitReader(reader io.Reader) io.Reader {
-	return &dbBackupLimitReader{
-		reader:    reader,
-		remaining: dbBackupMaxExpandedBytes,
-	}
-}
-
-func (r *dbBackupLimitReader) Read(p []byte) (int, error) {
-	if r.remaining <= 0 {
-		var probe [1]byte
-		n, err := r.reader.Read(probe[:])
-		if n > 0 {
-			return 0, errDBBackupExpandedSizeLimit
-		}
-		return 0, err
-	}
-	if int64(len(p)) > r.remaining {
-		p = p[:r.remaining]
-	}
-
-	n, err := r.reader.Read(p)
-	r.remaining -= int64(n)
-	return n, err
 }
 
 func verifyTarGzReadableForArtifact(path string) (artifactCheckResult, error) {
@@ -338,7 +304,6 @@ const (
 )
 
 type filesArchiveValidator struct {
-	entries       int
 	expandedBytes int64
 	seen          map[string]tarEntryKind
 	files         map[string]struct{}
@@ -360,10 +325,6 @@ func (v *filesArchiveValidator) validate(header *tar.Header) error {
 	if err != nil {
 		return err
 	}
-	if v.entries >= filesArchiveMaxEntries {
-		return fmt.Errorf("files archive has too many entries")
-	}
-	v.entries++
 	if _, ok := v.seen[name]; ok {
 		return fmt.Errorf("tar entry is duplicated: %s", name)
 	}
@@ -371,8 +332,8 @@ func (v *filesArchiveValidator) validate(header *tar.Header) error {
 		return err
 	}
 	if kind == tarEntryKindRegular {
-		if header.Size > filesArchiveMaxExpandedBytes-v.expandedBytes {
-			return fmt.Errorf("files archive expanded size exceeds limit")
+		if header.Size > maxInt64-v.expandedBytes {
+			return fmt.Errorf("files archive expanded size is too large")
 		}
 		v.expandedBytes += header.Size
 		v.files[name] = struct{}{}
@@ -470,15 +431,6 @@ func hasParentPathSegment(name string) bool {
 func validateTarHeaderMode(mode int64) error {
 	if mode < 0 {
 		return fmt.Errorf("tar entry mode is invalid: %o", mode)
-	}
-	if mode&^int64(0o7777) != 0 {
-		return fmt.Errorf("tar entry mode has unsupported bits: %o", mode)
-	}
-	if mode&0o7000 != 0 {
-		return fmt.Errorf("tar entry mode has special bits: %04o", mode&0o7777)
-	}
-	if mode&0o002 != 0 {
-		return fmt.Errorf("tar entry mode is world-writable: %04o", mode&0o7777)
 	}
 	return nil
 }

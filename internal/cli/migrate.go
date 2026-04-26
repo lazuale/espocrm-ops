@@ -50,7 +50,7 @@ func newMigrateCmd() *cobra.Command {
 				OK:       true,
 				Message:  "migrate completed",
 				Error:    nil,
-				Warnings: []string{},
+				Warnings: combineWarnings(targetCfg.Warnings, result.Warnings),
 				Result: migrateResult{
 					Manifest:         result.Manifest,
 					SnapshotManifest: result.SnapshotManifest,

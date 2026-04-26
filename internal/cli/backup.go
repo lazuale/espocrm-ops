@@ -50,7 +50,7 @@ func newBackupCmd() *cobra.Command {
 				OK:       true,
 				Message:  "backup completed",
 				Error:    nil,
-				Warnings: backupWarnings(result),
+				Warnings: combineWarnings(cfg.Warnings, result.Warnings),
 				Result: backupResult{
 					Manifest:    result.Manifest,
 					DBBackup:    result.DBBackup,
@@ -75,11 +75,15 @@ func loadBackupConfig(scope, projectDir string) (config.BackupConfig, error) {
 	})
 }
 
-func backupWarnings(result ops.BackupResult) []string {
-	if len(result.Warnings) == 0 {
+func combineWarnings(groups ...[]string) []string {
+	var warnings []string
+	for _, group := range groups {
+		warnings = append(warnings, group...)
+	}
+	if len(warnings) == 0 {
 		return []string{}
 	}
-	return append([]string(nil), result.Warnings...)
+	return append([]string(nil), warnings...)
 }
 
 func backupCommandError(result ops.BackupResult, err error) error {

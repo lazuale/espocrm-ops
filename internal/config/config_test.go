@@ -149,7 +149,7 @@ func TestLoadEnvAssignmentsOnlyAcceptsLiteralKeyValueLines(t *testing.T) {
 	}
 }
 
-func TestLoadBackupConfigRejectsProdEnvMode0640(t *testing.T) {
+func TestLoadBackupConfigWarnsForProdEnvMode0640(t *testing.T) {
 	projectDir := t.TempDir()
 	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
 		"ESPO_CONTOUR=prod",
@@ -169,24 +169,49 @@ func TestLoadBackupConfigRejectsProdEnvMode0640(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	cfg, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
+	}
+	assertConfigWarningContains(t, cfg, "permissions 0640")
+	assertConfigWarningContains(t, cfg, "0600 is recommended")
+}
+
+func TestLoadBackupConfigUnreadableProdEnvStillFails(t *testing.T) {
+	projectDir := t.TempDir()
+	writeBackupConfigEnv(t, projectDir, ".env.prod", []string{
+		"ESPO_CONTOUR=prod",
+		"BACKUP_ROOT=./backups/prod",
+		"BACKUP_NAME_PREFIX=test-backup",
+		"BACKUP_RETENTION_DAYS=7",
+		"MIN_FREE_DISK_MB=1",
+		"ESPO_STORAGE_DIR=./runtime/prod/espo",
+		"APP_SERVICES=espocrm,espocrm-daemon,espocrm-websocket",
+		"DB_SERVICE=db",
+		"DB_USER=espocrm",
+		"DB_PASSWORD=db-secret",
+		"DB_NAME=espocrm",
+	})
+	envPath := filepath.Join(projectDir, ".env.prod")
+	if err := os.Chmod(envPath, 0o200); err != nil {
+		t.Fatal(err)
+	}
+
 	_, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
 	if err == nil {
 		t.Fatal("expected error")
 	}
-	for _, want := range []string{"prod env file", "unsafe permissions", "0640", "chmod 600"} {
-		if !strings.Contains(err.Error(), want) {
-			t.Fatalf("expected error to contain %q, got %v", want, err)
-		}
+	if !strings.Contains(err.Error(), "open env file") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
-func TestLoadBackupConfigRejectsUnsafeProdEnvMode(t *testing.T) {
+func TestLoadBackupConfigWarnsForLooseProdEnvMode(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		mode os.FileMode
 	}{
 		{name: "owner_read_only", mode: 0o400},
-		{name: "owner_write_only", mode: 0o200},
 		{name: "world_readable", mode: 0o644},
 		{name: "world_writable", mode: 0o602},
 		{name: "group_writable", mode: 0o660},
@@ -211,25 +236,16 @@ func TestLoadBackupConfigRejectsUnsafeProdEnvMode(t *testing.T) {
 				t.Fatal(err)
 			}
 
-			_, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
-			if err == nil {
-				t.Fatal("expected error")
+			cfg, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
+			if err != nil {
+				t.Fatalf("LoadBackup failed: %v", err)
 			}
-			for _, want := range []string{
-				"prod env file",
-				"unsafe permissions",
-				fmt.Sprintf("%04o", tc.mode),
-				"chmod 600",
-			} {
-				if !strings.Contains(err.Error(), want) {
-					t.Fatalf("expected error to contain %q, got %v", want, err)
-				}
-			}
+			assertConfigWarningContains(t, cfg, fmt.Sprintf("permissions %04o", tc.mode))
 		})
 	}
 }
 
-func TestLoadBackupConfigRejectsProdEnvSymlink(t *testing.T) {
+func TestLoadBackupConfigWarnsForProdEnvSymlink(t *testing.T) {
 	projectDir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(projectDir, "compose.yaml"), []byte("services: {}\n"), 0o644); err != nil {
 		t.Fatal(err)
@@ -255,13 +271,11 @@ func TestLoadBackupConfigRejectsProdEnvSymlink(t *testing.T) {
 		t.Skipf("symlink unavailable: %v", err)
 	}
 
-	_, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
-	if err == nil {
-		t.Fatal("expected error")
+	cfg, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
+	if err != nil {
+		t.Fatalf("LoadBackup failed: %v", err)
 	}
-	if !strings.Contains(err.Error(), "prod env file") || !strings.Contains(err.Error(), "not a symlink") {
-		t.Fatalf("unexpected error: %v", err)
-	}
+	assertConfigWarningContains(t, cfg, "is a symlink")
 }
 
 func TestLoadBackupConfigDoesNotRejectDevWorldReadableEnv(t *testing.T) {
@@ -345,7 +359,7 @@ func TestLoadBackupConfigAllowsProdTaggedDigestImageRefs(t *testing.T) {
 	}
 }
 
-func TestLoadBackupConfigRejectsProdImageRefsWithoutDigest(t *testing.T) {
+func TestLoadBackupConfigWarnsForProdImageRefsWithoutDigest(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		line string
@@ -353,8 +367,6 @@ func TestLoadBackupConfigRejectsProdImageRefsWithoutDigest(t *testing.T) {
 	}{
 		{name: "espo_tag", line: "ESPOCRM_IMAGE=" + testEspoCRMTagRef, key: "ESPOCRM_IMAGE"},
 		{name: "mariadb_tag", line: "MARIADB_IMAGE=" + testMariaDBTagRef, key: "MARIADB_IMAGE"},
-		{name: "espo_missing", line: "ESPOCRM_IMAGE=", key: "ESPOCRM_IMAGE"},
-		{name: "mariadb_missing", line: "MARIADB_IMAGE=", key: "MARIADB_IMAGE"},
 		{name: "wrong_algorithm", line: "ESPOCRM_IMAGE=espocrm/espocrm@sha512:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", key: "ESPOCRM_IMAGE"},
 		{name: "short_digest", line: "MARIADB_IMAGE=mariadb@sha256:abc123", key: "MARIADB_IMAGE"},
 		{name: "non_hex_digest", line: "ESPOCRM_IMAGE=espocrm/espocrm@sha256:gggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggggg", key: "ESPOCRM_IMAGE"},
@@ -377,15 +389,12 @@ func TestLoadBackupConfigRejectsProdImageRefsWithoutDigest(t *testing.T) {
 				"DB_NAME=espocrm",
 			})
 
-			_, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
-			if err == nil {
-				t.Fatal("expected error")
+			cfg, err := LoadBackup(BackupRequest{Scope: "prod", ProjectDir: projectDir})
+			if err != nil {
+				t.Fatalf("LoadBackup failed: %v", err)
 			}
-			for _, want := range []string{tc.key, "digest-pinned", "prefix@sha256:<64-lower-hex-digest>", "prod"} {
-				if !strings.Contains(err.Error(), want) {
-					t.Fatalf("expected error to contain %q, got %v", want, err)
-				}
-			}
+			assertConfigWarningContains(t, cfg, tc.key)
+			assertConfigWarningContains(t, cfg, "not digest-pinned")
 		})
 	}
 }
@@ -1082,4 +1091,15 @@ func testEnvFileMode(envName string) os.FileMode {
 		return 0o600
 	}
 	return 0o644
+}
+
+func assertConfigWarningContains(t *testing.T, cfg BackupConfig, want string) {
+	t.Helper()
+
+	for _, warning := range cfg.Warnings {
+		if strings.Contains(warning, want) {
+			return
+		}
+	}
+	t.Fatalf("expected warning containing %q, got %#v", want, cfg.Warnings)
 }
