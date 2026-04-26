@@ -9,8 +9,6 @@ Commands:
 - `backup verify`
 - `restore`
 
-There is no `migrate`, retention cleanup, sidecar checksum files, warning subsystem, digest pinning policy, or secrets framework.
-
 ## Build
 
 ```bash
@@ -19,7 +17,7 @@ make build
 
 The binary is written to `bin/espops`.
 
-## Project Contract
+## Project
 
 Run `espops` against a project directory containing:
 
@@ -34,7 +32,7 @@ Example:
 
 Env files are parsed as literal `KEY=VALUE` lines only. Quotes, spaces, shell expansion syntax, and duplicate keys fail. Keys not used by `espops` are ignored and left for Docker Compose.
 
-Required env keys:
+Env keys read by `espops`:
 
 - `BACKUP_ROOT`
 - `ESPO_STORAGE_DIR`
@@ -62,7 +60,6 @@ The manifest schema is:
 
 ```json
 {
-  "version": 1,
   "scope": "prod",
   "created_at": "2026-04-26T13:00:00Z",
   "db": {"file": "db.sql.gz", "sha256": "..."},
@@ -70,8 +67,6 @@ The manifest schema is:
   "db_name": "espocrm"
 }
 ```
-
-No `.sha256` sidecars are written. The manifest is the authority for artifact identity.
 
 ## Doctor
 
@@ -107,4 +102,4 @@ If restore fails after the snapshot exists, the JSON result includes `snapshot_m
 
 ## JSON Output
 
-Every command writes one JSON object to stdout. Success has `"ok": true`; failure has `"ok": false` and an `error` object. There is no warnings field.
+Every command writes one JSON object to stdout. Success has `"ok": true`; failure has `"ok": false` and an `error` object.

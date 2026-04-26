@@ -1,6 +1,6 @@
 # Contributing
 
-This repository is intentionally small. Treat old code as donor material only.
+This repository is intentionally small.
 
 ## Product Shape
 
@@ -10,8 +10,6 @@ The product commands are exactly:
 - `backup`
 - `backup verify`
 - `restore`
-
-Do not add `migrate`, retention, sidecar checksum files, warnings, digest pinning policy, runtime contract v2, `storage_contract`, `BACKUP_NAME_PREFIX`, `BACKUP_RETENTION_DAYS`, `ESPO_CONTOUR`, cloud/offsite storage, or a secrets framework.
 
 ## Code Boundaries
 
@@ -24,9 +22,9 @@ Do not add `migrate`, retention, sidecar checksum files, warnings, digest pinnin
 
 Avoid abstractions until two real call sites need them.
 
-## Runtime Contract
+## Backup Shape
 
-Env files are literal `KEY=VALUE` only. The product env keys read by `espops` are:
+Env files are literal `KEY=VALUE` only. Env keys read by `espops` are:
 
 - `BACKUP_ROOT`
 - `ESPO_STORAGE_DIR`
@@ -37,6 +35,8 @@ Env files are literal `KEY=VALUE` only. The product env keys read by `espops` ar
 - `DB_ROOT_PASSWORD`
 - `DB_NAME`
 
+Other env keys are ignored by `espops` and left for Docker Compose.
+
 Backup layout:
 
 ```text
@@ -46,11 +46,10 @@ BACKUP_ROOT/<scope>/<timestamp>/
   files.tar.gz
 ```
 
-Manifest version `1`:
+Manifest:
 
 ```json
 {
-  "version": 1,
   "scope": "...",
   "created_at": "...",
   "db": {"file": "db.sql.gz", "sha256": "..."},

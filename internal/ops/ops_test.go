@@ -3,6 +3,7 @@ package ops
 import (
 	"compress/gzip"
 	"context"
+	"encoding/json"
 	"io"
 	"os"
 	"path/filepath"
@@ -15,7 +16,7 @@ import (
 	"github.com/lazuale/espocrm-ops/internal/runtime"
 )
 
-func TestBackupCreatesMinimalV1BackupSet(t *testing.T) {
+func TestBackupCreatesMinimalBackupSet(t *testing.T) {
 	cfg := testConfig(t)
 	rt := &fakeRuntime{dumpSQL: "create table account(id int);\n"}
 	now := time.Date(2026, 4, 26, 13, 14, 15, 16, time.UTC)
@@ -38,19 +39,11 @@ func TestBackupCreatesMinimalV1BackupSet(t *testing.T) {
 			t.Fatalf("expected backup artifact %s: %v", path, err)
 		}
 	}
-	matches, err := filepath.Glob(filepath.Join(wantDir, "*.sha256"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if len(matches) != 0 {
-		t.Fatalf("sidecar files must not be written: %#v", matches)
-	}
-
 	loaded, err := manifest.Load(result.Manifest)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if loaded.Version != manifest.Version || loaded.DB.File != manifest.DBFileName || loaded.Files.File != manifest.FilesFileName {
+	if loaded.DB.File != manifest.DBFileName || loaded.Files.File != manifest.FilesFileName {
 		t.Fatalf("unexpected manifest: %#v", loaded)
 	}
 	if loaded.DBName != cfg.DBName {
@@ -60,8 +53,24 @@ func TestBackupCreatesMinimalV1BackupSet(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if strings.Contains(string(rawManifest), "db_service") || strings.Contains(string(rawManifest), "app_services") {
-		t.Fatalf("manifest must not store runtime service names: %s", string(rawManifest))
+	var rawFields map[string]json.RawMessage
+	if err := json.Unmarshal(rawManifest, &rawFields); err != nil {
+		t.Fatal(err)
+	}
+	wantFields := map[string]bool{
+		"scope":      true,
+		"created_at": true,
+		"db":         true,
+		"files":      true,
+		"db_name":    true,
+	}
+	if len(rawFields) != len(wantFields) {
+		t.Fatalf("unexpected manifest fields: %#v", rawFields)
+	}
+	for field := range rawFields {
+		if !wantFields[field] {
+			t.Fatalf("unexpected manifest field %q", field)
+		}
 	}
 	if strings.Join(rt.calls, ",") != "compose_config,stop_services,dump_database,start_services,service_health" {
 		t.Fatalf("unexpected calls: %s", strings.Join(rt.calls, ","))

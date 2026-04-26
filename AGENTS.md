@@ -4,13 +4,13 @@
 
 - The product commands are exactly `doctor`, `backup`, `backup verify`, and `restore`.
 - This is a small internal ops tool for one EspoCRM server.
-- It is not a platform, security product, backup framework, migration framework, or secrets framework.
+- It is not a platform, security product, backup framework, or secrets framework.
 - `cmd/espops/` owns only the process entrypoint.
 - `internal/` owns product behavior.
 - Keep one direct Go code path; do not add a second runtime or hidden alternate path.
 - Keep Docker Compose execution, MariaDB execution, native tar execution, Go gzip DB streams, and process env forwarding in `internal/runtime/docker.go`.
 
-## Runtime Contract
+## Backup Shape
 
 - Backup layout is exactly:
 
@@ -21,15 +21,14 @@
     files.tar.gz
   ```
 
-- Manifest version is `1` and contains only:
-  - `version`
+- Manifest contains only:
   - `scope`
   - `created_at`
   - `db.file` and `db.sha256`
   - `files.file` and `files.sha256`
   - `db_name`
 - Env files are literal `KEY=VALUE` only; no quotes, spaces, shell expansion, or duplicate keys.
-- The only env keys read by `espops` are:
+- Env keys read by `espops` are:
   - `BACKUP_ROOT`
   - `ESPO_STORAGE_DIR`
   - `APP_SERVICES`
@@ -38,8 +37,7 @@
   - `DB_PASSWORD`
   - `DB_ROOT_PASSWORD`
   - `DB_NAME`
-- Do not add or document product env keys outside that list.
-- Do not add `migrate`, retention, sidecars, warnings, digest pinning policy, `runtime contract v2`, `storage_contract`, `BACKUP_NAME_PREFIX`, `BACKUP_RETENTION_DAYS`, or `ESPO_CONTOUR`.
+- Other env keys are ignored by `espops` and left for Docker Compose.
 - `DB_SERVICE` and every service in `APP_SERVICES` are explicit runtime inputs and must be healthy before success is reported.
 
 ## Operation Safety

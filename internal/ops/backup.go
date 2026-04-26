@@ -139,7 +139,6 @@ func backupCore(ctx context.Context, cfg config.Config, rt backupRuntime, now ti
 		return result, ioError("failed to checksum files backup", err)
 	}
 	if err := manifest.Write(layout.ManifestJSON, manifest.Manifest{
-		Version:   manifest.Version,
 		Scope:     cfg.Scope,
 		CreatedAt: now.Format(time.RFC3339Nano),
 		DB: manifest.Artifact{

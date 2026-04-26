@@ -2,7 +2,7 @@ package cli
 
 import "testing"
 
-func TestRootCommandsAreMinimalV2Set(t *testing.T) {
+func TestRootCommandsAreMinimalSet(t *testing.T) {
 	root := NewRootCmd()
 	got := map[string]bool{}
 	for _, cmd := range root.Commands() {
@@ -13,8 +13,8 @@ func TestRootCommandsAreMinimalV2Set(t *testing.T) {
 			t.Fatalf("root command %q is missing", name)
 		}
 	}
-	if got["migrate"] {
-		t.Fatal("migrate command must not be registered")
+	if len(got) != 3 {
+		t.Fatalf("unexpected root commands: %#v", got)
 	}
 
 	var hasVerify bool

@@ -10,8 +10,6 @@ import (
 	"time"
 )
 
-const Version = 1
-
 const (
 	DBFileName    = "db.sql.gz"
 	FilesFileName = "files.tar.gz"
@@ -19,7 +17,6 @@ const (
 )
 
 type Manifest struct {
-	Version   int      `json:"version"`
 	Scope     string   `json:"scope"`
 	CreatedAt string   `json:"created_at"`
 	DB        Artifact `json:"db"`
@@ -64,9 +61,6 @@ func Validate(path string, manifest Manifest) error {
 	}
 	if filepath.Base(path) != ManifestName {
 		return fmt.Errorf("manifest file must be named %s", ManifestName)
-	}
-	if manifest.Version != Version {
-		return fmt.Errorf("manifest version must be %d", Version)
 	}
 	if strings.TrimSpace(manifest.Scope) == "" {
 		return fmt.Errorf("manifest scope is required")

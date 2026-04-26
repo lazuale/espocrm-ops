@@ -45,7 +45,11 @@ func TestLoadConfigAllowsUnknownComposeKeys(t *testing.T) {
 		"DB_ROOT_PASSWORD=rootpass",
 		"DB_NAME=espocrm",
 		"ESPOCRM_IMAGE=espocrm:latest",
+		"MARIADB_IMAGE=mariadb:11",
 		"SITE_URL=https://crm.example.test",
+		"ADMIN_PASSWORD=adminpass",
+		"ESPOCRM_HTTP_PORT=8080",
+		"PHP_MEMORY_LIMIT=256M",
 	})
 
 	if _, err := Load(Request{Scope: "prod", ProjectDir: projectDir}); err != nil {

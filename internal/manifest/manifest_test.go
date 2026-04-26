@@ -9,10 +9,9 @@ import (
 
 const testSHA = "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 
-func TestManifestValidateV1(t *testing.T) {
+func TestManifestValidate(t *testing.T) {
 	path := filepath.Join(t.TempDir(), ManifestName)
 	m := Manifest{
-		Version:   Version,
 		Scope:     "prod",
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		DB:        Artifact{File: DBFileName, SHA256: testSHA},
@@ -24,10 +23,9 @@ func TestManifestValidateV1(t *testing.T) {
 	}
 }
 
-func TestManifestValidateRejectsSidecarEraShape(t *testing.T) {
+func TestManifestValidateRejectsWrongFileName(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.manifest.json")
 	m := Manifest{
-		Version:   2,
 		Scope:     "prod",
 		CreatedAt: time.Now().UTC().Format(time.RFC3339Nano),
 		DB:        Artifact{File: "prod.sql.gz", SHA256: testSHA},
