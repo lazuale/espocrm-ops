@@ -266,7 +266,7 @@ func TestDockerComposeStopServicesRunsComposeStop(t *testing.T) {
 	}
 }
 
-func TestDockerComposeStartServicesRunsComposeStart(t *testing.T) {
+func TestDockerComposeStartServicesRunsComposeUp(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
 
@@ -280,9 +280,33 @@ func TestDockerComposeStartServicesRunsComposeStart(t *testing.T) {
 		t.Fatalf("StartServices failed: %v", err)
 	}
 
-	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" start espocrm espocrm-daemon") {
-		t.Fatalf("unexpected docker log:\n%s", log)
+	wantArgv := []string{
+		"compose",
+		"--env-file", filepath.Join(projectDir, ".env.prod"),
+		"-f", filepath.Join(projectDir, "compose.yaml"),
+		"up", "-d", "espocrm", "espocrm-daemon",
+	}
+	if gotArgv := fakeDockerArgv(t, logPath); strings.Join(gotArgv, "\n") != strings.Join(wantArgv, "\n") {
+		t.Fatalf("unexpected docker argv:\ngot  %#v\nwant %#v", gotArgv, wantArgv)
+	}
+}
+
+func TestDockerComposeStartServicesMissingServiceFails(t *testing.T) {
+	projectDir := t.TempDir()
+	logPath := installFakeDocker(t)
+	setFakeDockerUpMissingService(t, logPath, "missing")
+
+	rt := DockerCompose{}
+	err := rt.StartServices(context.Background(), Target{
+		ProjectDir:  projectDir,
+		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
+		EnvFile:     filepath.Join(projectDir, ".env.prod"),
+	}, []string{"espocrm", "missing"})
+	if err == nil {
+		t.Fatal("expected missing service error")
+	}
+	if !strings.Contains(err.Error(), "no such service: missing") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 
@@ -301,9 +325,14 @@ func TestDockerComposeUpServiceRunsComposeUp(t *testing.T) {
 		t.Fatalf("UpService failed: %v", err)
 	}
 
-	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" up -d db") {
-		t.Fatalf("unexpected docker log:\n%s", log)
+	wantArgv := []string{
+		"compose",
+		"--env-file", filepath.Join(projectDir, ".env.prod"),
+		"-f", filepath.Join(projectDir, "compose.yaml"),
+		"up", "-d", "db",
+	}
+	if gotArgv := fakeDockerArgv(t, logPath); strings.Join(gotArgv, "\n") != strings.Join(wantArgv, "\n") {
+		t.Fatalf("unexpected docker argv:\ngot  %#v\nwant %#v", gotArgv, wantArgv)
 	}
 }
 
@@ -692,6 +721,11 @@ func setFakeDockerExecFailure(t *testing.T, logPath, stderr string) {
 	writeFakeDockerControl(t, logPath, "fail-stderr", stderr)
 }
 
+func setFakeDockerUpMissingService(t *testing.T, logPath, service string) {
+	t.Helper()
+	writeFakeDockerControl(t, logPath, "up-missing-service", service)
+}
+
 func writeFakeDockerControl(t *testing.T, logPath, name, value string) {
 	t.Helper()
 
@@ -835,6 +869,17 @@ case "${1:-}" in
     ;;
   up)
     [[ "${2:-}" == "-d" ]] || exit 1
+    shift 2
+    missing=""
+    if [[ -f "$fake_root/up-missing-service" ]]; then
+      missing="$(cat "$fake_root/up-missing-service")"
+    fi
+    for service in "$@"; do
+      if [[ -n "$missing" && "$service" == "$missing" ]]; then
+        printf 'no such service: %s\n' "$service" >&2
+        exit 1
+      fi
+    done
     exit 0
     ;;
   exec)
@@ -928,7 +973,7 @@ case "${1:-}" in
     esac
     exit 1
     ;;
-  stop|start)
+  stop)
     exit 0
     ;;
 esac

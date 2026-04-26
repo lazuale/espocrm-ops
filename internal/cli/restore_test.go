@@ -972,7 +972,12 @@ case "${1:-}" in
     printf '1' >"$fake_root/app-stopped"
     exit 0
     ;;
-  start)
+  up)
+    [[ "${2:-}" == "-d" ]] || exit 1
+    shift 2
+    if [[ "${1:-}" == "db" ]]; then
+      exit 0
+    fi
     rm -f "$fake_root/app-stopped"
     start_count=0
     if [[ -f "$fake_root/start-count" ]]; then
@@ -983,10 +988,6 @@ case "${1:-}" in
       exit 1
     fi
     printf '%s' "$((start_count + 1))" >"$fake_root/start-count"
-    exit 0
-    ;;
-  up)
-    [[ "${2:-}" == "-d" ]] || exit 1
     exit 0
     ;;
   exec)

@@ -611,7 +611,8 @@ case "${1:-}" in
     printf '1' >"$fake_root/app-stopped"
     exit 0
     ;;
-  start)
+  up)
+    [[ "${2:-}" == "-d" ]] || exit 1
     rm -f "$fake_root/app-stopped"
     exit 0
     ;;

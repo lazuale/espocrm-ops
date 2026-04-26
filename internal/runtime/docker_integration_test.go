@@ -302,8 +302,8 @@ func (p integrationProject) cleanup(t *testing.T) {
 			t.Logf("docker compose logs:\n%s", strings.TrimSpace(logs))
 		}
 	}
-	if _, err := p.runDocker(ctx, "compose", "--env-file", p.envFile, "-f", p.composeFile, "down", "-v", "--remove-orphans"); err != nil {
-		t.Logf("docker compose down failed: %v", err)
+	if _, err := p.runDocker(ctx, "compose", "--env-file", p.envFile, "-f", p.composeFile, "rm", "--stop", "--force", "--volumes"); err != nil {
+		t.Logf("docker compose rm failed: %v", err)
 	}
 	for _, image := range []string{integrationMariaDBImage, integrationAppImage} {
 		if p.preexisting[image] {

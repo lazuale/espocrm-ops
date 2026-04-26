@@ -125,7 +125,7 @@ func (DockerCompose) StopServices(ctx context.Context, target Target, services [
 }
 
 func (DockerCompose) StartServices(ctx context.Context, target Target, services []string) error {
-	args, err := serviceArgs("start", services)
+	args, err := upServiceArgs(services)
 	if err != nil {
 		return err
 	}
@@ -133,11 +133,11 @@ func (DockerCompose) StartServices(ctx context.Context, target Target, services 
 }
 
 func (DockerCompose) UpService(ctx context.Context, target Target, service string) error {
-	service = strings.TrimSpace(service)
-	if service == "" {
-		return fmt.Errorf("service is required")
+	args, err := upServiceArgs([]string{service})
+	if err != nil {
+		return err
 	}
-	return runCompose(ctx, target, runOptions{}, "up", "-d", service)
+	return runCompose(ctx, target, runOptions{}, args...)
 }
 
 func (DockerCompose) DumpDatabase(ctx context.Context, target Target, destPath string) (err error) {
@@ -485,6 +485,22 @@ func serviceArgs(action string, services []string) ([]string, error) {
 	}
 	if len(out) == 1 {
 		return nil, fmt.Errorf("%s requires at least one service", action)
+	}
+	return out, nil
+}
+
+func upServiceArgs(services []string) ([]string, error) {
+	out := make([]string, 0, len(services)+2)
+	out = append(out, "up", "-d")
+	for _, service := range services {
+		service = strings.TrimSpace(service)
+		if service == "" {
+			return nil, fmt.Errorf("up service names must be non-empty")
+		}
+		out = append(out, service)
+	}
+	if len(out) == 2 {
+		return nil, fmt.Errorf("up requires at least one service")
 	}
 	return out, nil
 }
