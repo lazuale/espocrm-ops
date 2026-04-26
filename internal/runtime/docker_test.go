@@ -129,6 +129,50 @@ func TestCommandEnvKeepsOnlyDockerSystemEnvAndExplicitMySQLPwd(t *testing.T) {
 	}
 }
 
+func TestCreateTarGzRunsNativeTarWithExactArgvAndNulList(t *testing.T) {
+	rootDir := installFakeTar(t)
+	sourceDir := filepath.Join(t.TempDir(), "storage")
+	if err := os.MkdirAll(sourceDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	destPath := filepath.Join(t.TempDir(), "files.tar.gz")
+
+	err := CreateTarGz(context.Background(), sourceDir, destPath, []string{
+		"nested",
+		"nested/file.txt",
+	})
+	if err != nil {
+		t.Fatalf("CreateTarGz failed: %v", err)
+	}
+
+	rawArgv, err := os.ReadFile(filepath.Join(rootDir, "tar.argv"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	gotArgv := strings.Split(strings.TrimSuffix(string(rawArgv), "\n"), "\n")
+	wantArgv := []string{
+		"-C",
+		sourceDir,
+		"--no-recursion",
+		"--null",
+		"-T",
+		"-",
+		"-czf",
+		destPath,
+	}
+	if strings.Join(gotArgv, "\n") != strings.Join(wantArgv, "\n") {
+		t.Fatalf("unexpected tar argv:\ngot  %#v\nwant %#v", gotArgv, wantArgv)
+	}
+
+	stdin, err := os.ReadFile(filepath.Join(rootDir, "tar.stdin"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, want := string(stdin), "nested\x00nested/file.txt\x00"; got != want {
+		t.Fatalf("unexpected tar stdin: got %q want %q", got, want)
+	}
+}
+
 func TestDockerComposeDumpDatabaseRunsMariadbDump(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
@@ -597,6 +641,24 @@ func installFakeDocker(t *testing.T) string {
 	return logPath
 }
 
+func installFakeTar(t *testing.T) string {
+	t.Helper()
+
+	rootDir := t.TempDir()
+	binDir := filepath.Join(rootDir, "bin")
+	if err := os.MkdirAll(binDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	scriptPath := filepath.Join(binDir, "tar")
+	if err := os.WriteFile(scriptPath, []byte(fakeTarScript), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Setenv("PATH", binDir+string(os.PathListSeparator)+os.Getenv("PATH"))
+	return rootDir
+}
+
 func setFakeDockerPSOutput(t *testing.T, logPath, output string) {
 	t.Helper()
 	writeFakeDockerControl(t, logPath, "ps-output", output)
@@ -824,4 +886,29 @@ esac
 
 printf 'unexpected docker invocation: %s\n' "$*" >&2
 exit 1
+`
+
+const fakeTarScript = `#!/usr/bin/env bash
+set -Eeuo pipefail
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+fake_root="$(cd -- "$script_dir/.." && pwd)"
+
+: >"$fake_root/tar.argv"
+for arg in "$@"; do
+  printf '%s\n' "$arg" >>"$fake_root/tar.argv"
+done
+cat >"$fake_root/tar.stdin"
+
+dest=""
+while [[ $# -gt 0 ]]; do
+  if [[ "$1" == "-czf" ]]; then
+    shift
+    dest="${1:-}"
+    break
+  fi
+  shift
+done
+[[ -n "$dest" ]] || exit 1
+printf 'fake tar output\n' >"$dest"
 `

@@ -1,13 +1,10 @@
 package ops
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -197,7 +194,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 		return result, ioError("failed to allocate files backup temp file", err)
 	}
 	cleanupPaths = append(cleanupPaths, filesTmp)
-	if err := archiveStorageDir(cfg.StorageDir, filesTmp); err != nil {
+	if err := archiveStorageDir(ctx, cfg.StorageDir, filesTmp); err != nil {
 		return result, archiveError("files backup failed", err)
 	}
 	filesChecksum, err := sha256File(filesTmp)
@@ -434,31 +431,27 @@ func writeManifestJSON(path string, manifestData manifest.Manifest) error {
 	return os.WriteFile(path, append(raw, '\n'), 0o644)
 }
 
-func archiveStorageDir(sourceDir, destPath string) (err error) {
+func archiveStorageDir(ctx context.Context, sourceDir, destPath string) error {
+	entries, err := archiveStorageEntries(sourceDir)
+	if err != nil {
+		return err
+	}
+	return runtime.CreateTarGz(ctx, sourceDir, destPath, entries)
+}
+
+func archiveStorageEntries(sourceDir string) ([]string, error) {
 	info, err := os.Lstat(sourceDir)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("storage dir root is a symlink")
+		return nil, fmt.Errorf("storage dir root is a symlink")
 	}
 	if !info.IsDir() {
-		return fmt.Errorf("storage dir must be a directory")
+		return nil, fmt.Errorf("storage dir must be a directory")
 	}
 
-	out, err := os.Create(destPath)
-	if err != nil {
-		return err
-	}
-	defer closeResource(out, &err)
-
-	gz := gzip.NewWriter(out)
-	defer closeResource(gz, &err)
-
-	tw := tar.NewWriter(gz)
-	defer closeResource(tw, &err)
-
-	var found bool
+	entries := []string{}
 	walkErr := filepath.WalkDir(sourceDir, func(path string, entry os.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -470,16 +463,23 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 		if rel == "." {
 			return nil
 		}
-		if entry.Type()&os.ModeSymlink != 0 {
-			return fmt.Errorf("storage entry %s is a symlink", rel)
+		rel = filepath.ToSlash(rel)
+		if _, err := cleanTarEntryName(rel); err != nil {
+			return err
 		}
 
 		info, err := entry.Info()
 		if err != nil {
 			return err
 		}
+		if info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("storage entry %s is a symlink", rel)
+		}
 		if !info.IsDir() && !info.Mode().IsRegular() {
 			return fmt.Errorf("storage entry %s has unsupported type", rel)
+		}
+		if err := validateArchiveSourceMode(rel, info.Mode()); err != nil {
+			return err
 		}
 		if info.Mode().IsRegular() {
 			if err := ensureArchiveSourceNotHardlinked(rel, info); err != nil {
@@ -487,43 +487,26 @@ func archiveStorageDir(sourceDir, destPath string) (err error) {
 			}
 		}
 
-		header, err := tar.FileInfoHeader(info, "")
-		if err != nil {
-			return err
-		}
-		header.Name = filepath.ToSlash(rel)
-		if info.IsDir() {
-			header.Name += "/"
-		}
-		if err := validateTarHeader(header); err != nil {
-			return err
-		}
-		if err := tw.WriteHeader(header); err != nil {
-			return err
-		}
-		found = true
-		if info.IsDir() {
-			return nil
-		}
-
-		file, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		_, copyErr := io.Copy(tw, file)
-		closeErr := file.Close()
-		if copyErr != nil {
-			return copyErr
-		}
-		return closeErr
+		entries = append(entries, rel)
+		return nil
 	})
 	if walkErr != nil {
-		return walkErr
+		return nil, walkErr
 	}
-	if !found {
-		return fmt.Errorf("storage dir is empty")
+	if len(entries) == 0 {
+		return nil, fmt.Errorf("storage dir is empty")
 	}
 
+	return entries, nil
+}
+
+func validateArchiveSourceMode(rel string, mode os.FileMode) error {
+	if mode&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) != 0 {
+		return fmt.Errorf("storage entry %s has special mode bits: %04o", rel, mode.Perm())
+	}
+	if mode.Perm()&0o002 != 0 {
+		return fmt.Errorf("storage entry %s is world-writable: %04o", rel, mode.Perm())
+	}
 	return nil
 }
 

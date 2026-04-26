@@ -48,6 +48,41 @@ func (e *ServiceHealthError) Error() string {
 
 type DockerCompose struct{}
 
+func CreateTarGz(ctx context.Context, sourceDir, destPath string, entries []string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if strings.TrimSpace(sourceDir) == "" {
+		return fmt.Errorf("tar source dir is required")
+	}
+	if strings.TrimSpace(destPath) == "" {
+		return fmt.Errorf("tar destination path is required")
+	}
+	if len(entries) == 0 {
+		return fmt.Errorf("tar entries are required")
+	}
+
+	var stdin bytes.Buffer
+	for _, entry := range entries {
+		if entry == "" {
+			return fmt.Errorf("tar entries must be non-empty")
+		}
+		if strings.IndexByte(entry, 0) >= 0 {
+			return fmt.Errorf("tar entry contains NUL byte")
+		}
+		stdin.WriteString(entry)
+		stdin.WriteByte(0)
+	}
+
+	return runNative(ctx, "tar", runOptions{stdin: &stdin},
+		"-C", sourceDir,
+		"--no-recursion",
+		"--null",
+		"-T", "-",
+		"-czf", destPath,
+	)
+}
+
 func (DockerCompose) ComposeConfig(ctx context.Context, target Target) error {
 	return runCompose(ctx, target, runOptions{}, "config")
 }
@@ -222,6 +257,41 @@ func runCompose(ctx context.Context, target Target, opts runOptions, args ...str
 	}
 
 	return nil
+}
+
+func runNative(ctx context.Context, name string, opts runOptions, args ...string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	cmd := exec.CommandContext(ctx, name, args...)
+	cmd.Stdin = opts.stdin
+	if opts.stdout != nil {
+		cmd.Stdout = opts.stdout
+	} else {
+		cmd.Stdout = io.Discard
+	}
+	cmd.Env = commandEnv(os.Environ(), opts.env)
+
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		command := nativeCommand(name, args)
+		message := strings.TrimSpace(stderr.String())
+		if message == "" {
+			return fmt.Errorf("%s: %w", command, err)
+		}
+		return fmt.Errorf("%s: %s: %w", command, message, err)
+	}
+
+	return nil
+}
+
+func nativeCommand(name string, args []string) string {
+	command := make([]string, 0, len(args)+1)
+	command = append(command, name)
+	command = append(command, args...)
+	return strings.Join(command, " ")
 }
 
 func dbServiceName(target Target) (string, error) {
