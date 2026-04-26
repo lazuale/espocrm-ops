@@ -137,10 +137,7 @@ func TestCreateTarGzRunsNativeTarWithExactArgvAndNulList(t *testing.T) {
 	}
 	destPath := filepath.Join(t.TempDir(), "files.tar.gz")
 
-	err := CreateTarGz(context.Background(), sourceDir, destPath, []string{
-		"nested",
-		"nested/file.txt",
-	})
+	err := CreateTarGz(context.Background(), sourceDir, destPath, strings.NewReader("nested\x00nested/file.txt\x00"))
 	if err != nil {
 		t.Fatalf("CreateTarGz failed: %v", err)
 	}

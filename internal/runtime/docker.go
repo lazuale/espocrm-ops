@@ -48,7 +48,7 @@ func (e *ServiceHealthError) Error() string {
 
 type DockerCompose struct{}
 
-func CreateTarGz(ctx context.Context, sourceDir, destPath string, entries []string) error {
+func CreateTarGz(ctx context.Context, sourceDir, destPath string, entries io.Reader) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -58,23 +58,11 @@ func CreateTarGz(ctx context.Context, sourceDir, destPath string, entries []stri
 	if strings.TrimSpace(destPath) == "" {
 		return fmt.Errorf("tar destination path is required")
 	}
-	if len(entries) == 0 {
+	if entries == nil {
 		return fmt.Errorf("tar entries are required")
 	}
 
-	var stdin bytes.Buffer
-	for _, entry := range entries {
-		if entry == "" {
-			return fmt.Errorf("tar entries must be non-empty")
-		}
-		if strings.IndexByte(entry, 0) >= 0 {
-			return fmt.Errorf("tar entry contains NUL byte")
-		}
-		stdin.WriteString(entry)
-		stdin.WriteByte(0)
-	}
-
-	return runNative(ctx, "tar", runOptions{stdin: &stdin},
+	return runNative(ctx, "tar", runOptions{stdin: entries},
 		"-C", sourceDir,
 		"--no-recursion",
 		"--null",

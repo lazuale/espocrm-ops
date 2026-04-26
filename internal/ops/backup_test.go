@@ -743,6 +743,46 @@ func TestArchiveStorageDirRejectsUnsafeMode(t *testing.T) {
 	assertNoTarCall(t, tarLog)
 }
 
+func TestArchiveStorageDirRejectsTooManyEntriesBeforeTar(t *testing.T) {
+	restoreFilesArchiveLimits(t, 1, defaultFilesArchiveMaxExpandedBytes)
+	root := t.TempDir()
+	tarLog := installFailingTar(t)
+	storageDir := filepath.Join(root, "storage")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	for _, name := range []string{"one.txt", "two.txt"} {
+		if err := os.WriteFile(filepath.Join(storageDir, name), []byte("ok\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
+	if err == nil || !strings.Contains(err.Error(), "too many entries") {
+		t.Fatalf("expected too many entries rejection, got %v", err)
+	}
+	assertNoTarCall(t, tarLog)
+}
+
+func TestArchiveStorageDirRejectsTooLargeSourceTreeBeforeTar(t *testing.T) {
+	restoreFilesArchiveLimits(t, defaultFilesArchiveMaxEntries, 4)
+	root := t.TempDir()
+	tarLog := installFailingTar(t)
+	storageDir := filepath.Join(root, "storage")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "large.txt"), []byte("12345"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	err := archiveStorageDir(context.Background(), storageDir, filepath.Join(root, "files.tar.gz"))
+	if err == nil || !strings.Contains(err.Error(), "regular file size exceeds limit") {
+		t.Fatalf("expected source size rejection, got %v", err)
+	}
+	assertNoTarCall(t, tarLog)
+}
+
 func TestBackupNativeTarArchiveRejectedBySelfVerifyCleansIncompleteSet(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")

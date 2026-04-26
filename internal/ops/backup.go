@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"sort"
@@ -432,27 +433,68 @@ func writeManifestJSON(path string, manifestData manifest.Manifest) error {
 }
 
 func archiveStorageDir(ctx context.Context, sourceDir, destPath string) error {
-	entries, err := archiveStorageEntries(sourceDir)
-	if err != nil {
+	if err := archiveStoragePreflight(ctx, sourceDir); err != nil {
 		return err
 	}
-	return runtime.CreateTarGz(ctx, sourceDir, destPath, entries)
+
+	reader, writer := io.Pipe()
+	writeErrCh := make(chan error, 1)
+	go func() {
+		writeErr := writeArchiveStorageEntryList(ctx, sourceDir, writer)
+		if writeErr != nil {
+			_ = writer.CloseWithError(writeErr)
+		} else {
+			_ = writer.Close()
+		}
+		writeErrCh <- writeErr
+	}()
+
+	tarErr := runtime.CreateTarGz(ctx, sourceDir, destPath, reader)
+	if tarErr != nil {
+		_ = reader.CloseWithError(tarErr)
+	}
+	writeErr := <-writeErrCh
+	return errors.Join(tarErr, writeErr)
 }
 
-func archiveStorageEntries(sourceDir string) ([]string, error) {
+type archiveStorageStats struct {
+	entries          int
+	regularFileBytes int64
+}
+
+func archiveStoragePreflight(ctx context.Context, sourceDir string) error {
+	_, err := walkArchiveStorage(ctx, sourceDir, nil)
+	return err
+}
+
+func writeArchiveStorageEntryList(ctx context.Context, sourceDir string, writer io.Writer) error {
+	_, err := walkArchiveStorage(ctx, sourceDir, func(entry string) error {
+		if _, err := io.WriteString(writer, entry); err != nil {
+			return err
+		}
+		_, err := writer.Write([]byte{0})
+		return err
+	})
+	return err
+}
+
+func walkArchiveStorage(ctx context.Context, sourceDir string, writeEntry func(string) error) (archiveStorageStats, error) {
 	info, err := os.Lstat(sourceDir)
 	if err != nil {
-		return nil, err
+		return archiveStorageStats{}, err
 	}
 	if info.Mode()&os.ModeSymlink != 0 {
-		return nil, fmt.Errorf("storage dir root is a symlink")
+		return archiveStorageStats{}, fmt.Errorf("storage dir root is a symlink")
 	}
 	if !info.IsDir() {
-		return nil, fmt.Errorf("storage dir must be a directory")
+		return archiveStorageStats{}, fmt.Errorf("storage dir must be a directory")
 	}
 
-	entries := []string{}
+	var stats archiveStorageStats
 	walkErr := filepath.WalkDir(sourceDir, func(path string, entry os.DirEntry, walkErr error) error {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if walkErr != nil {
 			return walkErr
 		}
@@ -482,22 +524,37 @@ func archiveStorageEntries(sourceDir string) ([]string, error) {
 			return err
 		}
 		if info.Mode().IsRegular() {
+			if info.Size() < 0 {
+				return fmt.Errorf("storage entry %s size is invalid", rel)
+			}
+			if info.Size() > filesArchiveMaxExpandedBytes-stats.regularFileBytes {
+				return fmt.Errorf("storage tree regular file size exceeds limit")
+			}
+			stats.regularFileBytes += info.Size()
 			if err := ensureArchiveSourceNotHardlinked(rel, info); err != nil {
 				return err
 			}
 		}
 
-		entries = append(entries, rel)
+		stats.entries++
+		if stats.entries > filesArchiveMaxEntries {
+			return fmt.Errorf("storage tree has too many entries")
+		}
+		if writeEntry != nil {
+			if err := writeEntry(rel); err != nil {
+				return err
+			}
+		}
 		return nil
 	})
 	if walkErr != nil {
-		return nil, walkErr
+		return archiveStorageStats{}, walkErr
 	}
-	if len(entries) == 0 {
-		return nil, fmt.Errorf("storage dir is empty")
+	if stats.entries == 0 {
+		return archiveStorageStats{}, fmt.Errorf("storage dir is empty")
 	}
 
-	return entries, nil
+	return stats, nil
 }
 
 func validateArchiveSourceMode(rel string, mode os.FileMode) error {
