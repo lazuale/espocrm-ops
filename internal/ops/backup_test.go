@@ -727,6 +727,40 @@ func TestBackupRetentionDeletesOldCompleteSamePrefixSetAfterSelfVerify(t *testin
 	assertBackupSetPresent(t, result)
 }
 
+func TestSnapshotBackupSkipsRetentionAfterSelfVerify(t *testing.T) {
+	root := t.TempDir()
+	storageDir := filepath.Join(root, "runtime", "prod", "espo")
+	if err := os.MkdirAll(storageDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(storageDir, "hello.txt"), []byte("hello\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	setupCfg := backupTestConfig(root, storageDir)
+	setupCfg.BackupRetentionDays = 0
+	oldResult, err := Backup(context.Background(), setupCfg, &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table old_snapshot(id int);\n"),
+	}, time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("setup backup failed: %v", err)
+	}
+
+	cfg := backupTestConfig(root, storageDir)
+	result, err := snapshotBackup(context.Background(), cfg, &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table fresh_snapshot(id int);\n"),
+	}, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("snapshotBackup failed: %v", err)
+	}
+
+	assertBackupSetPresent(t, oldResult)
+	assertBackupSetPresent(t, result)
+	if len(result.Warnings) != 0 {
+		t.Fatalf("snapshot backup should not report retention warnings: %#v", result.Warnings)
+	}
+}
+
 func TestBackupRetentionDoesNotRunWhenBackupFails(t *testing.T) {
 	root := t.TempDir()
 	storageDir := filepath.Join(root, "runtime", "prod", "espo")

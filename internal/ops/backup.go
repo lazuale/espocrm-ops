@@ -44,6 +44,10 @@ type backupLayout struct {
 	ManifestJSON  string
 }
 
+type backupOptions struct {
+	runRetention bool
+}
+
 const serviceReturnTimeout = 30 * time.Second
 const bytesPerMiB uint64 = 1024 * 1024
 
@@ -65,6 +69,14 @@ type retentionTarget struct {
 }
 
 func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
+	return backupWithOptions(ctx, cfg, rt, now, backupOptions{runRetention: true})
+}
+
+func snapshotBackup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
+	return backupWithOptions(ctx, cfg, rt, now, backupOptions{runRetention: false})
+}
+
+func backupWithOptions(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time, opts backupOptions) (result BackupResult, err error) {
 	if rt == nil {
 		return BackupResult{}, runtimeError("backup runtime is required", nil)
 	}
@@ -80,11 +92,11 @@ func Backup(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now 
 		ProjectDir: cfg.ProjectDir,
 		Scope:      cfg.Scope,
 	}}, "backup lock failed", func(lockedCtx context.Context) (BackupResult, error) {
-		return backupLocked(lockedCtx, cfg, rt, now)
+		return backupLocked(lockedCtx, cfg, rt, now, opts)
 	})
 }
 
-func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time) (result BackupResult, err error) {
+func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime, now time.Time, opts backupOptions) (result BackupResult, err error) {
 	layout := newBackupLayout(cfg.BackupRoot, cfg.BackupNamePrefix, now)
 	result = BackupResult{
 		Manifest:    layout.ManifestJSON,
@@ -258,8 +270,10 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 		DBBackup:    verifyResult.DBBackup,
 		FilesBackup: verifyResult.FilesBackup,
 	}
-	if err := runBackupRetention(ctx, cfg, layout, now); err != nil {
-		result.Warnings = append(result.Warnings, backupRetentionSkippedWarning(err))
+	if opts.runRetention {
+		if err := runBackupRetention(ctx, cfg, layout, now); err != nil {
+			result.Warnings = append(result.Warnings, backupRetentionSkippedWarning(err))
+		}
 	}
 	return result, nil
 }

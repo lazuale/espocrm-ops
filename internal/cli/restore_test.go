@@ -396,7 +396,7 @@ func TestRestoreCLIJSONImportFailureIncludesSnapshotManifest(t *testing.T) {
 }
 
 func TestRestoreCLIJSONFileRestoreFailureIncludesSnapshotManifest(t *testing.T) {
-	manifestPath, wantSQL := writeVerifiedRestoreBackupSetWithFiles(t, map[string]string{
+	manifestPath, _ := writeVerifiedRestoreBackupSetWithFiles(t, map[string]string{
 		strings.Repeat("a", 300) + ".txt": "restored\n",
 	})
 	projectDir, storageDir := writeRestoreCLIProject(t)
@@ -427,12 +427,8 @@ func TestRestoreCLIJSONFileRestoreFailureIncludesSnapshotManifest(t *testing.T) 
 		t.Fatalf("unexpected error message: %s", errMessage)
 	}
 	requireJSONSnapshotManifest(t, obj)
-	raw, err := os.ReadFile(stdinLogPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if body := string(raw); body != wantSQL {
-		t.Fatalf("unexpected restore db body: %q", body)
+	if _, err := os.Stat(stdinLogPath); !os.IsNotExist(err) {
+		t.Fatalf("database import should not start after file staging failure, got %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(storageDir, "old.txt")); err != nil {
 		t.Fatalf("expected old file to remain after staging failure: %v", err)

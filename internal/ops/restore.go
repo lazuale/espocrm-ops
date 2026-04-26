@@ -93,7 +93,7 @@ func restoreWithAllowedSourceScopeLocked(ctx context.Context, cfg config.BackupC
 		return result, ioError("restore storage target is not clearable", err)
 	}
 
-	snapshotResult, snapshotErr := Backup(ctx, cfg, rt, now)
+	snapshotResult, snapshotErr := snapshotBackup(ctx, cfg, rt, now)
 	if snapshotErr != nil {
 		return result, snapshotErr
 	}
@@ -101,6 +101,17 @@ func restoreWithAllowedSourceScopeLocked(ctx context.Context, cfg config.BackupC
 	if err := ensureRestoreStagingFreeDisk(cfg.StorageDir, verifyResult.FilesExpandedBytes, cfg.MinFreeDiskMB); err != nil {
 		return result, ioError("restore free disk preflight failed", err)
 	}
+	preparedFiles, err := prepareRestoreFilesBackup(ctx, verifyResult.FilesBackup, cfg.StorageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	if err != nil {
+		return result, err
+	}
+	defer func() {
+		cleanupErr := preparedFiles.Cleanup()
+		if cleanupErr == nil || err != nil {
+			return
+		}
+		err = ioError("failed to clean restore staging directory", cleanupErr)
+	}()
 
 	target := runtime.Target{
 		ProjectDir:     cfg.ProjectDir,
@@ -145,7 +156,7 @@ func restoreWithAllowedSourceScopeLocked(ctx context.Context, cfg config.BackupC
 	if err := restoreDatabaseBackup(ctx, verifyResult.DBBackup, rt, target); err != nil {
 		return result, err
 	}
-	if err := restoreFilesBackup(ctx, verifyResult.FilesBackup, cfg.StorageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
+	if err := commitRestoreFilesBackup(ctx, preparedFiles, cfg.StorageDir); err != nil {
 		return result, err
 	}
 
@@ -299,39 +310,81 @@ func restoreDatabaseBackup(ctx context.Context, artifactPath string, rt restoreR
 	return nil
 }
 
+type preparedRestoreFilesBackup struct {
+	stagingDir string
+	committed  bool
+}
+
+func (p *preparedRestoreFilesBackup) Cleanup() error {
+	if p == nil || p.committed || strings.TrimSpace(p.stagingDir) == "" {
+		return nil
+	}
+	return restoreRemoveAll(p.stagingDir)
+}
+
+func (p *preparedRestoreFilesBackup) markCommitted() {
+	if p == nil {
+		return
+	}
+	p.committed = true
+}
+
 func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string, runtimeUID, runtimeGID int) (err error) {
-	if err := ctx.Err(); err != nil {
-		return ioError("restore interrupted", err)
-	}
-	if err := ensureRestoreStorageDir(storageDir); err != nil {
-		return ioError("restore storage target is invalid", err)
-	}
-	if err := validateFilesArchiveForRestore(artifactPath); err != nil {
+	prepared, err := prepareRestoreFilesBackup(ctx, artifactPath, storageDir, runtimeUID, runtimeGID)
+	if err != nil {
 		return err
 	}
-
-	stagingDir, err := createRestoreStagingDir(storageDir)
-	if err != nil {
-		return ioError("failed to create restore staging directory", err)
-	}
 	defer func() {
-		cleanupErr := restoreRemoveAll(stagingDir)
+		cleanupErr := prepared.Cleanup()
 		if cleanupErr == nil || err != nil {
 			return
 		}
 		err = ioError("failed to clean restore staging directory", cleanupErr)
 	}()
+	return commitRestoreFilesBackup(ctx, prepared, storageDir)
+}
+
+func prepareRestoreFilesBackup(ctx context.Context, artifactPath, storageDir string, runtimeUID, runtimeGID int) (result *preparedRestoreFilesBackup, err error) {
+	if err := ctx.Err(); err != nil {
+		return nil, ioError("restore interrupted", err)
+	}
+	if err := ensureRestoreStorageDir(storageDir); err != nil {
+		return nil, ioError("restore storage target is invalid", err)
+	}
+	if err := validateFilesArchiveForRestore(artifactPath); err != nil {
+		return nil, err
+	}
+
+	stagingDir, err := createRestoreStagingDir(storageDir)
+	if err != nil {
+		return nil, ioError("failed to create restore staging directory", err)
+	}
+	prepared := &preparedRestoreFilesBackup{stagingDir: stagingDir}
+	defer func() {
+		if err == nil {
+			return
+		}
+		_ = prepared.Cleanup()
+	}()
 
 	if err := extractFilesArchiveToStaging(ctx, artifactPath, stagingDir); err != nil {
-		return err
+		return nil, err
 	}
 	if err := restoreValidateStorageTree(stagingDir); err != nil {
-		return archiveError("files restore staging is invalid", err)
+		return nil, archiveError("files restore staging is invalid", err)
 	}
 	if err := restoreApplyOwnership(stagingDir, runtimeUID, runtimeGID); err != nil {
-		return ioError("files ownership restore failed", err)
+		return nil, ioError("files ownership restore failed", err)
 	}
-	if err := replaceRestoreStorageFromStaging(ctx, stagingDir, storageDir); err != nil {
+
+	return prepared, nil
+}
+
+func commitRestoreFilesBackup(ctx context.Context, prepared *preparedRestoreFilesBackup, storageDir string) error {
+	if prepared == nil {
+		return ioError("files restore staging is invalid", fmt.Errorf("prepared files staging is required"))
+	}
+	if err := replaceRestoreStorageFromStagingWithCommit(ctx, prepared.stagingDir, storageDir, prepared.markCommitted); err != nil {
 		return err
 	}
 	if err := restoreValidateStorageTree(storageDir); err != nil {
@@ -589,6 +642,10 @@ func fileOwner(info os.FileInfo) (int, int, error) {
 }
 
 func replaceRestoreStorageFromStaging(ctx context.Context, stagingDir, storageDir string) error {
+	return replaceRestoreStorageFromStagingWithCommit(ctx, stagingDir, storageDir, nil)
+}
+
+func replaceRestoreStorageFromStagingWithCommit(ctx context.Context, stagingDir, storageDir string, markCommitted func()) error {
 	if err := ctx.Err(); err != nil {
 		return ioError("restore interrupted", err)
 	}
@@ -634,6 +691,9 @@ func replaceRestoreStorageFromStaging(ctx context.Context, stagingDir, storageDi
 			return ioError("files switch failed during target switch; rollback failed", errors.Join(switchErr, rollbackErr))
 		}
 		return ioError("files switch failed during target switch; rolled back current storage", switchErr)
+	}
+	if markCommitted != nil {
+		markCommitted()
 	}
 
 	if err := restoreRemoveAll(rollbackDir); err != nil {

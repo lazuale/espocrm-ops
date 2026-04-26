@@ -1,7 +1,9 @@
 package ops
 
 import (
+	"archive/tar"
 	"context"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -175,6 +177,95 @@ func TestMigrateFreeDiskPreflightFailsBeforeTargetDBReset(t *testing.T) {
 	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
 }
 
+func TestMigrateStagingExtractionFailureBeforeDestructiveTargetMutation(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t, storageDir)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+	oldExtract := restoreExtractTarEntry
+	restoreExtractTarEntry = func(root string, header *tar.Header, reader io.Reader) error {
+		if header.Name == "restored.txt" {
+			return errf("simulated staging write failure")
+		}
+		return oldExtract(root, header, reader)
+	}
+	defer func() {
+		restoreExtractTarEntry = oldExtract
+	}()
+
+	result, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files staging extraction failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != sourceManifest {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != "" {
+		t.Fatalf("unexpected restore db body before prepared files succeeded: %q", rt.restoreDBBody)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	probe.assertClean(t)
+}
+
+func TestMigrateOwnershipFailureBeforeDestructiveTargetMutation(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
+	probe := useRestoreStagingProbe(t, storageDir)
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+	oldApply := restoreApplyOwnership
+	oldRename := restoreRenamePath
+	restoreApplyOwnership = func(root string, uid, gid int) error {
+		if root == storageDir {
+			t.Fatalf("unexpected ownership root: %s", root)
+		}
+		if filepath.Dir(root) != filepath.Dir(storageDir) {
+			t.Fatalf("expected staging next to storage: staging=%s storage=%s", root, storageDir)
+		}
+		return errf("simulated ownership failure")
+	}
+	restoreRenamePath = func(oldPath, newPath string) error {
+		t.Fatalf("storage switch should not start after ownership failure: %s -> %s", oldPath, newPath)
+		return nil
+	}
+	defer func() {
+		restoreApplyOwnership = oldApply
+		restoreRenamePath = oldRename
+	}()
+
+	result, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime())
+	assertVerifyErrorKind(t, err, ErrorKindIO)
+	if !strings.Contains(err.Error(), "files ownership restore failed") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if result.Manifest != sourceManifest {
+		t.Fatalf("unexpected manifest: %s", result.Manifest)
+	}
+	if result.SnapshotManifest == "" {
+		t.Fatal("expected snapshot manifest")
+	}
+	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+		t.Fatal(err)
+	}
+	if rt.restoreDBBody != "" {
+		t.Fatalf("unexpected restore db body before prepared files succeeded: %q", rt.restoreDBBody)
+	}
+	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
+	assertNoFile(t, filepath.Join(storageDir, "restored.txt"))
+	probe.assertClean(t)
+}
+
 func TestMigrateBusyTargetLockFailsBeforeMutation(t *testing.T) {
 	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
 	cfg, storageDir := restoreTargetConfig(t)
@@ -295,6 +386,26 @@ func TestMigrateSuccessReturnsManifestAndSnapshotManifest(t *testing.T) {
 		t.Fatalf("unexpected restore db body: %q", rt.restoreDBBody)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
+	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
+}
+
+func TestMigrateSnapshotSkipsRetention(t *testing.T) {
+	sourceManifest, _, _ := writeScopedRestoreSourceBackupSet(t, "dev")
+	cfg, storageDir := restoreTargetConfig(t)
+	oldResult, err := Backup(context.Background(), cfg, &fakeBackupRuntime{
+		dbDump: gzipBytes(t, "create table old_snapshot(id int);\n"),
+	}, time.Date(2026, 4, 10, 12, 0, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatalf("setup target backup failed: %v", err)
+	}
+	rt := &fakeRestoreRuntime{
+		snapshotDBDump: gzipBytes(t, "create table snapshot(id int);\n"),
+	}
+
+	if _, err := Migrate(context.Background(), "dev", cfg, sourceManifest, rt, restoreTestTime()); err != nil {
+		t.Fatalf("Migrate failed: %v", err)
+	}
+	assertBackupSetPresent(t, oldResult)
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
 }
 
