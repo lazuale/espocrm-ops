@@ -10,26 +10,6 @@ import (
 	"testing"
 )
 
-func TestDockerComposeValidateRunsComposeConfig(t *testing.T) {
-	projectDir := t.TempDir()
-	logPath := installFakeDocker(t)
-
-	rt := DockerCompose{}
-	err := rt.Validate(context.Background(), Target{
-		ProjectDir:  projectDir,
-		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
-		EnvFile:     filepath.Join(projectDir, ".env.prod"),
-	})
-	if err != nil {
-		t.Fatalf("Validate failed: %v", err)
-	}
-
-	log := mustReadFile(t, logPath)
-	if !strings.Contains(log, "compose --env-file "+filepath.Join(projectDir, ".env.prod")+" -f "+filepath.Join(projectDir, "compose.yaml")+" config") {
-		t.Fatalf("unexpected docker log:\n%s", log)
-	}
-}
-
 func TestDockerComposeComposeConfigRunsComposeConfig(t *testing.T) {
 	projectDir := t.TempDir()
 	logPath := installFakeDocker(t)
@@ -60,13 +40,13 @@ func TestDockerComposeDoesNotExposeHostRuntimeContractEnv(t *testing.T) {
 	t.Setenv("MYSQL_PWD", "host-mysql-secret")
 
 	rt := DockerCompose{}
-	err := rt.Validate(context.Background(), Target{
+	err := rt.ComposeConfig(context.Background(), Target{
 		ProjectDir:  projectDir,
 		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
 		EnvFile:     filepath.Join(projectDir, ".env.prod"),
 	})
 	if err != nil {
-		t.Fatalf("Validate failed: %v", err)
+		t.Fatalf("ComposeConfig failed: %v", err)
 	}
 
 	envLog := mustReadFile(t, fakeDockerEnvLogPath(logPath))
@@ -92,13 +72,13 @@ func TestDockerComposeKeepsDockerSystemEnv(t *testing.T) {
 	t.Setenv("http_proxy", "http://proxy.example:8081")
 
 	rt := DockerCompose{}
-	err := rt.Validate(context.Background(), Target{
+	err := rt.ComposeConfig(context.Background(), Target{
 		ProjectDir:  projectDir,
 		ComposeFile: filepath.Join(projectDir, "compose.yaml"),
 		EnvFile:     filepath.Join(projectDir, ".env.prod"),
 	})
 	if err != nil {
-		t.Fatalf("Validate failed: %v", err)
+		t.Fatalf("ComposeConfig failed: %v", err)
 	}
 
 	envLog := mustReadFile(t, fakeDockerEnvLogPath(logPath))

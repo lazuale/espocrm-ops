@@ -52,10 +52,6 @@ func (DockerCompose) ComposeConfig(ctx context.Context, target Target) error {
 	return runCompose(ctx, target, runOptions{}, "config")
 }
 
-func (DockerCompose) Validate(ctx context.Context, target Target) error {
-	return DockerCompose{}.ComposeConfig(ctx, target)
-}
-
 func (DockerCompose) ServiceStatuses(ctx context.Context, target Target) ([]ServiceStatus, error) {
 	var stdout bytes.Buffer
 	if err := runCompose(ctx, target, runOptions{stdout: &stdout}, "ps", "--format", "json"); err != nil {

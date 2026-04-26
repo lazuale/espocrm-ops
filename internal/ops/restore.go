@@ -329,21 +329,6 @@ func (p *preparedRestoreFilesBackup) markCommitted() {
 	p.committed = true
 }
 
-func restoreFilesBackup(ctx context.Context, artifactPath, storageDir string, runtimeUID, runtimeGID int) (err error) {
-	prepared, err := prepareRestoreFilesBackup(ctx, artifactPath, storageDir, runtimeUID, runtimeGID)
-	if err != nil {
-		return err
-	}
-	defer func() {
-		cleanupErr := prepared.Cleanup()
-		if cleanupErr == nil || err != nil {
-			return
-		}
-		err = ioError("failed to clean restore staging directory", cleanupErr)
-	}()
-	return commitRestoreFilesBackup(ctx, prepared, storageDir)
-}
-
 func prepareRestoreFilesBackup(ctx context.Context, artifactPath, storageDir string, runtimeUID, runtimeGID int) (result *preparedRestoreFilesBackup, err error) {
 	if err := ctx.Err(); err != nil {
 		return nil, ioError("restore interrupted", err)
@@ -639,10 +624,6 @@ func fileOwner(info os.FileInfo) (int, int, error) {
 		return 0, 0, fmt.Errorf("unsupported stat payload")
 	}
 	return int(stat.Uid), int(stat.Gid), nil
-}
-
-func replaceRestoreStorageFromStaging(ctx context.Context, stagingDir, storageDir string) error {
-	return replaceRestoreStorageFromStagingWithCommit(ctx, stagingDir, storageDir, nil)
 }
 
 func replaceRestoreStorageFromStagingWithCommit(ctx context.Context, stagingDir, storageDir string, markCommitted func()) error {

@@ -36,7 +36,7 @@ func TestBackupWritesArtifactsAndVerifies(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Backup failed: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Join(rt.lastServices, ",") != strings.Join(cfg.AppServices, ",") {
@@ -110,7 +110,7 @@ func TestBackupSuccessRequiresHealthCheck(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Backup failed: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.healthContextErrs) != 1 || rt.healthContextErrs[0] != nil {
@@ -253,7 +253,7 @@ func TestBackupSameSecondCollisionFailsBeforeStoppingServices(t *testing.T) {
 	if !strings.Contains(err.Error(), "backup target already exists") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate"); err != nil {
+	if err := rt.requireCalls("compose_config"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetPresent(t, BackupResult{
@@ -280,7 +280,7 @@ func TestBackupFailsClosedWhenSelfVerifyFails(t *testing.T) {
 
 	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -310,7 +310,7 @@ func TestBackupFailsIfReturnedServicesAreNotHealthy(t *testing.T) {
 	if !strings.Contains(err.Error(), `service "espocrm" health is "unhealthy"`) {
 		t.Fatalf("expected health detail, got %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	wantHealthServices := runtimeContractServices(cfg.DBService, cfg.AppServices)
@@ -345,7 +345,7 @@ func TestBackupLowDiskFailsBeforeStoppingServices(t *testing.T) {
 	if !strings.Contains(err.Error(), "backup free disk preflight failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate"); err != nil {
+	if err := rt.requireCalls("compose_config"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -372,7 +372,7 @@ func TestBackupFailsWhenStopServicesFails(t *testing.T) {
 	if !strings.Contains(err.Error(), "failed to stop app services") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -403,7 +403,7 @@ func TestBackupStopFailureAndStartFailureIncludesBothErrors(t *testing.T) {
 	if !strings.Contains(err.Error(), "return app services failed") {
 		t.Fatalf("service return error missing: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -430,7 +430,7 @@ func TestBackupFailsIfAppServicesStillRunningAfterStop(t *testing.T) {
 	if !strings.Contains(err.Error(), "app service stop check failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -456,7 +456,7 @@ func TestBackupFailureAfterStopAttemptsStart(t *testing.T) {
 	if !strings.Contains(err.Error(), "database backup failed") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -508,7 +508,7 @@ func TestBackupStartFailureAfterSnapshotFailsBackup(t *testing.T) {
 	if !strings.Contains(err.Error(), "failed to return app services") {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -538,7 +538,7 @@ func TestBackupStartFailureAfterPriorFailureKeepsOriginalErrorVisible(t *testing
 	if !strings.Contains(err.Error(), "return app services failed") {
 		t.Fatalf("service return error missing: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -569,7 +569,7 @@ func TestBackupCancellationAfterStopStillAttemptsStart(t *testing.T) {
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation in error chain: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 1 || rt.startContextErrs[0] != nil {
@@ -607,7 +607,7 @@ func TestBackupCancellationAfterStopAndStartFailureIncludesBothErrors(t *testing
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected cancellation in error chain: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 1 || rt.startContextErrs[0] != nil {
@@ -633,7 +633,7 @@ func TestBackupFailsWhenStorageDirIsBroken(t *testing.T) {
 
 	result, err := Backup(context.Background(), cfg, rt, time.Date(2026, 4, 24, 12, 0, 0, 0, time.UTC))
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertBackupSetRemoved(t, result)
@@ -970,8 +970,8 @@ type fakeBackupRuntime struct {
 	healthContextErrs  []error
 }
 
-func (f *fakeBackupRuntime) Validate(_ context.Context, target runtime.Target) error {
-	f.calls = append(f.calls, "validate")
+func (f *fakeBackupRuntime) ComposeConfig(_ context.Context, target runtime.Target) error {
+	f.calls = append(f.calls, "compose_config")
 	f.lastTarget = target
 	return f.validateErr
 }

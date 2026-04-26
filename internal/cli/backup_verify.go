@@ -113,29 +113,12 @@ func backupVerifyError(manifestPath string, err error) error {
 	return &commandError{
 		command:  "backup verify",
 		kind:     verifyErr.Kind,
-		exitCode: backupVerifyExitCode(verifyErr.Kind),
+		exitCode: backupExitCode(verifyErr.Kind),
 		message:  "backup verify failed",
 		err:      verifyErr,
 		result: backupVerifyResult{
 			Manifest: manifestPath,
 		},
-	}
-}
-
-func backupVerifyExitCode(kind string) int {
-	switch kind {
-	case ops.ErrorKindUsage:
-		return exitUsage
-	case ops.ErrorKindManifest:
-		return exitManifest
-	case ops.ErrorKindArtifact, ops.ErrorKindChecksum, ops.ErrorKindArchive:
-		return exitValidation
-	case ops.ErrorKindRuntime:
-		return exitRuntime
-	case ops.ErrorKindIO:
-		return exitIO
-	default:
-		return exitInternal
 	}
 }
 

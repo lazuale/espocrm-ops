@@ -28,7 +28,7 @@ type BackupResult struct {
 }
 
 type backupRuntime interface {
-	Validate(ctx context.Context, target runtime.Target) error
+	ComposeConfig(ctx context.Context, target runtime.Target) error
 	StopServices(ctx context.Context, target runtime.Target, services []string) error
 	RequireStoppedServices(ctx context.Context, target runtime.Target, services []string) error
 	StartServices(ctx context.Context, target runtime.Target, services []string) error
@@ -142,7 +142,7 @@ func backupLocked(ctx context.Context, cfg config.BackupConfig, rt backupRuntime
 		err = combineServiceReturnError(err, startErr)
 	}()
 
-	if err := rt.Validate(ctx, target); err != nil {
+	if err := rt.ComposeConfig(ctx, target); err != nil {
 		return result, runtimeError("docker compose config failed", err)
 	}
 	if err := ensureBackupLayout(layout); err != nil {

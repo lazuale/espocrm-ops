@@ -41,17 +41,6 @@ type heldOperationLocksKey struct{}
 
 var operationLockAcquireFile = acquireOperationFileLock
 
-func WithProjectScopeOperationLocks[T any](ctx context.Context, projectDir string, scopes []string, failureMessage string, fn func(context.Context) (T, error)) (T, error) {
-	specs := make([]operationLockSpec, 0, len(scopes))
-	for _, scope := range scopes {
-		specs = append(specs, operationLockSpec{
-			ProjectDir: projectDir,
-			Scope:      scope,
-		})
-	}
-	return withOperationLocks(ctx, specs, failureMessage, fn)
-}
-
 func withOperationLocks[T any](ctx context.Context, specs []operationLockSpec, failureMessage string, fn func(context.Context) (T, error)) (result T, err error) {
 	requests, markPaths, err := prepareOperationLockRequests(ctx, specs)
 	if err != nil {

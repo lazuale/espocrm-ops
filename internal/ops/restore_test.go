@@ -163,7 +163,7 @@ func TestRestoreSnapshotFailureFailsBeforeMutation(t *testing.T) {
 	if result.SnapshotManifest != "" {
 		t.Fatalf("unexpected snapshot manifest: %s", result.SnapshotManifest)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
@@ -188,7 +188,7 @@ func TestRestoreStopFailureFailsBeforeMutation(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services"); err != nil {
 		t.Fatal(err)
 	}
 	assertFileContains(t, filepath.Join(storageDir, "old.txt"), "old\n")
@@ -213,7 +213,7 @@ func TestRestoreDBServiceFailureAfterSnapshotAttemptsStart(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != "" {
@@ -249,7 +249,7 @@ func TestRestoreDBFailureAttemptsStart(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if renameCount != 0 {
@@ -295,7 +295,7 @@ func TestRestoreResetDBFailureAttemptsStartWithoutImportOrFileMutation(t *testin
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != "" {
@@ -338,7 +338,7 @@ func TestRestoreFreeDiskPreflightFailsBeforeDBReset(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest before destructive restore mutation")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != "" {
@@ -374,7 +374,7 @@ func TestRestoreFreeDiskPreflightAllowsSufficientSpace(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
@@ -435,7 +435,7 @@ func TestRestoreStagingValidationFailureBeforeDestructiveRestoreMutation(t *test
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != "" {
@@ -560,7 +560,7 @@ func TestRestoreStartFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -586,7 +586,7 @@ func TestRestoreCancellationAfterStopStillAttemptsStart(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 2 || rt.startContextErrs[1] != nil {
@@ -623,7 +623,7 @@ func TestRestoreCancellationAfterStopAndStartFailureIncludesBothErrors(t *testin
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.startContextErrs) != 2 || rt.startContextErrs[1] != nil {
@@ -649,7 +649,7 @@ func TestRestorePostCheckFailureFails(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
@@ -685,7 +685,7 @@ func TestRestoreServiceHealthFailureFailsBeforeDBPing(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
@@ -727,7 +727,7 @@ func TestRestoreHealthWaitCancellationFailsWithoutHang(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if len(rt.healthContextErrs) != 2 || rt.healthContextErrs[0] != nil || rt.healthContextErrs[1] != nil {
@@ -764,7 +764,7 @@ func TestRestoreStagingExtractionFailureBeforeDestructiveRestoreMutation(t *test
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != "" {
@@ -817,7 +817,7 @@ func TestRestoreOwnershipFailureBeforeDestructiveRestoreMutation(t *testing.T) {
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != "" {
@@ -854,7 +854,7 @@ func TestRestoreFilesPostCheckFailureAfterStorageSwitchStillReturnsSnapshotManif
 	if result.SnapshotManifest == "" {
 		t.Fatal("expected snapshot manifest")
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
@@ -899,7 +899,7 @@ func TestRestoreSuccessCreatesSnapshotBeforeMutation(t *testing.T) {
 	if _, err := os.Stat(result.SnapshotManifest); err != nil {
 		t.Fatalf("expected snapshot manifest: %v", err)
 	}
-	if err := rt.requireCalls("validate", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
+	if err := rt.requireCalls("compose_config", "stop_services", "service_stopped", "dump_database", "start_services", "service_health", "stop_services", "up_service", "reset_database", "restore_database", "start_services", "service_health", "db_ping"); err != nil {
 		t.Fatal(err)
 	}
 	if rt.restoreDBBody != wantSQL {
@@ -941,7 +941,7 @@ func TestRestoreFilesBackupUnsafeArchiveDoesNotClearStorage(t *testing.T) {
 		{name: "../escape.txt", body: "bad\n"},
 	})
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	_, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 	if !strings.Contains(err.Error(), "unsafe") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1001,7 +1001,7 @@ func TestRestoreFilesBackupRejectsMaliciousArchiveBeforeStaging(t *testing.T) {
 			archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 			writeTarGzArchiveEntries(t, archivePath, tt.entries)
 
-			err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+			_, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 			assertVerifyErrorKind(t, err, ErrorKindArchive)
 			if !strings.Contains(err.Error(), tt.want) {
 				t.Fatalf("expected %q in error, got %v", tt.want, err)
@@ -1022,7 +1022,7 @@ func TestRestoreFilesBackupBrokenArchiveDoesNotClearStorage(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeBrokenRestoreFilesArchive(t, archivePath, "restored.txt", "restored\n")
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	_, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 	assertVerifyErrorKind(t, err, ErrorKindArchive)
 	if !strings.Contains(err.Error(), "unreadable") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1047,8 +1047,15 @@ func TestRestoreFilesBackupTargetSymlinkIsNotFollowedBySwitch(t *testing.T) {
 	archivePath := filepath.Join(t.TempDir(), "files.tar.gz")
 	writeRestoreFilesArchive(t, archivePath, map[string]string{"restored.txt": "restored\n"})
 
-	if err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
-		t.Fatalf("restoreFilesBackup failed: %v", err)
+	prepared, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	if err != nil {
+		t.Fatalf("prepareRestoreFilesBackup failed: %v", err)
+	}
+	if err := commitRestoreFilesBackup(context.Background(), prepared, storageDir); err != nil {
+		t.Fatalf("commitRestoreFilesBackup failed: %v", err)
+	}
+	if err := prepared.Cleanup(); err != nil {
+		t.Fatalf("cleanup prepared staging: %v", err)
 	}
 	assertFileContains(t, linkTarget, "outside\n")
 	assertNoFile(t, linkPath)
@@ -1074,7 +1081,7 @@ func TestRestoreFilesBackupStagingExtractionFailureDoesNotClearStorage(t *testin
 		restoreExtractTarEntry = oldExtract
 	}()
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	_, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
 	assertVerifyErrorKind(t, err, ErrorKindIO)
 	if !strings.Contains(err.Error(), "files staging extraction failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1145,8 +1152,15 @@ func TestRestoreFilesBackupValidArchiveStillWorks(t *testing.T) {
 		restoreRemoveAll = oldRemoveAll
 	}()
 
-	if err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
-		t.Fatalf("restoreFilesBackup failed: %v", err)
+	prepared, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	if err != nil {
+		t.Fatalf("prepareRestoreFilesBackup failed: %v", err)
+	}
+	if err := commitRestoreFilesBackup(context.Background(), prepared, storageDir); err != nil {
+		t.Fatalf("commitRestoreFilesBackup failed: %v", err)
+	}
+	if err := prepared.Cleanup(); err != nil {
+		t.Fatalf("cleanup prepared staging: %v", err)
 	}
 	assertNoFile(t, filepath.Join(storageDir, "old.txt"))
 	assertFileContains(t, filepath.Join(storageDir, "restored.txt"), "restored\n")
@@ -1173,7 +1187,14 @@ func TestRestoreFilesBackupTargetMoveFailureLeavesOldStorage(t *testing.T) {
 		restoreRenamePath = oldRename
 	}()
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	prepared, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	if err != nil {
+		t.Fatalf("prepareRestoreFilesBackup failed: %v", err)
+	}
+	err = commitRestoreFilesBackup(context.Background(), prepared, storageDir)
+	if cleanupErr := prepared.Cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup prepared staging: %v", cleanupErr)
+	}
 	assertVerifyErrorKind(t, err, ErrorKindIO)
 	if !strings.Contains(err.Error(), "files switch failed before target switch") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1206,7 +1227,14 @@ func TestRestoreFilesBackupSwitchFailureRollsBackOldStorage(t *testing.T) {
 		restoreRenamePath = oldRename
 	}()
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	prepared, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	if err != nil {
+		t.Fatalf("prepareRestoreFilesBackup failed: %v", err)
+	}
+	err = commitRestoreFilesBackup(context.Background(), prepared, storageDir)
+	if cleanupErr := prepared.Cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup prepared staging: %v", cleanupErr)
+	}
 	assertVerifyErrorKind(t, err, ErrorKindIO)
 	if !strings.Contains(err.Error(), "files switch failed during target switch") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1245,7 +1273,14 @@ func TestRestoreFilesBackupSwitchCleanupFailureLeavesRestoredStorageAndRollback(
 		}
 	}()
 
-	err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	prepared, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	if err != nil {
+		t.Fatalf("prepareRestoreFilesBackup failed: %v", err)
+	}
+	err = commitRestoreFilesBackup(context.Background(), prepared, storageDir)
+	if cleanupErr := prepared.Cleanup(); cleanupErr != nil {
+		t.Fatalf("cleanup prepared staging: %v", cleanupErr)
+	}
 	assertVerifyErrorKind(t, err, ErrorKindIO)
 	if !strings.Contains(err.Error(), "files switch cleanup failed") {
 		t.Fatalf("unexpected error: %v", err)
@@ -1307,8 +1342,15 @@ func TestRestoreFilesBackupAppliesOwnershipBeforeSwitchAndFinalPostCheck(t *test
 		restoreApplyOwnership = oldApply
 	}()
 
-	if err := restoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID); err != nil {
-		t.Fatalf("restoreFilesBackup failed: %v", err)
+	prepared, err := prepareRestoreFilesBackup(context.Background(), archivePath, storageDir, cfg.RuntimeUID, cfg.RuntimeGID)
+	if err != nil {
+		t.Fatalf("prepareRestoreFilesBackup failed: %v", err)
+	}
+	if err := commitRestoreFilesBackup(context.Background(), prepared, storageDir); err != nil {
+		t.Fatalf("commitRestoreFilesBackup failed: %v", err)
+	}
+	if err := prepared.Cleanup(); err != nil {
+		t.Fatalf("cleanup prepared staging: %v", err)
 	}
 	if strings.Join(steps, ",") != "validate_staging,apply_ownership,validate_target" {
 		t.Fatalf("unexpected restore steps: %v", steps)
@@ -1573,8 +1615,8 @@ type fakeRestoreRuntime struct {
 	healthContextErrs []error
 }
 
-func (f *fakeRestoreRuntime) Validate(_ context.Context, _ runtime.Target) error {
-	f.calls = append(f.calls, "validate")
+func (f *fakeRestoreRuntime) ComposeConfig(_ context.Context, _ runtime.Target) error {
+	f.calls = append(f.calls, "compose_config")
 	return f.validateErr
 }
 
