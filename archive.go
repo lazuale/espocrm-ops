@@ -118,7 +118,7 @@ func validateFilesArchive(path string) error {
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
-			return nil
+			return drainFilesArchiveGzipFooter(gz)
 		}
 		if err != nil {
 			return fmt.Errorf("read files archive: %w", err)
@@ -151,7 +151,7 @@ func extractFilesArchive(path string, targetDir string) error {
 	for {
 		header, err := tr.Next()
 		if err == io.EOF {
-			return nil
+			return drainFilesArchiveGzipFooter(gz)
 		}
 		if err != nil {
 			return fmt.Errorf("read files archive: %w", err)
@@ -188,6 +188,13 @@ func extractFilesArchive(path string, targetDir string) error {
 			return fmt.Errorf("unsupported archive entry type %d for %s", header.Typeflag, header.Name)
 		}
 	}
+}
+
+func drainFilesArchiveGzipFooter(gz *gzip.Reader) error {
+	if _, err := io.Copy(io.Discard, gz); err != nil {
+		return fmt.Errorf("read files archive gzip"+" footer: %w", err)
+	}
+	return nil
 }
 
 func validateGzipReadable(path string) error {

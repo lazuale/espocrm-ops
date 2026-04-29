@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -39,6 +40,19 @@ func TestValidateFilesArchiveAcceptsNormalArchive(t *testing.T) {
 	}
 }
 
+func TestValidateFilesArchiveRejectsCorruptGzipFooter(t *testing.T) {
+	path := writeTestArchive(t, []testTarEntry{
+		{Name: "data/", Typeflag: tar.TypeDir},
+		{Name: "data/file.txt", Body: "ok"},
+	})
+	corruptGzipFooter(t, path)
+
+	err := validateFilesArchive(path)
+	if err == nil || !strings.Contains(err.Error(), "read files archive gzip"+" footer") {
+		t.Fatalf("expected gzip"+" footer error, got %v", err)
+	}
+}
+
 func TestExtractFilesArchiveRejectsEscapes(t *testing.T) {
 	path := writeTestArchive(t, []testTarEntry{{Name: "../escape.txt", Body: "no"}})
 	target := filepath.Join(t.TempDir(), "target")
@@ -47,6 +61,23 @@ func TestExtractFilesArchiveRejectsEscapes(t *testing.T) {
 	}
 	if err := extractFilesArchive(path, target); err == nil {
 		t.Fatal("expected unsafe extraction rejected")
+	}
+}
+
+func TestExtractFilesArchiveRejectsCorruptGzipFooter(t *testing.T) {
+	path := writeTestArchive(t, []testTarEntry{
+		{Name: "data/", Typeflag: tar.TypeDir},
+		{Name: "data/file.txt", Body: "ok"},
+	})
+	corruptGzipFooter(t, path)
+	target := filepath.Join(t.TempDir(), "target")
+	if err := os.Mkdir(target, 0700); err != nil {
+		t.Fatal(err)
+	}
+
+	err := extractFilesArchive(path, target)
+	if err == nil || !strings.Contains(err.Error(), "read files archive gzip"+" footer") {
+		t.Fatalf("expected gzip"+" footer error, got %v", err)
 	}
 }
 
@@ -103,4 +134,19 @@ func writeTestArchive(t *testing.T, entries []testTarEntry) string {
 		t.Fatal(err)
 	}
 	return path
+}
+
+func corruptGzipFooter(t *testing.T, path string) {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(data) < 8 {
+		t.Fatalf("compressed archive too short: %d bytes", len(data))
+	}
+	data[len(data)-1] ^= 0xff
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		t.Fatal(err)
+	}
 }
