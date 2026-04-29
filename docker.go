@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"strings"
 )
 
 func dockerComposeArgs(password string, serviceArgs ...string) []string {
@@ -35,7 +36,7 @@ func dumpDatabase(cfg Config, out io.Writer) error {
 		return fmt.Errorf("open database dump stream: %w", err)
 	}
 	if err := cmd.Start(); err != nil {
-		return fmt.Errorf("start database dump: %w", err)
+		return dockerCommandError("start database dump", args, err)
 	}
 
 	gz := gzip.NewWriter(out)
@@ -45,7 +46,7 @@ func dumpDatabase(cfg Config, out io.Writer) error {
 		return copyErr
 	}
 	if waitErr != nil {
-		return fmt.Errorf("database dump failed: %w", waitErr)
+		return dockerCommandError("database dump", args, waitErr)
 	}
 	return nil
 }
@@ -57,7 +58,7 @@ func resetDatabase(cfg Config) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("reset database failed: %w", err)
+		return dockerCommandError("reset database", args, err)
 	}
 	return nil
 }
@@ -75,9 +76,24 @@ func restoreDatabase(cfg Config, gzSQL io.Reader) error {
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("restore database failed: %w", err)
+		return dockerCommandError("restore database", args, err)
 	}
 	return nil
+}
+
+func dockerCommandError(operation string, args []string, err error) error {
+	return fmt.Errorf("%s failed for docker %s: %w", operation, strings.Join(redactDockerArgs(args), " "), err)
+}
+
+func redactDockerArgs(args []string) []string {
+	redacted := make([]string, len(args))
+	copy(redacted, args)
+	for i, arg := range redacted {
+		if strings.HasPrefix(arg, "MYSQL_PWD=") {
+			redacted[i] = "MYSQL_PWD=<redacted>"
+		}
+	}
+	return redacted
 }
 
 func copyAndCloseGzip(gz *gzip.Writer, r io.Reader) error {

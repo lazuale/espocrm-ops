@@ -71,9 +71,13 @@ func writeTestArchive(t *testing.T, entries []testTarEntry) string {
 		if typeflag == 0 {
 			typeflag = tar.TypeReg
 		}
+		mode := int64(0600)
+		if typeflag == tar.TypeDir {
+			mode = 0700
+		}
 		header := &tar.Header{
 			Name:     entry.Name,
-			Mode:     0600,
+			Mode:     mode,
 			Typeflag: typeflag,
 			Linkname: entry.Linkname,
 		}

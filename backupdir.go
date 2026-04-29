@@ -5,9 +5,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 const timestampFormat = "20060102-150405"
+
+var nowUTC = func() time.Time {
+	return time.Now().UTC()
+}
 
 func requireDir(path string, label string) error {
 	info, err := os.Stat(path)

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 )
 
 func Backup(cfg Config) error {
@@ -15,9 +14,8 @@ func Backup(cfg Config) error {
 		return err
 	}
 
-	now := time.Now().UTC()
+	now := nowUTC()
 	stamp := now.Format(timestampFormat)
-	tempDir := filepath.Join(cfg.BackupRoot, ".tmp-"+stamp)
 	finalDir := filepath.Join(cfg.BackupRoot, stamp)
 
 	if _, err := os.Stat(finalDir); err == nil {
@@ -25,7 +23,8 @@ func Backup(cfg Config) error {
 	} else if !os.IsNotExist(err) {
 		return fmt.Errorf("stat final backup dir: %w", err)
 	}
-	if err := os.Mkdir(tempDir, 0700); err != nil {
+	tempDir, err := os.MkdirTemp(cfg.BackupRoot, ".tmp-"+stamp+"-*")
+	if err != nil {
 		return fmt.Errorf("create temp backup dir: %w", err)
 	}
 	cleanupTemp := true

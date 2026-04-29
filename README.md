@@ -50,6 +50,21 @@ Restore validates the backup and extracts the file archive into a temporary stor
 
 It is kept in place and is not deleted automatically.
 
+## Restore Safety Model
+
+Restore is intentionally strict:
+
+- The backup is fully validated before destructive actions.
+- The files archive is extracted to a temporary directory before the database reset.
+- The database reset and import happen before the storage swap.
+- If the database import fails after reset, storage is not swapped and manual database recovery from the backup is required.
+- If the final storage swap cannot place restored storage at `ESPO_STORAGE_DIR`, the tool attempts to roll the previous storage back into place.
+- If that rollback also fails, the command reports both paths and the manual recovery action.
+- Old storage is preserved after a successful swap.
+- There is no fallback to a latest backup or legacy backup format.
+- No shell is used.
+- The Docker CLI is the only external binary used.
+
 ## External Commands
 
 The Go code does not invoke a shell. The Docker CLI is the only external binary used, and it is called directly with argument lists.

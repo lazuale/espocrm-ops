@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"time"
 )
+
+var resetDatabaseForRestore = resetDatabase
+var restoreDatabaseForRestore = restoreDatabase
 
 func Restore(cfg Config, backupDir string) error {
 	if backupDir == "" {
@@ -18,23 +20,15 @@ func Restore(cfg Config, backupDir string) error {
 		return err
 	}
 
-	stamp := time.Now().UTC().Format(timestampFormat)
 	storageParent := filepath.Dir(cfg.EspoStorageDir)
-	storageBase := filepath.Base(cfg.EspoStorageDir)
-	tempStorage := filepath.Join(storageParent, ".tmp-restore-"+stamp)
-	oldStorage := filepath.Join(storageParent, storageBase+".before-restore-"+stamp)
-
-	if _, err := os.Stat(oldStorage); err == nil {
-		return fmt.Errorf("restore storage backup already exists: %s", oldStorage)
-	} else if !os.IsNotExist(err) {
-		return fmt.Errorf("stat old storage target: %w", err)
-	}
-	if err := os.Mkdir(tempStorage, 0700); err != nil {
+	stamp := nowUTC().Format(timestampFormat)
+	tempStorage, err := os.MkdirTemp(storageParent, ".tmp-restore-"+stamp+"-*")
+	if err != nil {
 		return fmt.Errorf("create temp storage dir: %w", err)
 	}
-	extracted := false
+	cleanupTemp := true
 	defer func() {
-		if !extracted {
+		if cleanupTemp {
 			_ = safeRemoveTempDir(tempStorage, storageParent)
 		}
 	}()
@@ -42,9 +36,16 @@ func Restore(cfg Config, backupDir string) error {
 	if err := extractFilesArchive(filepath.Join(backupDir, filesFileName), tempStorage); err != nil {
 		return err
 	}
-	extracted = true
 
-	if err := resetDatabase(cfg); err != nil {
+	oldStorage, err := beforeRestorePath(cfg.EspoStorageDir, stamp)
+	if err != nil {
+		return err
+	}
+
+	// The database is reset before the storage swap so EspoCRM never sees new
+	// files with an old schema. If import fails after reset, storage remains
+	// untouched and the operator must repair the database from the backup.
+	if err := resetDatabaseForRestore(cfg); err != nil {
 		return err
 	}
 	dbDump, err := os.Open(filepath.Join(backupDir, dbFileName))
@@ -52,17 +53,45 @@ func Restore(cfg Config, backupDir string) error {
 		return fmt.Errorf("open db dump: %w", err)
 	}
 	defer dbDump.Close()
-	if err := restoreDatabase(cfg, dbDump); err != nil {
+	if err := restoreDatabaseForRestore(cfg, dbDump); err != nil {
+		return fmt.Errorf("database restore failed after reset; storage was not swapped and manual database recovery is required: %w", err)
+	}
+
+	if err := swapStorage(cfg.EspoStorageDir, tempStorage, oldStorage, os.Rename); err != nil {
 		return err
 	}
-
-	if err := os.Rename(cfg.EspoStorageDir, oldStorage); err != nil {
-		return fmt.Errorf("move current storage to restore backup: %w", err)
-	}
-	if err := os.Rename(tempStorage, cfg.EspoStorageDir); err != nil {
-		return fmt.Errorf("move restored storage into place: %w", err)
-	}
+	cleanupTemp = false
 
 	fmt.Printf("restore complete; previous storage kept at %s\n", oldStorage)
+	return nil
+}
+
+func beforeRestorePath(storageDir string, stamp string) (string, error) {
+	base := filepath.Join(filepath.Dir(storageDir), filepath.Base(storageDir)+".before-restore-"+stamp)
+	candidate := base
+	for i := 0; i < 100; i++ {
+		if i > 0 {
+			candidate = fmt.Sprintf("%s.%d", base, i)
+		}
+		if _, err := os.Stat(candidate); os.IsNotExist(err) {
+			return candidate, nil
+		} else if err != nil {
+			return "", fmt.Errorf("stat restore storage backup target: %w", err)
+		}
+	}
+	return "", fmt.Errorf("could not choose unique restore storage backup path starting at %s", base)
+}
+
+func swapStorage(liveStorage string, tempStorage string, oldStorage string, rename func(string, string) error) error {
+	if err := rename(liveStorage, oldStorage); err != nil {
+		return fmt.Errorf("move current storage to restore backup: %w", err)
+	}
+	if err := rename(tempStorage, liveStorage); err != nil {
+		rollbackErr := rename(oldStorage, liveStorage)
+		if rollbackErr != nil {
+			return fmt.Errorf("fatal storage restore failure: moved live storage to %s, then failed to move restored storage %s to %s: %v; rollback also failed: %v; manually move %s back to %s before retrying", oldStorage, tempStorage, liveStorage, err, rollbackErr, oldStorage, liveStorage)
+		}
+		return fmt.Errorf("move restored storage into place failed and rollback restored live storage from %s to %s: %w", oldStorage, liveStorage, err)
+	}
 	return nil
 }

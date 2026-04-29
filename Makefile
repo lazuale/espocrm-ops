@@ -15,3 +15,4 @@ check:
 	go test ./...
 	test -d bin || mkdir bin
 	go build -o bin/espops .
+	! grep -R '"bash"\|"sh"\|"-c"\|sha256sum\|tar \|gzip \|rm -rf\|mkdir -p' --include='*.go' .
