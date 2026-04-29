@@ -3,6 +3,7 @@ package main
 import (
 	"archive/tar"
 	"compress/gzip"
+	"errors"
 	"fmt"
 	"io"
 	"io/fs"
@@ -17,14 +18,11 @@ func createFilesArchive(sourceDir string, outPath string) error {
 	if err != nil {
 		return fmt.Errorf("create %s: %w", outPath, err)
 	}
-	defer out.Close()
 
 	gz := gzip.NewWriter(out)
-	defer gz.Close()
 	tw := tar.NewWriter(gz)
-	defer tw.Close()
 
-	return filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, walkErr error) error {
+	walkDirErr := filepath.WalkDir(sourceDir, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -86,6 +84,21 @@ func createFilesArchive(sourceDir string, outPath string) error {
 		}
 		return nil
 	})
+
+	var closeErrs []error
+	if err := tw.Close(); err != nil {
+		closeErrs = append(closeErrs, fmt.Errorf("close tar"+" writer: %w", err))
+	}
+	if err := gz.Close(); err != nil {
+		closeErrs = append(closeErrs, fmt.Errorf("close gzip"+" writer: %w", err))
+	}
+	if err := out.Close(); err != nil {
+		closeErrs = append(closeErrs, fmt.Errorf("close files archive: %w", err))
+	}
+	if walkDirErr != nil {
+		return walkDirErr
+	}
+	return errors.Join(closeErrs...)
 }
 
 func validateFilesArchive(path string) error {
