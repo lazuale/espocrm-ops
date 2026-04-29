@@ -1,52 +1,51 @@
 package main
 
 import (
+	"fmt"
 	"os"
-	"os/exec"
-	"strings"
 )
 
 func main() {
-	if len(os.Args) < 2 {
+	if err := run(os.Args[1:]); err != nil {
+		fmt.Fprintln(os.Stderr, err)
 		os.Exit(1)
 	}
+}
 
-	var err error
-	switch os.Args[1] {
+func run(args []string) error {
+	if len(args) == 0 {
+		return fmt.Errorf("usage: espops backup | check-backup <backup-dir> | restore <backup-dir> --yes")
+	}
+
+	switch args[0] {
 	case "backup":
-		err = backup()
+		if len(args) != 1 {
+			return fmt.Errorf("usage: espops backup")
+		}
+		cfg, err := LoadConfig(".env")
+		if err != nil {
+			return err
+		}
+		return Backup(cfg)
+	case "check-backup":
+		if len(args) != 2 {
+			return fmt.Errorf("usage: espops check-backup <backup-dir>")
+		}
+		if err := ValidateBackup(args[1]); err != nil {
+			return err
+		}
+		fmt.Println("backup OK")
+		return nil
 	case "restore":
-		if len(os.Args) < 3 {
-			os.Exit(1)
+		cfg, err := LoadConfig(".env")
+		if err != nil {
+			return err
 		}
-		err = restore(os.Args[2])
+		if len(args) != 3 || args[2] != "--yes" {
+			return fmt.Errorf("usage: espops restore <backup-dir> --yes")
+		}
+		return Restore(cfg, args[1])
 	default:
-		os.Exit(1)
+		return fmt.Errorf("unknown command %q", args[0])
 	}
-
-	if err != nil {
-		os.Stderr.WriteString(err.Error() + "\n")
-		os.Exit(1)
-	}
-}
-
-func env(key string) string {
-	data, err := os.ReadFile(".env")
-	if err != nil {
-		panic(err)
-	}
-	for _, line := range strings.Split(string(data), "\n") {
-		if strings.HasPrefix(line, key+"=") {
-			return strings.TrimPrefix(line, key+"=")
-		}
-	}
-	return ""
-}
-
-func sh(s string, env ...string) error {
-	cmd := exec.Command("bash", "-o", "pipefail", "-c", s)
-	cmd.Env = append(os.Environ(), env...)
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-	return cmd.Run()
 }

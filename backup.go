@@ -1,18 +1,81 @@
 package main
 
-import "time"
+import (
+	"fmt"
+	"os"
+	"path/filepath"
+	"time"
+)
 
-func backup() error {
-	dir := env("BACKUP_ROOT") + "/" + time.Now().UTC().Format("20060102-150405")
+func Backup(cfg Config) error {
+	if err := requireDir(cfg.BackupRoot, "BACKUP_ROOT"); err != nil {
+		return err
+	}
+	if err := requireDir(cfg.EspoStorageDir, "ESPO_STORAGE_DIR"); err != nil {
+		return err
+	}
 
-	if err := sh("mkdir -p " + dir); err != nil {
+	now := time.Now().UTC()
+	stamp := now.Format(timestampFormat)
+	tempDir := filepath.Join(cfg.BackupRoot, ".tmp-"+stamp)
+	finalDir := filepath.Join(cfg.BackupRoot, stamp)
+
+	if _, err := os.Stat(finalDir); err == nil {
+		return fmt.Errorf("backup directory already exists: %s", finalDir)
+	} else if !os.IsNotExist(err) {
+		return fmt.Errorf("stat final backup dir: %w", err)
+	}
+	if err := os.Mkdir(tempDir, 0700); err != nil {
+		return fmt.Errorf("create temp backup dir: %w", err)
+	}
+	cleanupTemp := true
+	defer func() {
+		if cleanupTemp {
+			_ = safeRemoveTempDir(tempDir, cfg.BackupRoot)
+		}
+	}()
+
+	dbPath := filepath.Join(tempDir, dbFileName)
+	dbFile, err := os.Create(dbPath)
+	if err != nil {
+		return fmt.Errorf("create db dump: %w", err)
+	}
+	if err := dumpDatabase(cfg, dbFile); err != nil {
+		dbFile.Close()
 		return err
 	}
-	if err := sh("docker compose --env-file .env -f compose.yaml exec -T -e MYSQL_PWD db mariadb-dump --single-transaction --quick --routines --triggers --events --hex-blob --default-character-set=utf8mb4 -u "+env("DB_USER")+" "+env("DB_NAME")+" | gzip -c > "+dir+"/db.sql.gz", "MYSQL_PWD="+env("DB_PASSWORD")); err != nil {
+	if err := dbFile.Close(); err != nil {
+		return fmt.Errorf("close db dump: %w", err)
+	}
+
+	filesPath := filepath.Join(tempDir, filesFileName)
+	if err := createFilesArchive(cfg.EspoStorageDir, filesPath); err != nil {
 		return err
 	}
-	if err := sh("tar -C " + env("ESPO_STORAGE_DIR") + " -czf " + dir + "/files.tar.gz ."); err != nil {
+
+	dbHash, dbSize, err := fileSHA256(dbPath)
+	if err != nil {
 		return err
 	}
-	return sh("cd " + dir + " && sha256sum db.sql.gz files.tar.gz > SHA256SUMS")
+	filesHash, filesSize, err := fileSHA256(filesPath)
+	if err != nil {
+		return err
+	}
+
+	manifest := newManifest(now, checksumFile{Hash: dbHash, Size: dbSize}, checksumFile{Hash: filesHash, Size: filesSize})
+	if err := writeManifest(filepath.Join(tempDir, manifestFileName), manifest); err != nil {
+		return err
+	}
+	if err := writeSHA256SUMS(filepath.Join(tempDir, sumsFileName), dbHash, filesHash); err != nil {
+		return err
+	}
+	if err := ValidateBackup(tempDir); err != nil {
+		return fmt.Errorf("created backup failed validation: %w", err)
+	}
+	if err := os.Rename(tempDir, finalDir); err != nil {
+		return fmt.Errorf("move backup into place: %w", err)
+	}
+	cleanupTemp = false
+	fmt.Printf("backup created: %s\n", finalDir)
+	return nil
 }
