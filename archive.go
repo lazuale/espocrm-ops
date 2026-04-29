@@ -73,9 +73,16 @@ func createFilesArchive(sourceDir string, outPath string) error {
 		if err != nil {
 			return fmt.Errorf("open %s: %w", path, err)
 		}
-		defer file.Close()
-		if _, err := io.Copy(tw, file); err != nil {
-			return fmt.Errorf("write archive content for %s: %w", path, err)
+		_, copyErr := io.Copy(tw, file)
+		closeErr := file.Close()
+		if copyErr != nil {
+			if closeErr != nil {
+				return fmt.Errorf("write archive content for %s: %w; close %s: %w", path, copyErr, path, closeErr)
+			}
+			return fmt.Errorf("write archive content for %s: %w", path, copyErr)
+		}
+		if closeErr != nil {
+			return fmt.Errorf("close %s: %w", path, closeErr)
 		}
 		return nil
 	})

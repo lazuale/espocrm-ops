@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -8,6 +9,7 @@ import (
 
 var resetDatabaseForRestore = resetDatabase
 var restoreDatabaseForRestore = restoreDatabase
+var renameStorageForRestore = os.Rename
 
 func Restore(cfg Config, backupDir string) error {
 	if backupDir == "" {
@@ -57,7 +59,11 @@ func Restore(cfg Config, backupDir string) error {
 		return fmt.Errorf("database restore failed after reset; storage was not swapped and manual database recovery is required: %w", err)
 	}
 
-	if err := swapStorage(cfg.EspoStorageDir, tempStorage, oldStorage, os.Rename); err != nil {
+	if err := swapStorage(cfg.EspoStorageDir, tempStorage, oldStorage, renameStorageForRestore); err != nil {
+		var fatalErr *fatalStorageRollbackError
+		if errors.As(err, &fatalErr) {
+			cleanupTemp = false
+		}
 		return err
 	}
 	cleanupTemp = false
@@ -89,9 +95,31 @@ func swapStorage(liveStorage string, tempStorage string, oldStorage string, rena
 	if err := rename(tempStorage, liveStorage); err != nil {
 		rollbackErr := rename(oldStorage, liveStorage)
 		if rollbackErr != nil {
-			return fmt.Errorf("fatal storage restore failure: moved live storage to %s, then failed to move restored storage %s to %s: %v; rollback also failed: %v; manually move %s back to %s before retrying", oldStorage, tempStorage, liveStorage, err, rollbackErr, oldStorage, liveStorage)
+			return &fatalStorageRollbackError{
+				liveStorage: liveStorage,
+				tempStorage: tempStorage,
+				oldStorage:  oldStorage,
+				swapErr:     err,
+				rollbackErr: rollbackErr,
+			}
 		}
 		return fmt.Errorf("move restored storage into place failed and rollback restored live storage from %s to %s: %w", oldStorage, liveStorage, err)
 	}
 	return nil
+}
+
+type fatalStorageRollbackError struct {
+	liveStorage string
+	tempStorage string
+	oldStorage  string
+	swapErr     error
+	rollbackErr error
+}
+
+func (e *fatalStorageRollbackError) Error() string {
+	return fmt.Sprintf("fatal storage restore failure: moved live storage to %s, then failed to move restored storage %s to %s: %v; rollback also failed: %v; manually move %s back to %s before retrying", e.oldStorage, e.tempStorage, e.liveStorage, e.swapErr, e.rollbackErr, e.oldStorage, e.liveStorage)
+}
+
+func (e *fatalStorageRollbackError) Unwrap() error {
+	return errors.Join(e.swapErr, e.rollbackErr)
 }

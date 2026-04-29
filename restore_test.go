@@ -131,6 +131,55 @@ func TestRestoreDoesNotSwapStorageIfDBImportFails(t *testing.T) {
 	}
 }
 
+func TestRestoreKeepsTempStorageOnFatalRollbackFailure(t *testing.T) {
+	dir := t.TempDir()
+	storage := filepath.Join(dir, "storage")
+	mustWriteFile(t, filepath.Join(storage, "live.txt"), "live")
+	backupDir := createValidBackupFixture(t)
+
+	oldReset := resetDatabaseForRestore
+	oldRestore := restoreDatabaseForRestore
+	oldRename := renameStorageForRestore
+	oldNow := nowUTC
+	defer func() {
+		resetDatabaseForRestore = oldReset
+		restoreDatabaseForRestore = oldRestore
+		renameStorageForRestore = oldRename
+		nowUTC = oldNow
+	}()
+
+	resetDatabaseForRestore = func(Config) error { return nil }
+	restoreDatabaseForRestore = func(Config, io.Reader) error { return nil }
+	nowUTC = func() time.Time { return time.Date(2026, 4, 29, 12, 0, 0, 0, time.UTC) }
+	renameStorageForRestore = func(from, to string) error {
+		switch {
+		case from == storage && strings.Contains(to, ".before-restore-20260429-120000"):
+			return nil
+		case strings.Contains(from, ".tmp-restore-20260429-120000-") && to == storage:
+			return errors.New("move restored storage failed")
+		case strings.Contains(from, ".before-restore-20260429-120000") && to == storage:
+			return errors.New("rollback failed")
+		default:
+			return nil
+		}
+	}
+
+	err := Restore(Config{EspoStorageDir: storage, DBName: "espocrm", DBUser: "espocrm"}, backupDir)
+	if err == nil || !strings.Contains(err.Error(), "fatal storage restore failure") {
+		t.Fatalf("expected fatal storage rollback error, got %v", err)
+	}
+	matches, err := filepath.Glob(filepath.Join(dir, ".tmp-restore-20260429-120000-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(matches) != 1 {
+		t.Fatalf("expected temp storage to remain, got %v", matches)
+	}
+	if _, err := os.Stat(filepath.Join(matches[0], "storage", "file.txt")); err != nil {
+		t.Fatalf("expected restored temp storage contents to remain: %v", err)
+	}
+}
+
 func mustWriteFile(t *testing.T, path string, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {

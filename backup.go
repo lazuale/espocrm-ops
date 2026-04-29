@@ -6,6 +6,9 @@ import (
 	"path/filepath"
 )
 
+var dumpDatabaseForBackup = dumpDatabase
+var renameBackupDir = os.Rename
+
 func Backup(cfg Config) error {
 	if err := requireDir(cfg.BackupRoot, "BACKUP_ROOT"); err != nil {
 		return err
@@ -39,7 +42,7 @@ func Backup(cfg Config) error {
 	if err != nil {
 		return fmt.Errorf("create db dump: %w", err)
 	}
-	if err := dumpDatabase(cfg, dbFile); err != nil {
+	if err := dumpDatabaseForBackup(cfg, dbFile); err != nil {
 		dbFile.Close()
 		return err
 	}
@@ -71,10 +74,10 @@ func Backup(cfg Config) error {
 	if err := ValidateBackup(tempDir); err != nil {
 		return fmt.Errorf("created backup failed validation: %w", err)
 	}
-	if err := os.Rename(tempDir, finalDir); err != nil {
-		return fmt.Errorf("move backup into place: %w", err)
-	}
 	cleanupTemp = false
+	if err := renameBackupDir(tempDir, finalDir); err != nil {
+		return fmt.Errorf("move backup into place: %w; valid backup remains at %s", err, tempDir)
+	}
 	fmt.Printf("backup created: %s\n", finalDir)
 	return nil
 }

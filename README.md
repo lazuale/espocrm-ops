@@ -69,6 +69,8 @@ Restore is intentionally strict:
 
 The Go code does not invoke a shell. The Docker CLI is the only external binary used, and it is called directly with argument lists.
 
+`espops` redacts `MYSQL_PWD` in errors it creates for failed Docker commands. The password is still passed to `docker compose exec` as `MYSQL_PWD` for the database process.
+
 ## Development
 
 ```text
